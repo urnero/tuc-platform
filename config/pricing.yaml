@@ -1,0 +1,33 @@
+# Цены и ставки для расчёта стоимости печати.
+# ВНИМАНИЕ: все числа ниже — ЗАГЛУШКИ. Владелец заменяет их на реальные из таблицы учёта.
+# Формула (docs/SPEC.md, раздел 4):
+#   price = max(min_order,
+#               (material_g * price_per_g[material] + print_h * machine_rate[tech])
+#               * k_supports * k_batch(qty) * (1 + margin))
+#           + postprocess + delivery
+
+currency: RUB
+min_order: 500          # минимальная сумма заказа, ₽
+margin: 0.35            # наценка, доля
+k_supports: 1.15        # коэффициент, если нужны поддержки
+
+materials:               # ₽ за грамм
+  PLA:  { price_per_g: 4.0,  tech: FDM }
+  PETG: { price_per_g: 4.5,  tech: FDM }
+  ABS:  { price_per_g: 4.5,  tech: FDM }
+
+technologies:            # ₽ за час работы принтера
+  FDM: { machine_rate: 120 }
+
+batch:                   # скидка за тираж: от qty → коэффициент
+  - { from: 1,   k: 1.00 }
+  - { from: 10,  k: 0.90 }
+  - { from: 50,  k: 0.80 }
+
+postprocess:             # ₽ за изделие
+  none: 0
+  sanding: 150
+
+delivery:                # ₽ за заказ
+  pickup: 0
+  courier_moscow: 400

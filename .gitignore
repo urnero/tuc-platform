@@ -1,0 +1,28 @@
+# секреты и локальные данные
+.env
+.env.*
+!.env.example
+data/
+uploads/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+npm-debug.log*
+
+# ide / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
