@@ -1,10 +1,12 @@
-"""Точка входа API. Пока только проверка здоровья и ping."""
+"""Точка входа API: здоровье, ping, загрузка моделей."""
 
 from fastapi import FastAPI
 
 from app.config import settings
+from app.uploads import router as uploads_router
 
 app = FastAPI(title="ТУЦ API", version="0.1.0")
+app.include_router(uploads_router)
 
 
 @app.get("/health")

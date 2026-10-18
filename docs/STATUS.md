@@ -18,5 +18,6 @@ Staging: не развёрнут. Prod: не развёрнут.
 
 ## Журнал (новое сверху)
 
+- 2026-10-18 · B02 · Загрузка STL/3MF: `POST /api/v1/uploads` (лимит `MAX_UPLOAD_MB`, проверка расширения, trimesh: габариты, объём, замкнутость + автопочинка дыр, подсказка про дюймы, «не влезает в принтер» по `PRINT_BED_MM`), `GET /api/v1/uploads/{id}` и `/file`. Файлы в `DATA_DIR/uploads/<id>/`. Страница `/upload` в web (drag&drop, результат проверки, тексты предупреждений). Rewrites в next.config для dev без Caddy. 22 pytest + 11 vitest зелёные, lint/tsc/build ок. · Нужно от владельца: ничего для B03; п. 1 (цены) к B05.
 - 2026-10-16 · B01 · Каркас: CLAUDE.md, docs/, docker-compose, api (FastAPI `/health`, `/api/v1/ping`), web (Next.js hello + `formatPrice`), CI (pytest, ruff, vitest, tsc). Тесты зелёные локально. · Нужно от владельца: п. 1 (цены) к B05.
 - 2026-10-16 · 02:17 · Первая ночная сборка: репозиторий был недоступен приложению Claude, запуск завершился сообщением владельцу.

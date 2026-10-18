@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     data_dir: Path = Path("./data")
     pricing_path: Path = Path("config/pricing.yaml")
 
+    # Загрузка моделей (B02)
+    max_upload_mb: int = 100
+    # Рабочая область принтера, мм: X×Y×Z. Модель больше этого — предупреждение.
+    print_bed_mm: str = "250x210x220"
+
     database_url: str = "postgresql+psycopg://tuc:change_me@localhost:5432/tuc"
     redis_url: str = "redis://localhost:6379/0"
 
@@ -20,6 +25,12 @@ class Settings(BaseSettings):
     telegram_owner_chat_id: str = ""
     yookassa_shop_id: str = ""
     yookassa_secret_key: str = ""
+
+    @property
+    def print_bed(self) -> tuple[float, float, float]:
+        """«250x210x220» → (250.0, 210.0, 220.0)."""
+        x, y, z = (float(v) for v in self.print_bed_mm.lower().split("x"))
+        return (x, y, z)
 
 
 settings = Settings()

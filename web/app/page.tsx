@@ -13,13 +13,22 @@ export default function Home() {
         Сайт собирается. Загрузка моделей, расчёт и оплата появятся по мере готовности.
         Минимальный заказ от {formatPrice(500)}.
       </p>
-      <a
-        href="/api/v1/ping"
-        className="w-fit rounded-md border px-4 py-2 text-sm"
-        style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-      >
-        Проверить API
-      </a>
+      <div className="flex gap-3">
+        <a
+          href="/upload"
+          className="w-fit rounded-md px-4 py-2 text-sm font-medium"
+          style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+        >
+          Загрузить модель
+        </a>
+        <a
+          href="/api/v1/ping"
+          className="w-fit rounded-md border px-4 py-2 text-sm"
+          style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+        >
+          Проверить API
+        </a>
+      </div>
     </main>
   );
 }
