@@ -109,7 +109,7 @@ def _save_meta(folder: Path, meta: dict) -> None:
     (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), "utf-8")
 
 
-def _load_meta(upload_id: str) -> dict:
+def load_meta(upload_id: str) -> dict:
     meta_path = upload_dir(upload_id) / "meta.json"
     if not meta_path.is_file():
         raise HTTPException(status_code=404, detail="Загрузка не найдена.")
@@ -118,7 +118,7 @@ def _load_meta(upload_id: str) -> dict:
 
 @router.get("/{upload_id}")
 def get_upload(upload_id: str) -> dict:
-    return _load_meta(upload_id)
+    return load_meta(upload_id)
 
 
 class UploadPatch(BaseModel):
@@ -130,7 +130,7 @@ async def patch_upload(upload_id: str, patch: UploadPatch) -> dict:
     """Клиент посмотрел модель и сказал: «файл в дюймах». Пересчитываем габариты и объём."""
     if patch.units not in UNITS:
         raise HTTPException(status_code=422, detail=f"Единицы: {', '.join(UNITS)}.")
-    meta = _load_meta(upload_id)
+    meta = load_meta(upload_id)
     if meta.get("units") == patch.units:
         return meta
     path = upload_dir(upload_id) / f"model.{meta['ext']}"
@@ -146,6 +146,6 @@ async def patch_upload(upload_id: str, patch: UploadPatch) -> dict:
 
 @router.get("/{upload_id}/file")
 def get_upload_file(upload_id: str) -> FileResponse:
-    meta = _load_meta(upload_id)
+    meta = load_meta(upload_id)
     path = upload_dir(upload_id) / f"model.{meta['ext']}"
     return FileResponse(path, media_type="application/octet-stream", filename=meta["original_name"])

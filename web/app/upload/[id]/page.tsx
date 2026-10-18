@@ -2,14 +2,15 @@
 
 /**
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
- * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}).
- * Кнопка «Рассчитать цену» появится в B05.
+ * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
+ * блок «Расчёт печати» (B04, components/SliceCalc.tsx). Цена появится в B05.
  */
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import SliceCalc from "@/components/SliceCalc";
 import {
   formatBytes,
   formatDims,
@@ -135,6 +136,8 @@ export default function ModelPage() {
           Номер загрузки: <code>{upload.id}</code>. Расчёт цены появится на следующем шаге.
         </p>
       </section>
+
+      <SliceCalc uploadId={upload.id} />
     </main>
   );
 }

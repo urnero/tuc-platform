@@ -17,9 +17,9 @@
 
 - `api/` — Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, PostgreSQL 16, Redis + arq.
 - `web/` — Next.js 15 (App Router), TypeScript, Tailwind, Three.js (@react-three/fiber).
-- `worker/` — появится в B04: PrusaSlicer CLI (расчёт печати), OpenSCAD CLI (редакторы).
+- `worker/` — Dockerfile: код `api/` + PrusaSlicer CLI; задачи arq в `api/app/worker.py`. Профили слайсера — `profiles/`. OpenSCAD CLI (редакторы) добавится в B21.
 - `bot/` — появится в B07: aiogram 3.
-- Инфра: `docker-compose.yml` (caddy, web, api, postgres, redis; позже worker, bot). Деплой — B10.
+- Инфра: `docker-compose.yml` (caddy, web, api, worker, postgres, redis; позже bot). Деплой — B10.
 - Ветки: `dev` — рабочая, ночные сборки пушат сюда. `main` — прод, сливает владелец через PR.
 
 ## Как запускать

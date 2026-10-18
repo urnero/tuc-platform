@@ -18,8 +18,15 @@ class Settings(BaseSettings):
     # Рабочая область принтера, мм: X×Y×Z. Модель больше этого — предупреждение.
     print_bed_mm: str = "250x210x220"
 
-    database_url: str = "postgresql+psycopg://tuc:change_me@localhost:5432/tuc"
+    # Слайсинг (B04)
+    profiles_dir: Path = Path("profiles")  # ini-профили PrusaSlicer: printer, print, filament/*
+    # Команда слайсера; в worker — путь к распакованному AppImage.
+    prusa_slicer_bin: str = "prusa-slicer"
+    slice_timeout_s: int = 600  # сколько ждём слайсер на одну модель
+    # Пустой REDIS_URL = очереди нет, слайсим прямо в API (разработка и тесты).
     redis_url: str = "redis://localhost:6379/0"
+
+    database_url: str = "postgresql+psycopg://tuc:change_me@localhost:5432/tuc"
 
     telegram_bot_token: str = ""
     telegram_owner_chat_id: str = ""

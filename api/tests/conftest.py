@@ -1,5 +1,8 @@
 """Общие заготовки для тестов: тестовые модели и временная папка DATA_DIR."""
 
+import sys
+from pathlib import Path
+
 import pytest
 import trimesh
 from fastapi.testclient import TestClient
@@ -37,3 +40,16 @@ def data_dir(tmp_path, monkeypatch):
 @pytest.fixture
 def client(data_dir):
     return TestClient(app)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FAKE_SLICER = Path(__file__).resolve().parent / "fake_slicer.py"
+
+
+@pytest.fixture
+def fake_slicer(monkeypatch):
+    """Вместо PrusaSlicer — tests/fake_slicer.py; профили — настоящие из profiles/; без Redis."""
+    monkeypatch.setattr(settings, "prusa_slicer_bin", f"{sys.executable} {FAKE_SLICER}")
+    monkeypatch.setattr(settings, "profiles_dir", REPO_ROOT / "profiles")
+    monkeypatch.setattr(settings, "redis_url", "")
+    return FAKE_SLICER
