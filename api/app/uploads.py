@@ -3,6 +3,7 @@
 POST /api/v1/uploads          — принять STL/3MF (≤ MAX_UPLOAD_MB), проверить сетку, сохранить.
 GET  /api/v1/uploads/{id}     — данные загрузки (габариты, объём, предупреждения).
 GET  /api/v1/uploads/{id}/file — сам файл (нужен 3D-просмотру в браузере, B03).
+PATCH /api/v1/uploads/{id}    — клиент говорит, в каких единицах файл (mm | inch); пересчитываем.
 
 Хранение: DATA_DIR/uploads/<id>/model.<ext> + meta.json.
 БД появится в B06 вместе с заказами — тогда meta.json переедет в таблицу models.
@@ -17,9 +18,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.config import settings
-from app.meshcheck import ALLOWED_EXT, MeshError, inspect_mesh
+from app.meshcheck import ALLOWED_EXT, UNITS, MeshError, inspect_file, inspect_mesh
 
 router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
 
@@ -96,10 +98,15 @@ async def create_upload(file: UploadFile) -> dict:
         "ext": ext,
         "size_bytes": len(data),
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "units": "mm",  # в каких единицах координаты файла; mesh всегда в мм
         "mesh": info.to_dict(),
     }
-    (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), "utf-8")
+    _save_meta(folder, meta)
     return meta
+
+
+def _save_meta(folder: Path, meta: dict) -> None:
+    (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), "utf-8")
 
 
 def _load_meta(upload_id: str) -> dict:
@@ -112,6 +119,29 @@ def _load_meta(upload_id: str) -> dict:
 @router.get("/{upload_id}")
 def get_upload(upload_id: str) -> dict:
     return _load_meta(upload_id)
+
+
+class UploadPatch(BaseModel):
+    units: str  # "mm" | "inch"
+
+
+@router.patch("/{upload_id}")
+async def patch_upload(upload_id: str, patch: UploadPatch) -> dict:
+    """Клиент посмотрел модель и сказал: «файл в дюймах». Пересчитываем габариты и объём."""
+    if patch.units not in UNITS:
+        raise HTTPException(status_code=422, detail=f"Единицы: {', '.join(UNITS)}.")
+    meta = _load_meta(upload_id)
+    if meta.get("units") == patch.units:
+        return meta
+    path = upload_dir(upload_id) / f"model.{meta['ext']}"
+    try:
+        info = await run_in_threadpool(inspect_file, path, settings.print_bed, patch.units)
+    except MeshError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    meta["units"] = patch.units
+    meta["mesh"] = info.to_dict()
+    _save_meta(upload_dir(upload_id), meta)
+    return meta
 
 
 @router.get("/{upload_id}/file")

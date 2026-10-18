@@ -75,3 +75,16 @@ def test_garbage_3mf_raises():
 def test_unknown_extension_raises():
     with pytest.raises(MeshError):
         inspect_mesh(box_stl(), "obj")
+
+
+def test_inch_units_scale_everything():
+    info = inspect_mesh(box_stl(1.0, 2.0, 3.0), "stl", units="inch")
+    assert info.bbox_mm == {"x": 25.4, "y": 50.8, "z": 76.2}
+    assert info.volume_cm3 == pytest.approx(6 * 25.4**3 / 1000, rel=1e-3)
+    assert info.unit_hint == "mm"
+    assert "tiny_maybe_inches" not in info.warnings
+
+
+def test_bad_units_raise():
+    with pytest.raises(MeshError):
+        inspect_mesh(box_stl(), "stl", units="cm")

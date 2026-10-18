@@ -75,3 +75,31 @@ def test_too_big_413(client, monkeypatch):
     big = box_stl() + b"\0" * (1024 * 1024 + 1)
     r = _post(client, "big.stl", big)
     assert r.status_code == 413
+
+
+def test_patch_units_recomputes_mesh(client):
+    created = _post(client, "tiny.stl", box_stl(1.0, 2.0, 3.0)).json()
+    assert created["units"] == "mm"
+    assert "tiny_maybe_inches" in created["mesh"]["warnings"]
+
+    r = client.patch(f"/api/v1/uploads/{created['id']}", json={"units": "inch"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["units"] == "inch"
+    assert body["mesh"]["bbox_mm"] == {"x": 25.4, "y": 50.8, "z": 76.2}
+    assert body["mesh"]["warnings"] == []
+    # Сохранилось на диске
+    assert client.get(f"/api/v1/uploads/{created['id']}").json() == body
+
+    # Назад в мм — исходные числа
+    back = client.patch(f"/api/v1/uploads/{created['id']}", json={"units": "mm"}).json()
+    assert back["mesh"] == created["mesh"]
+
+
+def test_patch_bad_units_422(client):
+    created = _post(client, "box.stl", box_stl()).json()
+    assert client.patch(f"/api/v1/uploads/{created['id']}", json={"units": "cm"}).status_code == 422
+
+
+def test_patch_unknown_404(client):
+    assert client.patch("/api/v1/uploads/" + "0" * 32, json={"units": "mm"}).status_code == 404

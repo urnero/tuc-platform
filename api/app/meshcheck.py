@@ -8,6 +8,7 @@
 
 Единицы: STL не содержит единиц. Если модель крошечная (≤ 10 мм по самой длинной
 стороне), скорее всего она сохранена в дюймах — говорим об этом клиенту (unit_hint).
+Клиент может указать «файл в дюймах» — тогда считаем с scale = 25.4 (B03).
 """
 
 import io
@@ -61,15 +62,28 @@ def _load_mesh(data: bytes, ext: str) -> trimesh.Trimesh:
     return loaded
 
 
+UNITS = {"mm": 1.0, "inch": 25.4}  # во сколько раз умножить координаты файла, чтобы получить мм
+
+
 def inspect_mesh(
-    data: bytes, ext: str, print_bed: tuple[float, float, float] = (250.0, 210.0, 220.0)
+    data: bytes,
+    ext: str,
+    print_bed: tuple[float, float, float] = (250.0, 210.0, 220.0),
+    units: str = "mm",
 ) -> MeshInfo:
-    """Главная функция: байты файла + расширение → MeshInfo. Бросает MeshError."""
+    """Главная функция: байты файла + расширение → MeshInfo. Бросает MeshError.
+
+    units — в каких единицах координаты файла («mm» или «inch»); все числа в ответе — в мм.
+    """
     ext = ext.lower().lstrip(".")
     if ext not in ALLOWED_EXT:
         raise MeshError(f"Поддерживаются только {', '.join(ALLOWED_EXT)}.")
+    if units not in UNITS:
+        raise MeshError(f"Единицы: {', '.join(UNITS)}.")
 
     mesh = _load_mesh(data, ext)
+    if UNITS[units] != 1.0:
+        mesh.apply_scale(UNITS[units])
     warnings: list[str] = []
 
     repaired = False
@@ -89,7 +103,7 @@ def inspect_mesh(
     longest = max(extents)
 
     unit_hint = "mm"
-    if longest <= TINY_MM:
+    if longest <= TINY_MM and units == "mm":
         unit_hint = "maybe_inches"
         warnings.append("tiny_maybe_inches")
     elif longest > HUGE_MM:
@@ -116,5 +130,5 @@ def inspect_mesh(
     )
 
 
-def inspect_file(path: Path, print_bed: tuple[float, float, float]) -> MeshInfo:
-    return inspect_mesh(path.read_bytes(), path.suffix, print_bed)
+def inspect_file(path: Path, print_bed: tuple[float, float, float], units: str = "mm") -> MeshInfo:
+    return inspect_mesh(path.read_bytes(), path.suffix, print_bed, units)

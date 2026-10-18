@@ -28,6 +28,9 @@ describe("formatDims", () => {
   it("целые без десятых, дробные с одной", () => {
     expect(formatDims({ x: 20, y: 30.5, z: 40 })).toBe("20 × 30,5 × 40 мм");
   });
+  it("в дюймах — два знака", () => {
+    expect(formatDims({ x: 25.4, y: 50.8, z: 30 }, "inch")).toBe("1 × 2 × 1,18″");
+  });
 });
 
 describe("formatBytes", () => {

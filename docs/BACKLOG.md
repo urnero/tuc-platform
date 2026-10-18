@@ -7,7 +7,7 @@
 
 - B01 done chore: каркас репо — CLAUDE.md, docs/, docker-compose, api (FastAPI /health), web (Next hello), CI tests
 - B02 done feat: загрузка STL/3MF (≤100 МБ) + проверка сетки (trimesh: watertight, bbox, объём, единицы)
-- B03 todo feat: 3D-просмотр модели в браузере (Three.js), габариты, выбор мм/дюймы
+- B03 done feat: 3D-просмотр модели в браузере (Three.js), габариты, выбор мм/дюймы
 - B04 todo feat: сервис слайсинга — PrusaSlicer CLI в worker, профили PLA/PETG/ABS, парсинг времени и граммов
 - B05 todo feat: калькулятор цены — pricing.yaml, выбор материала/технологии/тиража, API /quote
 - B06 todo feat: форма заказа — контакты, доставка/самовывоз, комментарий; orders в БД; страница статуса заказа

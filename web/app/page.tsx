@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { formatPrice } from "@/lib/format";
 
 export default function Home() {
@@ -14,13 +15,13 @@ export default function Home() {
         Минимальный заказ от {formatPrice(500)}.
       </p>
       <div className="flex gap-3">
-        <a
+        <Link
           href="/upload"
           className="w-fit rounded-md px-4 py-2 text-sm font-medium"
           style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
         >
           Загрузить модель
-        </a>
+        </Link>
         <a
           href="/api/v1/ping"
           className="w-fit rounded-md border px-4 py-2 text-sm"

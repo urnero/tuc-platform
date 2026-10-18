@@ -12,14 +12,21 @@ export type MeshInfo = {
   warnings: string[];
 };
 
+export type Units = "mm" | "inch";
+
 export type Upload = {
   id: string;
   original_name: string;
   ext: "stl" | "3mf";
   size_bytes: number;
   created_at: string;
+  /** В каких единицах координаты файла. Числа в mesh всегда в мм. */
+  units: Units;
   mesh: MeshInfo;
 };
+
+/** Во сколько раз умножить координаты файла, чтобы получить мм. */
+export const UNIT_SCALE: Record<Units, number> = { mm: 1, inch: 25.4 };
 
 export const MAX_UPLOAD_MB = 100;
 export const ALLOWED_EXT = ["stl", "3mf"] as const;
@@ -41,9 +48,18 @@ export function validateFile(name: string, sizeBytes: number): string | null {
   return null;
 }
 
-/** «20 × 30 × 40 мм». Десятые показываем только если они есть. */
-export function formatDims(bbox: MeshInfo["bbox_mm"]): string {
-  const f = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1)).replace(".", ",");
+function fmtNum(v: number, digits: number): string {
+  const rounded = Number(v.toFixed(digits));
+  return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(digits)).replace(".", ",");
+}
+
+/** «20 × 30 × 40 мм» или, если показываем в дюймах, «0,79 × 1,18 × 1,57″». */
+export function formatDims(bbox: MeshInfo["bbox_mm"], show: Units = "mm"): string {
+  if (show === "inch") {
+    const f = (v: number) => fmtNum(v / 25.4, 2);
+    return `${f(bbox.x)} × ${f(bbox.y)} × ${f(bbox.z)}″`;
+  }
+  const f = (v: number) => fmtNum(v, 1);
   return `${f(bbox.x)} × ${f(bbox.y)} × ${f(bbox.z)} мм`;
 }
 

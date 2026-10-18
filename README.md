@@ -14,7 +14,7 @@ docker compose up --build
 ```
 
 - Сайт: http://localhost:8080
-- Загрузка модели: http://localhost:8080/upload
+- Загрузка модели: http://localhost:8080/upload (после загрузки — страница модели с 3D-просмотром)
 - API: http://localhost:8080/api/v1/ping
 - Здоровье: http://localhost:8080/health
 
@@ -31,6 +31,7 @@ cd web && npm ci && npm run dev
 api/      FastAPI, БД, расчёт цены, заказы, вебхуки
           app/uploads.py — приём STL/3MF, app/meshcheck.py — проверка сетки (trimesh)
 web/      Next.js: сайт, 3D-просмотр, редакторы, оформление заказа
+          components/ModelViewer.tsx — Three.js просмотр STL/3MF, app/upload/[id] — страница модели
 config/   pricing.yaml — цены материалов и ставки
 docs/     SPEC, BACKLOG, STATUS, DECISIONS
 Caddyfile обратный прокси: / → web, /api и /health → api
