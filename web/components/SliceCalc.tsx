@@ -73,12 +73,12 @@ export default function SliceCalc({ uploadId }: { uploadId: string }) {
       <h2 className="text-lg font-semibold">Расчёт печати</h2>
 
       <div className="flex flex-wrap items-end gap-4 text-sm">
-        <label className="flex flex-col gap-1">
+        <label className="flex min-w-0 max-w-full flex-col gap-1">
           <span style={{ color: "var(--muted)" }}>Материал</span>
           <select
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
-            className="rounded-md border px-3 py-2"
+            className="w-full max-w-full rounded-md border px-3 py-2"
             style={{ borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" }}
           >
             {materials.map((m) => (
