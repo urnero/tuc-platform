@@ -9,9 +9,10 @@
  *    постобработкой и доставкой → цена и разложение суммы.
  *    Тираж/постобработку/доставку можно менять — цена пересчитывается без нового слайсинга.
  *    Смена материала или поддержек — заново «Рассчитать».
- * Кнопка «Оформить заказ» ведёт на форму заказа (B06) с id расчёта.
+ * Кнопка «Оформить заказ» ведёт на форму заказа (B06): /order/new?quote=<id расчёта>.
  */
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { formatPrice } from "@/lib/format";
 import {
@@ -262,15 +263,19 @@ export default function SliceCalc({ uploadId }: { uploadId: string }) {
               <p style={{ color: "var(--muted)" }}>
                 Расчёт № <code className="break-all">{quote.id}</code>. Цены предварительные: менеджер подтвердит их при заказе.
               </p>
-              <button
-                type="button"
-                disabled
-                title="Форма заказа появится на следующем шаге"
-                className="self-start rounded-md px-4 py-2 font-medium disabled:opacity-50"
-                style={{ background: "var(--accent)", color: "var(--bg)" }}
-              >
-                Оформить заказ
-              </button>
+              {stale ? (
+                <span className="text-sm" style={{ color: "var(--muted)" }}>
+                  Пересчитайте цену, чтобы оформить заказ.
+                </span>
+              ) : (
+                <Link
+                  href={`/order/new?quote=${encodeURIComponent(quote.id)}`}
+                  className="self-start rounded-md px-4 py-2 font-medium"
+                  style={{ background: "var(--accent)", color: "var(--bg)" }}
+                >
+                  Оформить заказ
+                </Link>
+              )}
             </div>
           )}
         </div>

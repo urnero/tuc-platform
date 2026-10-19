@@ -15,7 +15,7 @@
 
 ## Стек (менять только с записью в DECISIONS.md)
 
-- `api/` — Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, PostgreSQL 16, Redis + arq.
+- `api/` — Python 3.12, FastAPI, SQLAlchemy 2 + Alembic (таблицы `app/models.py`, миграции `alembic/versions/`), PostgreSQL 16, Redis + arq.
 - `web/` — Next.js 15 (App Router), TypeScript, Tailwind, Three.js (@react-three/fiber).
 - `worker/` — Dockerfile: код `api/` + PrusaSlicer CLI; задачи arq в `api/app/worker.py`. Профили слайсера — `profiles/`. OpenSCAD CLI (редакторы) добавится в B21.
 - `bot/` — появится в B07: aiogram 3.
@@ -25,8 +25,10 @@
 ## Как запускать
 
 ```bash
-# api
+# api (тесты — на SQLite во временной папке, Postgres не нужен)
 cd api && pip install -e ".[dev]" && pytest -q && ruff check .
+# миграции БД (в docker контейнер api делает это сам при старте)
+cd api && alembic upgrade head
 # web
 cd web && npm ci && npm test && npm run lint && npx tsc --noEmit
 # всё вместе (нужен Docker)

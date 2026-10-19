@@ -8,6 +8,7 @@ import trimesh
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.db import Base, get_engine, reset_engine
 from app.main import app
 
 
@@ -38,7 +39,20 @@ def data_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(data_dir):
+def db(tmp_path, monkeypatch):
+    """Вместо Postgres — файл SQLite во временной папке, таблицы из app/models.py."""
+    import app.models  # noqa: F401  — регистрирует таблицы в Base.metadata
+
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'test.db'}")
+    reset_engine()
+    Base.metadata.create_all(get_engine())
+    yield get_engine()
+    get_engine().dispose()
+    reset_engine()
+
+
+@pytest.fixture
+def client(data_dir, db):
     return TestClient(app)
 
 

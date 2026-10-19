@@ -19,6 +19,7 @@ export type Pricing = {
 export type Quote = {
   id: string;
   upload_id: string;
+  original_name?: string | null;
   created_at: string;
   currency: string;
   material: string;

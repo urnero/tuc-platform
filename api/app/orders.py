@@ -1,0 +1,140 @@
+"""Заказы (B06).
+
+POST /api/v1/orders            — оформить заказ по расчёту цены: {quote_id, name, phone,
+                                  email?, address?, comment?, consent}. Доставка берётся из
+                                  расчёта; если курьер — адрес обязателен. Ответ: заказ с token.
+GET  /api/v1/orders/{token}    — заказ для страницы статуса /order/<token>. Ссылку знает
+                                  только клиент (token случайный), логина пока нет.
+
+Заказ — строка в таблице `orders` (app/models.py). Цена фиксируется снимком расчёта.
+Оплата (B08) и уведомление владельцу (B07) подключатся сюда же после создания заказа.
+"""
+
+import re
+import secrets
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.models import Order
+from app.quotes import load_quote
+
+router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
+Db = Annotated[Session, Depends(get_db)]  # сессия БД на запрос
+
+TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class PhoneError(ValueError):
+    pass
+
+
+def normalize_phone(raw: str) -> str:
+    """«8 (999) 123-45-67», «+7 999 1234567», «9991234567» → «+79991234567».
+
+    Иностранный номер с «+» и 10–15 цифрами оставляем как есть (без пробелов).
+    """
+    digits = re.sub(r"\D", "", raw or "")
+    if len(digits) == 11 and digits[0] in "78":
+        return "+7" + digits[1:]
+    if len(digits) == 10 and digits[0] == "9":
+        return "+7" + digits
+    if raw.strip().startswith("+") and 10 <= len(digits) <= 15:
+        return "+" + digits
+    raise PhoneError("Укажите телефон в формате +7 999 123-45-67.")
+
+
+class OrderCreate(BaseModel):
+    quote_id: str
+    name: str = Field(min_length=1, max_length=200)
+    phone: str = Field(min_length=1, max_length=32)
+    email: str | None = Field(default=None, max_length=200)
+    address: str | None = Field(default=None, max_length=1000)
+    comment: str | None = Field(default=None, max_length=2000)
+    consent: bool = False  # согласие на обработку персональных данных
+
+    @field_validator("email", "address", "comment", mode="before")
+    @classmethod
+    def _strip(cls, v):
+        """Пробелы по краям убираем, пустую строку считаем «не указано»."""
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _name_required(cls, v):
+        v = v.strip() if isinstance(v, str) else v
+        if not v:
+            raise ValueError("Как к вам обращаться?")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v: str) -> str:
+        try:
+            return normalize_phone(v)
+        except PhoneError as e:
+            raise ValueError(str(e)) from e
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v):
+        if v is not None and not EMAIL_RE.match(v):
+            raise ValueError("Проверьте e-mail.")
+        return v
+
+
+@router.post("", status_code=201)
+def create_order(body: OrderCreate, db: Db) -> dict:
+    if not body.consent:
+        raise HTTPException(status_code=422, detail="Нужно согласие на обработку данных.")
+    quote = load_quote(body.quote_id)
+    if quote is None:
+        raise HTTPException(status_code=404, detail="Расчёт не найден. Рассчитайте цену заново.")
+    if quote["delivery"] != "pickup" and not body.address:
+        raise HTTPException(status_code=422, detail="Для доставки курьером нужен адрес.")
+
+    order = Order(
+        token=secrets.token_hex(16),
+        customer_name=body.name,
+        phone=body.phone,
+        email=body.email,
+        delivery=quote["delivery"],
+        address=body.address if quote["delivery"] != "pickup" else None,
+        comment=body.comment,
+        upload_id=quote["upload_id"],
+        quote_id=quote["id"],
+        original_name=quote.get("original_name"),
+        material=quote["material"],
+        supports=bool(quote["supports"]),
+        qty=int(quote["qty"]),
+        postprocess=quote["postprocess"],
+        total=int(round(quote["total"])),
+        currency=quote.get("currency", "RUB"),
+        quote=quote,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order.to_dict()
+
+
+def get_order_by_token(db: Session, token: str) -> Order:
+    if not TOKEN_RE.match(token):
+        raise HTTPException(status_code=404, detail="Заказ не найден.")
+    order = db.scalar(select(Order).where(Order.token == token))
+    if order is None:
+        raise HTTPException(status_code=404, detail="Заказ не найден.")
+    return order
+
+
+@router.get("/{token}")
+def get_order(token: str, db: Db) -> dict:
+    return get_order_by_token(db, token).to_dict()
