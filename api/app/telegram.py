@@ -198,3 +198,16 @@ def notify_owner_new_order(order: dict) -> bool:
         return False
     text = order_card(order, header=f"🆕 Новый заказ {order['number']}")
     return send_message(settings.telegram_owner_chat_id, text, order_keyboard(order))
+
+
+def notify_owner_paid(order: dict) -> bool:
+    """Сообщение владельцу: заказ оплачен через ЮKassa (B08). Кнопки — следующие шаги."""
+    if not telegram_enabled():
+        log.info("telegram выключен: оплата заказа %s без уведомления", order["id"])
+        return False
+    text = order_card(order, header=f"💰 Оплачен заказ {order['number']}")
+    if order["status"] != "paid":
+        # Деньги пришли по заказу, который уже не «принят» (например, отменён) — решает владелец.
+        label = STATUS_LABELS.get(order["status"], order["status"])
+        text += f"\n⚠️ Заказ сейчас в статусе «{label}»."
+    return send_message(settings.telegram_owner_chat_id, text, order_keyboard(order))

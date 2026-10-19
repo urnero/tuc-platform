@@ -1,5 +1,6 @@
 /** Заказ (B06): типы ответа API /orders, статусы, проверка формы на клиенте. */
 
+import type { PaymentInfo } from "./payment";
 import type { Quote } from "./pricing";
 
 export type OrderStatus = "new" | "paid" | "printing" | "ready" | "done" | "cancelled";
@@ -28,6 +29,7 @@ export type Order = {
   total: number;
   currency: string;
   quote: Quote;
+  payment?: PaymentInfo; // оплата (B08): есть в ответах API начиная с B08
 };
 
 /** Что видит клиент на странице статуса. */

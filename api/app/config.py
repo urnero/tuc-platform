@@ -30,8 +30,13 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_owner_chat_id: str = ""
+    # ЮKassa (B08). Пустой shop_id или ключ = онлайн-оплата выключена, кнопки на сайте нет.
     yookassa_shop_id: str = ""
     yookassa_secret_key: str = ""
+    yookassa_api_url: str = "https://api.yookassa.ru/v3"
+    # Ставка НДС для чека 54-ФЗ (1 — без НДС, 2 — 0 %, 3 — 10 %, 4 — 20 %, …).
+    # Пусто = чек в платёж не вкладываем (самозанятый / чеки ЮKassa не подключены).
+    yookassa_vat_code: str = ""
 
     @property
     def print_bed(self) -> tuple[float, float, float]:

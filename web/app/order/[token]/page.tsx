@@ -3,29 +3,78 @@
 /**
  * Страница статуса заказа (B06): /order/<token>. Ссылку клиент получает после оформления —
  * её можно сохранить и открыть позже. Данные — GET /api/v1/orders/{token}.
- * Статус меняет владелец (бот B07, админка B09); оплата (B08) появится здесь кнопкой.
+ * Статус меняет владелец (бот B07, админка B09).
+ * Оплата (B08): кнопка «Оплатить» → POST /api/v1/orders/{token}/payment → форма ЮKassa.
+ * Вернувшись с формы (?payment=check), страница зовёт /payment/check и показывает итог.
  */
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
 import { formatDate, formatPhone, type Order, STATUS_HINTS, STATUS_LABELS, STATUS_STEPS } from "@/lib/order";
+import { canPay, checkResultText, type PaymentCheck, type PaymentStart, paymentHint } from "@/lib/payment";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS } from "@/lib/pricing";
 
 export default function OrderPage() {
+  // useSearchParams требует Suspense в Next 15 при сборке статической страницы.
+  return (
+    <Suspense fallback={<main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>}>
+      <OrderStatus />
+    </Suspense>
+  );
+}
+
+function OrderStatus() {
   const { token } = useParams<{ token: string }>();
+  const returnedFromPayment = useSearchParams().get("payment") === "check";
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [payResult, setPayResult] = useState<string | null>(null);
+  const [paying, setPaying] = useState(false);
+
+  async function loadOrder(): Promise<Order> {
+    const r = await fetch(`/api/v1/orders/${encodeURIComponent(token)}`);
+    if (!r.ok) throw new Error(r.status === 404 ? "Заказ не найден. Проверьте ссылку." : `Ошибка ${r.status}.`);
+    return (await r.json()) as Order;
+  }
 
   useEffect(() => {
-    fetch(`/api/v1/orders/${encodeURIComponent(token)}`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 404 ? "Заказ не найден. Проверьте ссылку." : `Ошибка ${r.status}.`);
-        setOrder((await r.json()) as Order);
-      })
-      .catch((e: Error) => setError(e.message));
-  }, [token]);
+    let cancelled = false;
+    (async () => {
+      try {
+        if (returnedFromPayment) {
+          // Клиент вернулся с формы ЮKassa: сверяем платёж, потом показываем заказ.
+          const c = await fetch(`/api/v1/orders/${encodeURIComponent(token)}/payment/check`, { method: "POST" });
+          if (c.ok && !cancelled) setPayResult(checkResultText((await c.json()) as PaymentCheck));
+        }
+        const o = await loadOrder();
+        if (!cancelled) setOrder(o);
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, returnedFromPayment]);
+
+  async function pay() {
+    setPaying(true);
+    setPayError(null);
+    try {
+      const r = await fetch(`/api/v1/orders/${encodeURIComponent(token)}/payment`, { method: "POST" });
+      const body = (await r.json()) as PaymentStart & { detail?: string };
+      if (!r.ok) throw new Error(body.detail ?? `Ошибка ${r.status}.`);
+      if (!body.confirmation_url) throw new Error("ЮKassa не дала ссылку на оплату. Попробуйте ещё раз.");
+      window.location.assign(body.confirmation_url);
+    } catch (e) {
+      setPayError((e as Error).message);
+      setPaying(false);
+    }
+  }
 
   if (error) {
     return (
@@ -73,10 +122,34 @@ export default function OrderPage() {
           </ol>
         )}
         <p className="text-sm">{STATUS_HINTS[order.status]}</p>
-        {order.status === "new" && (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Оплата онлайн появится после подтверждения заказа менеджером.
+        {payResult && (
+          <p className="text-sm font-semibold" role="status" data-testid="pay-result">
+            {payResult}
           </p>
+        )}
+        {paymentHint(order.status, order.payment) && (
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            {paymentHint(order.status, order.payment)}
+          </p>
+        )}
+        {canPay(order.status, order.payment) && (
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={pay}
+              disabled={paying}
+              data-testid="pay"
+              className="rounded-lg px-5 py-3 text-base font-semibold disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "var(--bg)" }}
+            >
+              {paying ? "Переходим к оплате…" : `Оплатить ${formatPrice(order.total)}`}
+            </button>
+            {payError && (
+              <p className="text-sm" role="alert">
+                {payError}
+              </p>
+            )}
+          </div>
         )}
       </section>
 

@@ -9,9 +9,11 @@ GET  /api/v1/orders/{token}    — заказ для страницы стату
 Заказ — строка в таблице `orders` (app/models.py). Цена фиксируется снимком расчёта.
 После создания заказа владельцу уходит сообщение в Telegram (B07, `app/telegram.py`) —
 в фоне, после ответа клиенту, чтобы сбой Telegram не ломал оформление.
-Оплата (B08) подключится сюда же.
+Оплата (B08) — `app/payments.py`: в ответе заказа есть блок `payment`
+(включена ли онлайн-оплата, статус платежа, ссылка на форму ЮKassa).
 
-Смена статуса — `change_status()`: её зовёт бот (B07), позже админка (B09) и ЮKassa (B08).
+Смена статуса — `change_status()`: её зовёт бот (B07), ЮKassa (B08, ставит paid),
+позже админка (B09).
 """
 
 import re
@@ -23,8 +25,9 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db import get_db
-from app.models import ORDER_STATUSES, Order
+from app.models import ORDER_STATUSES, Order, Payment
 from app.quotes import load_quote
 from app.telegram import ACTIVE_STATUSES, STATUS_LABELS, notify_owner_new_order
 
@@ -131,7 +134,29 @@ def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict
     data = order.to_dict()
     # Владельцу — в Telegram, уже после того, как клиент получил ответ.
     background.add_task(notify_owner_new_order, data)
-    return data
+    return data | {"payment": payment_summary(db, order)}
+
+
+# --- оплата (B08): что про платёж видит страница статуса -----------------------
+
+
+def latest_payment(db: Session, order: Order) -> Payment | None:
+    """Последний по времени платёж заказа (или None, если оплату не начинали)."""
+    return db.scalar(
+        select(Payment).where(Payment.order_id == order.id).order_by(Payment.id.desc()).limit(1)
+    )
+
+
+def payment_summary(db: Session, order: Order) -> dict:
+    """Блок `payment` в ответе заказа: включена ли онлайн-оплата и в каком состоянии платёж."""
+    enabled = bool(settings.yookassa_shop_id and settings.yookassa_secret_key)
+    p = latest_payment(db, order)
+    return {
+        "enabled": enabled,
+        "status": p.status if p else None,
+        "confirmation_url": p.confirmation_url if p and p.status == "pending" else None,
+        "paid_at": p.to_dict()["paid_at"] if p else None,
+    }
 
 
 # --- для бота (B07) и админки (B09) ------------------------------------------
@@ -180,4 +205,5 @@ def get_order_by_token(db: Session, token: str) -> Order:
 
 @router.get("/{token}")
 def get_order(token: str, db: Db) -> dict:
-    return get_order_by_token(db, token).to_dict()
+    order = get_order_by_token(db, token)
+    return order.to_dict() | {"payment": payment_summary(db, order)}
