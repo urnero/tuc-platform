@@ -13,7 +13,7 @@
 from collections.abc import Iterator
 from functools import lru_cache
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
@@ -29,7 +29,17 @@ def get_engine() -> Engine:
     url = settings.database_url
     # SQLite: разрешаем работу из разных потоков (TestClient ходит из своего).
     kwargs = {"connect_args": {"check_same_thread": False}} if url.startswith("sqlite") else {}
-    return create_engine(url, pool_pre_ping=True, **kwargs)
+    engine = create_engine(url, pool_pre_ping=True, **kwargs)
+    if url.startswith("sqlite"):
+        # Встроенный lower() в SQLite понимает только латиницу, а в Postgres — любые буквы.
+        # Подменяем его на питоновский, чтобы поиск по имени «мария» в тестах и в деве
+        # работал так же, как в проде (админка B09).
+        event.listen(engine, "connect", _sqlite_unicode_lower)
+    return engine
+
+
+def _sqlite_unicode_lower(dbapi_conn, _record) -> None:
+    dbapi_conn.create_function("lower", 1, lambda s: s.lower() if isinstance(s, str) else s)
 
 
 def reset_engine() -> None:

@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # Пусто = чек в платёж не вкладываем (самозанятый / чеки ЮKassa не подключены).
     yookassa_vat_code: str = ""
 
+    # Админка (B09): /admin за basic auth. Пустой логин или пароль = админка выключена (503).
+    admin_user: str = "admin"
+    admin_password: str = ""
+
     @property
     def print_bed(self) -> tuple[float, float, float]:
         """«250x210x220» → (250.0, 210.0, 220.0)."""

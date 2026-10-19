@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
     return [
       { source: "/api/:path*", destination: `${apiUrl}/api/:path*` },
       { source: "/health", destination: `${apiUrl}/health` },
+      // Админка (B09) живёт в API, не в Next.
+      { source: "/admin", destination: `${apiUrl}/admin` },
+      { source: "/admin/:path*", destination: `${apiUrl}/admin/:path*` },
     ];
   },
 };

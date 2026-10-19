@@ -15,6 +15,7 @@ docker compose up --build
 
 - Сайт: http://localhost:8080
 - Загрузка модели: http://localhost:8080/upload (после загрузки — страница модели с 3D-просмотром и расчётом печати)
+- Админка владельца: http://localhost:8080/admin (логин и пароль — `ADMIN_USER` / `ADMIN_PASSWORD` из `.env`)
 - API: http://localhost:8080/api/v1/ping
 - Здоровье: http://localhost:8080/health
 
@@ -35,12 +36,12 @@ cd web && npm ci && npm run dev
 api/      FastAPI, БД, расчёт цены, заказы, вебхуки
           app/uploads.py — приём STL/3MF, app/meshcheck.py — проверка сетки (trimesh)
           app/slicer.py — PrusaSlicer CLI и разбор G-code, app/slices.py — API расчёта печати,
-          app/worker.py — фоновые задачи (arq)
+          app/worker.py — фоновые задачи (arq), app/admin.py + app/templates/admin/ — админка
 worker/   Dockerfile: код api + PrusaSlicer (AppImage). Считает печать из очереди Redis
 profiles/ ini-профили PrusaSlicer: printer.ini, print.ini, filament/PLA|PETG|ABS.ini
 web/      Next.js: сайт, 3D-просмотр, редакторы, оформление заказа
           components/ModelViewer.tsx — Three.js просмотр STL/3MF, app/upload/[id] — страница модели
 config/   pricing.yaml — цены материалов и ставки
 docs/     SPEC, BACKLOG, STATUS, DECISIONS
-Caddyfile обратный прокси: / → web, /api и /health → api
+Caddyfile обратный прокси: / → web, /api, /admin и /health → api
 ```

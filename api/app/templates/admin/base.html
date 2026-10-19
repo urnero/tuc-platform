@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}Админка{% endblock %} · ТУЦ</title>
+  <style>
+    /* Один файл стилей на всю админку: без сборки, читается без Tailwind. */
+    :root { --bg: #fff; --fg: #111; --muted: #666; --line: #ddd; --accent: #c2410c; --soft: #f6f6f6; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #151515; --fg: #eee; --muted: #999; --line: #333; --accent: #fb923c; --soft: #1f1f1f; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+    header .brand { font-weight: 700; color: var(--fg); }
+    header .user { margin-left: auto; color: var(--muted); font-size: 13px; }
+    main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 22px; margin: 8px 0 16px; }
+    h2 { font-size: 16px; margin: 20px 0 8px; }
+    .flash { padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; }
+    .flash.ok { background: #e7f6e9; color: #14532d; }
+    .flash.err { background: #fde8e8; color: #7f1d1d; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 12px; }
+    .tabs a { display: inline-block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--fg); margin: 2px 4px 2px 0; font-size: 13px; }
+    .tabs a.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+    input[type=search], select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+    button, .btn { padding: 6px 12px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; display: inline-block; }
+    .btn.ghost { background: transparent; color: var(--accent); }
+    .btn.danger, button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    td.wrap { white-space: normal; }
+    td.num { text-align: right; }
+    .muted { color: var(--muted); }
+    .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--soft); }
+    .pill.new { background: #e0ecff; color: #1e3a8a; }
+    .pill.paid { background: #e7f6e9; color: #14532d; }
+    .pill.printing { background: #fff1d6; color: #7c2d12; }
+    .pill.ready { background: #e0f2fe; color: #0c4a6e; }
+    .pill.done { background: var(--soft); color: var(--muted); }
+    .pill.cancelled { background: #fde8e8; color: #7f1d1d; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px 32px; }
+    dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
+    dt { color: var(--muted); }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .pager { display: flex; gap: 16px; align-items: center; margin: 16px 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .lines td:last-child { text-align: right; }
+    .lines tr.total td { font-weight: 700; border-top: 2px solid var(--fg); }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="/admin/orders">ТУЦ · админка</a>
+    <a href="/admin/orders">Заказы</a>
+    <a href="/" target="_blank" rel="noopener">Сайт ↗</a>
+    <span class="user">{{ user }}</span>
+  </header>
+  <main>
+    {% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+    {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
