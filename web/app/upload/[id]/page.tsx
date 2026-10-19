@@ -3,7 +3,7 @@
 /**
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
- * блок «Расчёт печати» (B04, components/SliceCalc.tsx). Цена появится в B05.
+ * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx).
  */
 
 import dynamic from "next/dynamic";
@@ -133,7 +133,7 @@ export default function ModelPage() {
         )}
 
         <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Номер загрузки: <code>{upload.id}</code>. Расчёт цены появится на следующем шаге.
+          Номер загрузки: <code>{upload.id}</code>. Цена — в блоке ниже.
         </p>
       </section>
 
