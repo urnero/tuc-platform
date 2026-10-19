@@ -45,6 +45,7 @@ cp .env.example .env && docker compose up --build
 
 ## Жёсткие правила
 
+- Тесты гоняй ровно как CI: `cd api && pytest -q` (не `python -m pytest`) и `cd web && npm test`. В тестах импортируй помощники как `from conftest import …`. Перед пушем проверь, что `gh api "repos/urnero/tuc-platform/actions/runs?branch=dev&per_page=1" --jq '.workflow_runs[0].conclusion'` на предыдущем коммите = success; если failure — сначала почини CI.
 - Секретов в репо нет. Только `.env` (в `.gitignore`) и `.env.example` с пустыми значениями.
 - Загружаемые файлы: проверять размер (≤100 МБ), расширение (stl, 3mf), сетку. Файлы хранить вне репо, в `DATA_DIR`.
 - Деньги: все расчёты цены — в одной функции `api/app/pricing.py` с тестами. Вебхук ЮKassa — идемпотентный.
