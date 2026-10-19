@@ -49,6 +49,18 @@ services:
       redis:
         condition: service_started
 
+  bot:
+    # Telegram-бот владельца (B07): тот же код, что api, команда другая. Long polling,
+    # публичный адрес не нужен. Без TELEGRAM_BOT_TOKEN в .env пишет ошибку и выходит.
+    build: ./api
+    command: python -m app.bot
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:16-alpine
     env_file: .env

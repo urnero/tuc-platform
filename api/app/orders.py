@@ -7,21 +7,26 @@ GET  /api/v1/orders/{token}    — заказ для страницы стату
                                   только клиент (token случайный), логина пока нет.
 
 Заказ — строка в таблице `orders` (app/models.py). Цена фиксируется снимком расчёта.
-Оплата (B08) и уведомление владельцу (B07) подключатся сюда же после создания заказа.
+После создания заказа владельцу уходит сообщение в Telegram (B07, `app/telegram.py`) —
+в фоне, после ответа клиенту, чтобы сбой Telegram не ломал оформление.
+Оплата (B08) подключится сюда же.
+
+Смена статуса — `change_status()`: её зовёт бот (B07), позже админка (B09) и ЮKassa (B08).
 """
 
 import re
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Order
+from app.models import ORDER_STATUSES, Order
 from app.quotes import load_quote
+from app.telegram import ACTIVE_STATUSES, STATUS_LABELS, notify_owner_new_order
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
 Db = Annotated[Session, Depends(get_db)]  # сессия БД на запрос
@@ -92,7 +97,7 @@ class OrderCreate(BaseModel):
 
 
 @router.post("", status_code=201)
-def create_order(body: OrderCreate, db: Db) -> dict:
+def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict:
     if not body.consent:
         raise HTTPException(status_code=422, detail="Нужно согласие на обработку данных.")
     quote = load_quote(body.quote_id)
@@ -123,7 +128,45 @@ def create_order(body: OrderCreate, db: Db) -> dict:
     db.add(order)
     db.commit()
     db.refresh(order)
-    return order.to_dict()
+    data = order.to_dict()
+    # Владельцу — в Telegram, уже после того, как клиент получил ответ.
+    background.add_task(notify_owner_new_order, data)
+    return data
+
+
+# --- для бота (B07) и админки (B09) ------------------------------------------
+
+
+class StatusError(ValueError):
+    """Нельзя поставить такой статус (нет заказа, неизвестный статус, тот же статус)."""
+
+
+def get_order_by_id(db: Session, order_id: int) -> Order | None:
+    return db.get(Order, order_id)
+
+
+def list_orders(db: Session, active_only: bool = True, limit: int = 20) -> list[Order]:
+    """Заказы, новые сверху. active_only — только те, по которым есть работа."""
+    q = select(Order)
+    if active_only:
+        q = q.where(Order.status.in_(ACTIVE_STATUSES))
+    return list(db.scalars(q.order_by(Order.id.desc()).limit(limit)))
+
+
+def change_status(db: Session, order_id: int, status: str) -> Order:
+    """Поставить заказу статус. Любой переход разрешён — владелец знает, что делает;
+    бот лишь предлагает кнопками логичные шаги (telegram.NEXT_STATUSES)."""
+    if status not in ORDER_STATUSES:
+        raise StatusError(f"Неизвестный статус «{status}».")
+    order = get_order_by_id(db, order_id)
+    if order is None:
+        raise StatusError(f"Заказ № {order_id} не найден.")
+    if order.status == status:
+        raise StatusError(f"ТУЦ-{order.id} уже в статусе «{STATUS_LABELS[status]}».")
+    order.status = status
+    db.commit()
+    db.refresh(order)
+    return order
 
 
 def get_order_by_token(db: Session, token: str) -> Order:

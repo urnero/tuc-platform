@@ -11,7 +11,7 @@
 - B04 done feat: сервис слайсинга — PrusaSlicer CLI в worker, профили PLA/PETG/ABS, парсинг времени и граммов
 - B05 done feat: калькулятор цены — pricing.yaml, выбор материала/технологии/тиража, API /quote
 - B06 done feat: форма заказа — контакты, доставка/самовывоз, комментарий; orders в БД; страница статуса заказа
-- B07 doing (2026-10-20 00:38 МСК) feat: Telegram-бот — уведомление владельцу о новом заказе, команда /orders, смена статуса кнопками
+- B07 done feat: Telegram-бот — уведомление владельцу о новом заказе, команда /orders, смена статуса кнопками
 - B08 todo feat: ЮKassa — оплата (тестовый режим), вебхук, статус paid, уведомление в Telegram
 - B09 todo feat: админка — список заказов, фильтры, скачивание файлов (простая, за basic auth)
 - B10 todo chore: деплой — docs/DEPLOY.md, bootstrap.sh для VPS, GitHub Actions staging/prod, Caddy HTTPS
