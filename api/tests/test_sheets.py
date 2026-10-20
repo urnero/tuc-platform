@@ -245,7 +245,7 @@ def test_cli_and_cron(db, google, capsys):
     assert sheets.main() == 0
     assert "0 заказов" in capsys.readouterr().out
     assert asyncio.run(worker.export_sheet({}))["rows"] == 0
-    assert [c.name for c in worker.WorkerSettings.cron_jobs] == ["cron:export_sheet"]
+    assert "cron:export_sheet" in [c.name for c in worker.WorkerSettings.cron_jobs]
 
 
 def test_empty_path_in_env_means_disabled(monkeypatch):

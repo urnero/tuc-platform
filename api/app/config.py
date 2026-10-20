@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     google_sheet_id: str = ""
     google_sheet_tab: str = "Заказы (сайт)"
 
+    # Автоудаление файлов моделей (B15) — сроки из политики ПДн (/policy, раздел 6).
+    # Загрузки без заказа — через 30 дней, файлы закрытых заказов — через год. 0 = не удалять.
+    cleanup_uploads_days: int = 30
+    cleanup_order_files_days: int = 365
+
     # Админка (B09): /admin за basic auth. Пустой логин или пароль = админка выключена (503).
     admin_user: str = "admin"
     admin_password: str = ""

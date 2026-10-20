@@ -3,7 +3,8 @@
 Контейнер worker (worker/Dockerfile) — это тот же код api плюс PrusaSlicer.
 Задачи:
 - slice_upload — посчитать печать для загрузки (B04);
-- export_sheet — ночной экспорт заказов в Google-таблицу (B11), по расписанию cron.
+- export_sheet — ночной экспорт заказов в Google-таблицу (B11), по расписанию cron;
+- cleanup_files — ночное удаление файлов моделей по срокам из политики ПДн (B15), cron.
 Позже сюда добавится рендер превью (B20).
 """
 
@@ -12,6 +13,7 @@ import asyncio
 from arq.connections import RedisSettings
 from arq.cron import cron
 
+from app.cleanup import cleanup_job
 from app.config import settings
 from app.sheets import export_orders_job
 from app.slice_jobs import run_slice
@@ -27,6 +29,11 @@ async def export_sheet(ctx: dict) -> dict | None:
     return await asyncio.to_thread(export_orders_job)
 
 
+async def cleanup_files(ctx: dict) -> dict:
+    """Удалить загрузки без заказа старше 30 дней и файлы закрытых заказов старше года."""
+    return await asyncio.to_thread(cleanup_job)
+
+
 def redis_settings() -> RedisSettings:
     # Пустой REDIS_URL бывает только в разработке без очереди — воркер тогда не запускают,
     # а API считает сам. Чтобы импорт модуля не падал, подставляем localhost.
@@ -34,9 +41,13 @@ def redis_settings() -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [slice_upload, export_sheet]
-    # Время — по часам контейнера (UTC): 02:05 UTC = 05:05 МСК, когда заказов уже не оформляют.
-    cron_jobs = [cron(export_sheet, hour=2, minute=5, timeout=300)]
+    functions = [slice_upload, export_sheet, cleanup_files]
+    # Время — по часам контейнера (UTC), ночью по МСК, когда заказов уже не оформляют:
+    # 01:35 UTC = 04:35 МСК — чистка файлов; 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу.
+    cron_jobs = [
+        cron(cleanup_files, hour=1, minute=35, timeout=600),
+        cron(export_sheet, hour=2, minute=5, timeout=300),
+    ]
     redis_settings = redis_settings()
     max_jobs = 1  # слайсер грузит процессор целиком — по одной модели за раз
     job_timeout = settings.slice_timeout_s + 60
