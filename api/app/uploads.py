@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config import settings
+from app.events import track
 from app.meshcheck import ALLOWED_EXT, UNITS, MeshError, inspect_file, inspect_mesh
 
 router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
@@ -102,6 +103,18 @@ async def create_upload(file: UploadFile) -> dict:
         "mesh": info.to_dict(),
     }
     _save_meta(folder, meta)
+    # Воронка (B12): шаг «загрузил модель». Ошибка БД сюда не долетит — track() её проглотит.
+    await run_in_threadpool(
+        track,
+        "upload",
+        upload_id=upload_id,
+        props={
+            "ext": ext,
+            "size_bytes": len(data),
+            "watertight": info.watertight,
+            "warnings": info.warnings,
+        },
+    )
     return meta
 
 

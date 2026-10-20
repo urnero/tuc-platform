@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.events import track
 from app.models import ORDER_STATUSES, Order, Payment
 from app.quotes import load_quote
 from app.telegram import ACTIVE_STATUSES, STATUS_LABELS, notify_owner_new_order
@@ -129,6 +130,16 @@ def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict
         quote=quote,
     )
     db.add(order)
+    db.flush()  # чтобы появился order.id
+    # Воронка (B12): шаг «оформил заказ» — в той же транзакции, что и сам заказ.
+    track(
+        "order",
+        db=db,
+        upload_id=order.upload_id,
+        quote_id=order.quote_id,
+        order_id=order.id,
+        props={"total": order.total, "delivery": order.delivery, "qty": order.qty},
+    )
     db.commit()
     db.refresh(order)
     data = order.to_dict()

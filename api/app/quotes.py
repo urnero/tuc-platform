@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.events import track
 from app.pricing import PricingError, calc_price, load_pricing
 from app.slice_jobs import load_record, slice_key
 from app.slicer import SlicerError
@@ -109,7 +110,22 @@ def create_quote(upload_id: str, body: QuoteRequest) -> dict:
         "slice_key": key,
         **quote.to_dict(),
     }
-    return _save_quote(upload_id, data)
+    _save_quote(upload_id, data)
+    # Воронка (B12): шаг «посчитал цену».
+    track(
+        "quote",
+        upload_id=upload_id,
+        quote_id=data["id"],
+        props={
+            "material": quote.material,
+            "supports": quote.supports,
+            "qty": quote.qty,
+            "postprocess": quote.postprocess,
+            "delivery": quote.delivery,
+            "total": quote.total,
+        },
+    )
+    return data
 
 
 @router.get("/quotes/{quote_id}")

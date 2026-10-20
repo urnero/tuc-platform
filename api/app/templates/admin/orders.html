@@ -3,6 +3,16 @@
 {% block content %}
 <h1>Заказы <span class="muted">({{ total }})</span></h1>
 
+{# Воронка (B12): уникальные загрузки на каждом шаге, оплаты — уникальные заказы. Таблица events. #}
+<p class="muted" title="Сколько моделей за {{ funnel_days }} дней дошло до каждого шага. Оплаты — только онлайн через ЮKassa. Таблица events, SQL — docs/ANALYTICS.md">
+  Воронка за {{ funnel_days }} дней:
+  загрузок <b>{{ funnel.upload }}</b> →
+  расчётов <b>{{ funnel.quote }}</b> →
+  заказов <b>{{ funnel.order }}</b> →
+  нажали «Оплатить» <b>{{ funnel.payment_started }}</b> →
+  онлайн-оплат <b>{{ funnel.paid }}</b>
+</p>
+
 <form class="filters" method="get" action="/admin/orders">
   <div class="tabs">
     {# Вкладки по статусам: число в скобках — сколько всего заказов в этом статусе #}

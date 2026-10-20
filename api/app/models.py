@@ -1,4 +1,4 @@
-"""Таблицы БД: `orders` (B06) и `payments` (B08).
+"""Таблицы БД: `orders` (B06), `payments` (B08), `events` (B12).
 Изменил таблицу → добавь миграцию в alembic/versions/.
 
 Загрузки, расчёты печати и цены по-прежнему лежат файлами в DATA_DIR (см. DECISIONS.md):
@@ -18,6 +18,11 @@ ORDER_STATUSES = ("new", "paid", "printing", "ready", "done", "cancelled")
 
 # Статусы платежа — те же слова, что у ЮKassa: создан → (ждёт подтверждения) → успех | отменён.
 PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
+
+# Шаги воронки (B12) по порядку. Пишутся в `events` сервером в момент, когда шаг случился:
+# upload — клиент загрузил модель; quote — посчитал цену; order — оформил заказ;
+# payment_started — нажал «Оплатить» (создан платёж в ЮKassa); paid — оплата прошла.
+EVENT_NAMES = ("upload", "quote", "order", "payment_started", "paid")
 
 
 def utcnow() -> datetime:
@@ -127,6 +132,41 @@ class Payment(Base):
             "confirmation_url": self.confirmation_url,
             "paid_at": _iso(self.paid_at) if self.paid_at else None,
             "created_at": _iso(self.created_at),
+        }
+
+
+class Event(Base):
+    """Событие воронки (B12): одна строка на шаг. Таблица только дописывается, строки не меняются.
+
+    Как склеить шаги в воронку: upload → quote → order связаны через `upload_id`
+    (одна загрузка — один клиентский путь), payment_started и paid — через `order_id`
+    (у заказа `upload_id` тоже заполнен). Пример SQL — в docs/ANALYTICS.md.
+    """
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    name: Mapped[str] = mapped_column(String(32), nullable=False, index=True)  # из EVENT_NAMES
+    upload_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    quote_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Без внешнего ключа: события — журнал, он должен пережить удаление заказа.
+    order_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # Детали шага: у upload — расширение, размер, предупреждения сетки; у quote — материал,
+    # тираж, сумма; у order — сумма, доставка; у paid — сумма. Ключи — в app/events.py.
+    props: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "created_at": _iso(self.created_at),
+            "name": self.name,
+            "upload_id": self.upload_id,
+            "quote_id": self.quote_id,
+            "order_id": self.order_id,
+            "props": self.props,
         }
 
 

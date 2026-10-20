@@ -16,7 +16,7 @@
 - B09 done feat: админка — список заказов, фильтры, скачивание файлов (простая, за basic auth)
 - B10 done chore: деплой — docs/DEPLOY.md, bootstrap.sh для VPS, GitHub Actions staging/prod, Caddy HTTPS
 - B11 done feat: экспорт заказов в Google Sheet (ночью) + read-only пользователь БД для Superset
-- B12 doing (2026-10-20 23:39 МСК) feat: события воронки (upload, quote, order, paid) в таблицу events
+- B12 done feat: события воронки (upload, quote, order, paid) в таблицу events
 - B13 todo chore: оферта, политика ПДн, страница «О студии», контакты
 - B14 todo feat: лендинг — главная с формой загрузки, преимущества, примеры работ
 

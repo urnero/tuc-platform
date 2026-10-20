@@ -136,6 +136,7 @@ cd /srv/tuc/prod && docker compose up -d
   поэтому с ноутбука открываете SSH-туннель `ssh -N -L 5433:127.0.0.1:5433 deploy@<домен>` и подключаетесь к
   `127.0.0.1:5433`, база `tuc`, пользователь `tuc_ro`. В Superset — «+ Database → PostgreSQL», тот же адрес
   (если Superset в Docker на ноутбуке — вместо `127.0.0.1` укажите `host.docker.internal`).
+  Таблицы: `orders`, `payments`, `events` (воронка; готовые SQL — `docs/ANALYTICS.md`).
 - **Добавить второй домен / сменить домен**: поправить `/srv/tuc/prod/deploy/edge/.env`
   и выполнить `bash /srv/tuc/prod/deploy/edge/render-sites.sh`.
 

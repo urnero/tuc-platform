@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.events import track
 from app.models import PAYMENT_STATUSES, Order, Payment
 from app.orders import change_status, get_order_by_token, latest_payment
 from app.telegram import notify_owner_paid
@@ -165,6 +166,14 @@ def apply_payment_object(db: Session, payment: Payment, obj: dict) -> bool:
         order = db.get(Order, payment.order_id)
         if order is not None and order.status in PAYABLE_STATUSES:
             change_status(db, order.id, "paid")
+        # Воронка (B12): шаг «оплатил». Пишется один раз — только при переходе в succeeded.
+        track(
+            "paid",
+            db=db,
+            upload_id=order.upload_id if order else None,
+            order_id=payment.order_id,
+            props={"amount": payment.amount, "yookassa_id": payment.yookassa_id},
+        )
     db.commit()
     db.refresh(payment)
     return just_paid
@@ -218,6 +227,14 @@ def start_payment(db: Session, order: Order) -> Payment:
     )
     db.add(payment)
     db.flush()
+    # Воронка (B12): шаг «нажал „Оплатить“» — платёж в ЮKassa создан, клиент ушёл на форму.
+    track(
+        "payment_started",
+        db=db,
+        upload_id=order.upload_id,
+        order_id=order.id,
+        props={"amount": payment.amount, "yookassa_id": payment.yookassa_id},
+    )
     apply_payment_object(db, payment, obj)
     return payment
 
