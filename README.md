@@ -19,6 +19,12 @@ docker compose up --build
 - API: http://localhost:8080/api/v1/ping
 - Здоровье: http://localhost:8080/health
 
+## Сервер
+
+Один VPS, стенды `prod` (ветка `main`) и `staging` (ветка `dev`), общий Caddy с HTTPS. Первичная
+настройка — `deploy/bootstrap.sh`, дальше деплой делают GitHub Actions после зелёного CI.
+Пошагово — `docs/DEPLOY.md`.
+
 ## Разработка без Docker
 
 ```bash
@@ -42,6 +48,7 @@ profiles/ ini-профили PrusaSlicer: printer.ini, print.ini, filament/PLA|P
 web/      Next.js: сайт, 3D-просмотр, редакторы, оформление заказа
           components/ModelViewer.tsx — Three.js просмотр STL/3MF, app/upload/[id] — страница модели
 config/   pricing.yaml — цены материалов и ставки
-docs/     SPEC, BACKLOG, STATUS, DECISIONS
-Caddyfile обратный прокси: / → web, /api, /admin и /health → api
+deploy/   сервер: bootstrap.sh (настройка VPS), deploy.sh, backup.sh, compose.server.yml, edge/ (общий Caddy, HTTPS)
+docs/     SPEC, BACKLOG, STATUS, DECISIONS, DEPLOY
+Caddyfile обратный прокси для локального запуска: / → web, /api, /admin и /health → api
 ```

@@ -26,3 +26,6 @@ npm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# деплой (B10): домены общего Caddy генерирует render-sites.sh из deploy/edge/.env
+deploy/edge/sites/*.caddy

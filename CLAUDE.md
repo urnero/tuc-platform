@@ -19,7 +19,7 @@
 - `web/` — Next.js 15 (App Router), TypeScript, Tailwind, Three.js (@react-three/fiber).
 - `worker/` — Dockerfile: код `api/` + PrusaSlicer CLI; задачи arq в `api/app/worker.py`. Профили слайсера — `profiles/`. OpenSCAD CLI (редакторы) добавится в B21.
 - Бот — не отдельный пакет: aiogram 3 в `api/app/bot.py` (запуск `python -m app.bot`, сервис `bot` в compose из образа api). Тексты/кнопки и отправка из API — `api/app/telegram.py`.
-- Инфра: `docker-compose.yml` (caddy, web, api, worker, bot, postgres, redis). Деплой — B10.
+- Инфра: `docker-compose.yml` (caddy, web, api, worker, bot, postgres, redis) — локальный запуск. Сервер — `deploy/`: один VPS, стенды `/srv/tuc/prod` (main) и `/srv/tuc/staging` (dev), `compose.server.yml` поверх основного compose, общий Caddy с HTTPS в `deploy/edge`. Деплой — `.github/workflows/deploy.yml` после зелёного CI, по SSH запускает `deploy/deploy.sh`. Инструкция владельцу — `docs/DEPLOY.md`.
 - Ветки: `dev` — рабочая, ночные сборки пушат сюда. `main` — прод, сливает владелец через PR.
 
 ## Как запускать
@@ -49,7 +49,7 @@ cp .env.example .env && docker compose up --build
 ## Жёсткие правила
 
 - Тесты гоняй ровно как CI: `cd api && pytest -q` (не `python -m pytest`) и `cd web && npm test`. В тестах импортируй помощники как `from conftest import …`. Перед пушем проверь, что `gh api "repos/urnero/tuc-platform/actions/runs?branch=dev&per_page=1" --jq '.workflow_runs[0].conclusion'` на предыдущем коммите = success; если failure — сначала почини CI.
-- Секретов в репо нет. Только `.env` (в `.gitignore`) и `.env.example` с пустыми значениями.
+- Секретов в репо нет. Только `.env` (в `.gitignore`) и `.env.example` с пустыми значениями. В `.env.example` у пустой переменной комментарий пишется строкой выше, не после `=` (docker compose принял бы его за значение; есть тест `tests/test_env_example.py`).
 - Загружаемые файлы: проверять размер (≤100 МБ), расширение (stl, 3mf), сетку. Файлы хранить вне репо, в `DATA_DIR`.
 - Деньги: все расчёты цены — в одной функции `api/app/pricing.py` с тестами. Вебхук ЮKassa — идемпотентный.
 - Не задавай вопросов владельцу внутри запуска. Прими разумное решение, запиши его в `DECISIONS.md`, продолжай.

@@ -1,4 +1,5 @@
-# Локальная разводка. Для staging/prod с HTTPS — B10 (docs/DEPLOY.md).
+# Локальная разводка (docker compose на ноутбуке, http://localhost:8080). На сервере вместо него
+# работает общий Caddy с HTTPS: deploy/edge (см. docs/DEPLOY.md).
 :80 {
 	handle /api/* {
 		reverse_proxy api:8000

@@ -1,0 +1,23 @@
+# Шаблон одного домена: домен и имя стенда подставляет render-sites.sh (см. рядом).
+# Контейнеры стенда называются tuc-<стенд>-<сервис>-1 (имя проекта compose + сервис).
+__DOMAIN__ {
+	encode gzip
+
+	handle /api/* {
+		request_body {
+			max_size 110MB   # модели до 100 МБ (MAX_UPLOAD_MB) + запас на заголовки формы
+		}
+		reverse_proxy tuc-__STACK__-api-1:8000
+	}
+	handle /health {
+		reverse_proxy tuc-__STACK__-api-1:8000
+	}
+	handle /admin* {
+		# админка владельца (B09): HTML отдаёт api, вход — basic auth браузера, только по HTTPS
+		reverse_proxy tuc-__STACK__-api-1:8000
+	}
+	handle {
+		reverse_proxy tuc-__STACK__-web-1:3000
+	}
+__EXTRA__
+}
