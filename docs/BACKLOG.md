@@ -14,7 +14,7 @@
 - B07 done feat: Telegram-бот — уведомление владельцу о новом заказе, команда /orders, смена статуса кнопками
 - B08 done feat: ЮKassa — оплата (тестовый режим), вебхук, статус paid, уведомление в Telegram
 - B09 done feat: админка — список заказов, фильтры, скачивание файлов (простая, за basic auth)
-- B10 todo chore: деплой — docs/DEPLOY.md, bootstrap.sh для VPS, GitHub Actions staging/prod, Caddy HTTPS
+- B10 doing (2026-10-20 03:38 МСК) chore: деплой — docs/DEPLOY.md, bootstrap.sh для VPS, GitHub Actions staging/prod, Caddy HTTPS
 - B11 todo feat: экспорт заказов в Google Sheet (ночью) + read-only пользователь БД для Superset
 - B12 todo feat: события воронки (upload, quote, order, paid) в таблицу events
 - B13 todo chore: оферта, политика ПДн, страница «О студии», контакты
