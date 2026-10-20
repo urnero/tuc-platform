@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import SiteFooter from "@/components/SiteFooter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">
-      <body className="min-h-screen antialiased">{children}</body>
+      {/* flex-колонка, чтобы подвал прижимался к низу даже на коротких страницах */}
+      <body className="flex min-h-screen flex-col antialiased">
+        {children}
+        <SiteFooter />
+      </body>
     </html>
   );
 }

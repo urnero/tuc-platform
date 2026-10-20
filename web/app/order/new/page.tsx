@@ -206,7 +206,15 @@ function NewOrder() {
             className="mt-1"
           />
           <span>
-            Согласен на обработку персональных данных для выполнения заказа.
+            Согласен с условиями{" "}
+            <Link href="/offer" target="_blank" className="underline underline-offset-2">
+              оферты
+            </Link>{" "}
+            и обработкой персональных данных (
+            <Link href="/policy" target="_blank" className="underline underline-offset-2">
+              политика
+            </Link>
+            ).
             {errors.consent && (
               <>
                 <br />

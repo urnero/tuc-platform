@@ -17,8 +17,9 @@
 - B10 done chore: деплой — docs/DEPLOY.md, bootstrap.sh для VPS, GitHub Actions staging/prod, Caddy HTTPS
 - B11 done feat: экспорт заказов в Google Sheet (ночью) + read-only пользователь БД для Superset
 - B12 done feat: события воронки (upload, quote, order, paid) в таблицу events
-- B13 doing (2026-10-21 00:38 МСК) chore: оферта, политика ПДн, страница «О студии», контакты
+- B13 done chore: оферта, политика ПДн, страница «О студии», контакты
 - B14 todo feat: лендинг — главная с формой загрузки, преимущества, примеры работ
+- B15 todo chore: автоудаление загрузок без заказа старше 30 дней и файлов выполненных заказов старше 12 месяцев (cron в worker) — сроки обещаны в политике ПДн (/policy, раздел 6)
 
 ## Этап 2 — каталог и редакторы
 
