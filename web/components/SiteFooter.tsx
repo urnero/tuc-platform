@@ -16,7 +16,7 @@ const LINKS = [
 export default function SiteFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="mx-auto mt-auto flex max-w-3xl flex-col gap-2 px-4 py-8 text-sm" style={{ color: "var(--muted)" }}>
+    <footer className="mx-auto mt-auto flex w-full max-w-5xl flex-col gap-2 px-4 py-8 text-sm" style={{ color: "var(--muted)" }}>
       <nav className="flex flex-wrap gap-x-4 gap-y-1">
         {LINKS.map((l) => (
           <Link key={l.href} href={l.href} className="underline-offset-2 hover:underline">
