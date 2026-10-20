@@ -22,7 +22,7 @@ import csv
 import io
 import re
 import secrets
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlencode
@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.export import COLUMNS, MSK, fmt_dt, order_rows, paid_at_by_order
 from app.models import ORDER_STATUSES, Order, Payment
 from app.orders import StatusError, change_status
 from app.telegram import (
@@ -51,7 +52,6 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 Db = Annotated[Session, Depends(get_db)]
 
 PAGE_SIZE = 50
-MSK = timedelta(hours=3)
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -102,15 +102,6 @@ Admin = Annotated[str, Depends(require_admin)]
 
 
 # --- помощники для шаблонов ----------------------------------------------------
-
-
-def fmt_dt(dt: datetime | None) -> str:
-    """Дата из БД → «19.10.2026 23:41» по Москве. SQLite теряет пояс — считаем UTC."""
-    if dt is None:
-        return ""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    return (dt.astimezone(UTC) + MSK).strftime("%d.%m.%Y %H:%M")
 
 
 def fmt_money(amount: int | float | None) -> str:
@@ -200,18 +191,6 @@ def orders_query(status: str, q: str):
     return stmt.order_by(Order.id.desc())
 
 
-def paid_at_by_order(db: Session, orders: list[Order]) -> dict[int, datetime]:
-    """Когда прошла онлайн-оплата по каждому заказу (только успешные платежи)."""
-    if not orders:
-        return {}
-    rows = db.execute(
-        select(Payment.order_id, Payment.paid_at).where(
-            Payment.order_id.in_([o.id for o in orders]), Payment.status == "succeeded"
-        )
-    )
-    return {order_id: paid_at for order_id, paid_at in rows}
-
-
 def list_params(status: str, q: str, page: int = 1) -> str:
     """Хвост ссылки с текущими фильтрами, чтобы страницы и CSV их не теряли."""
     params = {k: v for k, v in (("status", status), ("q", q)) if v}
@@ -275,35 +254,16 @@ def orders_page(
     )
 
 
-CSV_COLUMNS = [
-    "id", "number", "created_msk", "status", "status_label", "customer_name", "phone",
-    "email", "delivery", "address", "material", "supports", "qty", "postprocess", "total",
-    "print_time_h", "material_g", "original_name", "comment", "paid_msk", "upload_id",
-]
-
-
 @router.get("/orders.csv", include_in_schema=False)
 def orders_csv(_: Admin, db: Db, status: str = "", q: str = "") -> Response:
     """Заказы по тем же фильтрам файлом CSV: разделитель «;», UTF-8 с BOM — Excel откроет сразу."""
     if status not in STATUS_FILTERS:
         status = ""
     orders = list(db.scalars(orders_query(status, q)))
-    paid = paid_at_by_order(db, orders)
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";", lineterminator="\n")
-    w.writerow(CSV_COLUMNS)
-    for o in orders:
-        quote = o.quote or {}
-        w.writerow(
-            [
-                o.id, f"ТУЦ-{o.id}", fmt_dt(o.created_at), o.status, STATUS_LABELS[o.status],
-                o.customer_name, o.phone, o.email or "", o.delivery, o.address or "",
-                o.material, int(o.supports), o.qty, o.postprocess, o.total,
-                round((quote.get("print_time_s") or 0) / 3600 * o.qty, 2),
-                round((quote.get("material_g") or 0) * o.qty, 1),
-                o.original_name or "", o.comment or "", fmt_dt(paid.get(o.id)), o.upload_id,
-            ]
-        )
+    w.writerow(COLUMNS)  # те же колонки, что в Google-таблице (app/export.py)
+    w.writerows(order_rows(db, orders))
     stamp = (datetime.now(UTC) + MSK).strftime("%Y-%m-%d")
     return Response(
         "﻿" + buf.getvalue(),

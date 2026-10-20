@@ -5,7 +5,9 @@
 #   - локальный Caddy из docker-compose.yml не стартует — HTTPS делает общий Caddy (deploy/edge);
 #   - web и api дополнительно подключены к сети tuc_edge, где их видит общий Caddy
 #     по именам контейнеров tuc-<стенд>-web-1 и tuc-<стенд>-api-1;
-#   - все сервисы перезапускаются сами после падения и перезагрузки VPS.
+#   - все сервисы перезапускаются сами после падения и перезагрузки VPS;
+#   - Postgres слушает 127.0.0.1:POSTGRES_LOCAL_PORT сервера (prod 5433, staging 5434) — для Superset
+#     и DBeaver через SSH-туннель, read-only пользователем (deploy/readonly-user.sh, B11).
 
 services:
   caddy:
@@ -36,6 +38,8 @@ services:
 
   postgres:
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${POSTGRES_LOCAL_PORT:-5433}:5432"
 
   redis:
     restart: unless-stopped

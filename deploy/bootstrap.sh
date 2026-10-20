@@ -103,8 +103,8 @@ rand() { # случайная строка из букв и цифр длино�
 	echo "${s:0:$1}"
 }
 
-make_stand() { # make_stand <стенд> <ветка> <домен>
-	local stack=$1 branch=$2 domain=$3 dir=$ROOT/$1
+make_stand() { # make_stand <стенд> <ветка> <домен> <локальный порт Postgres>
+	local stack=$1 branch=$2 domain=$3 pg_port=$4 dir=$ROOT/$1
 	step "Стенд $stack: $dir (ветка $branch, https://$domain)"
 	if [ ! -d "$dir/.git" ]; then
 		as_deploy "git clone -q -b $branch $REPO $dir"
@@ -125,6 +125,7 @@ make_stand() { # make_stand <стенд> <ветка> <домен>
 		# --- сервер (B10, добавил bootstrap.sh) ---
 		COMPOSE_PROJECT_NAME=tuc-$stack          # имена контейнеров tuc-$stack-<сервис>-1 — их ждёт общий Caddy
 		COMPOSE_FILE=docker-compose.yml:deploy/compose.server.yml
+		POSTGRES_LOCAL_PORT=$pg_port                 # Postgres на 127.0.0.1 сервера для Superset через SSH-туннель (B11)
 		EOF
 		chown "$DEPLOY_USER:$DEPLOY_USER" "$dir/.env"
 		chmod 600 "$dir/.env"
@@ -135,9 +136,9 @@ make_stand() { # make_stand <стенд> <ветка> <домен>
 	fi
 }
 
-make_stand prod main "$PROD_DOMAIN"
+make_stand prod main "$PROD_DOMAIN" 5433
 if [ -n "$STAGING_DOMAIN" ]; then
-	make_stand staging dev "$STAGING_DOMAIN"
+	make_stand staging dev "$STAGING_DOMAIN" 5434
 fi
 
 # --- 6. общий Caddy, стенды, бэкап ----------------------------------------------------------

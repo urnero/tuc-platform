@@ -26,6 +26,7 @@ Let's Encrypt и раздаёт запросы по домену в нужный
 | `bootstrap.sh` | Первичная настройка чистого VPS: Docker, файрвол, пользователь `deploy`, ключи, клоны, `.env`, запуск. Один раз. |
 | `deploy.sh` | Обновить один стенд: `git reset` на нужный коммит, `docker compose up -d --build`, дождаться `/health`. Его зовут Actions. |
 | `backup.sh` | `pg_dump` базы стенда в `/srv/tuc/backups/`, хранит 14 дней. Для прода стоит в cron (03:15). |
+| `readonly-user.sh` + `readonly-user.sql` | Пользователь БД `tuc_ro` только для чтения — для Superset / DBeaver (B11). Запускается руками один раз на стенд. |
 | `compose.server.yml` | Надстройка над `docker-compose.yml` для сервера: без локального Caddy, с `restart`, healthcheck и сетью `tuc_edge`. |
 | `edge/` | Общий Caddy: `docker-compose.yml`, `Caddyfile`, шаблон домена `site.caddy.tmpl`, `render-sites.sh` (пишет `sites/*.caddy` из `.env`). |
 
@@ -122,7 +123,19 @@ cd /srv/tuc/prod && docker compose up -d
   Папку с моделями `/srv/tuc/prod/data/` бэкап не трогает — при переезде копируйте её отдельно.
 - **Цены и профили** (`config/pricing.yaml`, `profiles/`) правятся в репозитории и приезжают деплоем.
   На сервере файлы репозитория не править: `deploy.sh` делает `git reset --hard`, правки пропадут.
-- **SQL к базе прода** (Superset и т. п. появятся в B11): `docker compose exec postgres psql -U tuc -d tuc`.
+- **SQL к базе прода** с сервера: `docker compose exec postgres psql -U tuc -d tuc`.
+- **Google-таблица учёта** (B11): worker каждую ночь в 05:05 МСК переписывает лист «Заказы (сайт)».
+  Ключ сервисного аккаунта положить в `/srv/tuc/prod/secrets/google-sa.json` (`chmod 600`, папка в
+  `.gitignore`, в контейнер видна как `/srv/secrets/`), в `.env`: `GOOGLE_SA_JSON_PATH=/srv/secrets/google-sa.json`
+  и `GOOGLE_SHEET_ID=<id из адреса таблицы>`, затем `docker compose up -d`. Выгрузить сейчас, не дожидаясь ночи:
+  `docker compose exec api python -m app.sheets` (ошибки доступа он объясняет словами). Логи ночных выгрузок:
+  `docker compose logs worker | grep Google`.
+- **Superset / DBeaver / pandas к базе** (B11): один раз на стенде `bash /srv/tuc/prod/deploy/readonly-user.sh` —
+  создаст пользователя `tuc_ro` (только SELECT, в том числе для будущих таблиц) и запишет пароль в `.env`
+  (`POSTGRES_RO_PASSWORD`). Postgres снаружи виден только на `127.0.0.1` сервера (prod — порт 5433, staging — 5434),
+  поэтому с ноутбука открываете SSH-туннель `ssh -N -L 5433:127.0.0.1:5433 deploy@<домен>` и подключаетесь к
+  `127.0.0.1:5433`, база `tuc`, пользователь `tuc_ro`. В Superset — «+ Database → PostgreSQL», тот же адрес
+  (если Superset в Docker на ноутбуке — вместо `127.0.0.1` укажите `host.docker.internal`).
 - **Добавить второй домен / сменить домен**: поправить `/srv/tuc/prod/deploy/edge/.env`
   и выполнить `bash /srv/tuc/prod/deploy/edge/render-sites.sh`.
 

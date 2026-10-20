@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,9 +39,21 @@ class Settings(BaseSettings):
     # Пусто = чек в платёж не вкладываем (самозанятый / чеки ЮKassa не подключены).
     yookassa_vat_code: str = ""
 
+    # Google-таблица учёта (B11): JSON-ключ сервисного аккаунта и id таблицы из её адреса.
+    # Пусто = ночной экспорт выключен. Лист переписывается целиком каждую ночь.
+    google_sa_json_path: Path | None = None
+    google_sheet_id: str = ""
+    google_sheet_tab: str = "Заказы (сайт)"
+
     # Админка (B09): /admin за basic auth. Пустой логин или пароль = админка выключена (503).
     admin_user: str = "admin"
     admin_password: str = ""
+
+    @field_validator("google_sa_json_path", mode="before")
+    @classmethod
+    def _empty_path_is_none(cls, v):
+        """Пустое GOOGLE_SA_JSON_PATH= в .env — это «не задано», а не путь «.»."""
+        return None if v in ("", None) else v
 
     @property
     def print_bed(self) -> tuple[float, float, float]:
