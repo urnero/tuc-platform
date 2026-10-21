@@ -1,0 +1,50 @@
+# Надстройка над docker-compose.yml для сервера (staging и prod).
+# Подключается через COMPOSE_FILE в .env стенда (его пишет bootstrap.sh):
+#   COMPOSE_FILE=docker-compose.yml:deploy/compose.server.yml
+# После этого обычный `docker compose up -d --build` поднимает стенд «по-серверному»:
+#   - локальный Caddy из docker-compose.yml не стартует — HTTPS делает общий Caddy (deploy/edge);
+#   - web и api дополнительно подключены к сети tuc_edge, где их видит общий Caddy
+#     по именам контейнеров tuc-<стенд>-web-1 и tuc-<стенд>-api-1;
+#   - все сервисы перезапускаются сами после падения и перезагрузки VPS;
+#   - Postgres слушает 127.0.0.1:POSTGRES_LOCAL_PORT сервера (prod 5433, staging 5434) — для Superset
+#     и DBeaver через SSH-туннель, read-only пользователем (deploy/readonly-user.sh, B11).
+
+services:
+  caddy:
+    # Профиль, который никто не включает → сервис не запускается.
+    profiles: ["local-only"]
+
+  web:
+    restart: unless-stopped
+    networks: [default, edge]
+
+  api:
+    restart: unless-stopped
+    networks: [default, edge]
+    healthcheck:
+      # Тот же /health, что проверяет deploy.sh. curl в образе нет, зато есть python.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+  worker:
+    restart: unless-stopped
+
+  bot:
+    # Без TELEGRAM_BOT_TOKEN бот пишет в лог и выходит с кодом 0 — тогда его не перезапускаем.
+    restart: on-failure
+
+  postgres:
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${POSTGRES_LOCAL_PORT:-5433}:5432"
+
+  redis:
+    restart: unless-stopped
+
+networks:
+  edge:
+    external: true
+    name: tuc_edge

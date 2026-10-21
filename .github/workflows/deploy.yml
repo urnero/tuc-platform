@@ -1,0 +1,57 @@
+# Деплой на VPS по SSH после зелёного CI: ветка dev → стенд staging, ветка main → стенд prod.
+# На сервере запускается deploy/deploy.sh (git pull + docker compose up). Как настроить — docs/DEPLOY.md.
+# Секреты репозитория: DEPLOY_SSH_HOST, DEPLOY_SSH_KEY; необязательные DEPLOY_SSH_USER (deploy),
+# DEPLOY_SSH_PORT (22), STAGING_SSH_HOST (если тестовый стенд на другом сервере).
+# Пока секретов нет, job завершается сообщением «деплой не настроен», не ошибкой.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [dev, main]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # второй деплой того же стенда ждёт первого, а не бежит параллельно
+    concurrency:
+      group: deploy-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    env:
+      BRANCH: ${{ github.event.workflow_run.head_branch }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Выбрать стенд по ветке
+        id: stand
+        run: |
+          if [ "$BRANCH" = "main" ]; then
+            echo "stack=prod" >> "$GITHUB_OUTPUT"
+            echo "host=${{ secrets.DEPLOY_SSH_HOST }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "stack=staging" >> "$GITHUB_OUTPUT"
+            echo "host=${{ secrets.STAGING_SSH_HOST || secrets.DEPLOY_SSH_HOST }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Деплой по SSH
+        env:
+          STACK: ${{ steps.stand.outputs.stack }}
+          HOST: ${{ steps.stand.outputs.host }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER || 'deploy' }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT || '22' }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$SSH_KEY" ]; then
+            echo "::notice::Деплой $STACK не настроен: нет секретов DEPLOY_SSH_HOST / DEPLOY_SSH_KEY (docs/DEPLOY.md)."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "Стенд $STACK ← ветка $BRANCH ($SHA) на $HOST"
+          # Сначала обновляем код (чтобы deploy.sh был свежим), потом он сам пересобирает контейнеры.
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" \
+              -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -o BatchMode=yes \
+              "$SSH_USER@$HOST" \
+              "cd /srv/tuc/$STACK && git fetch -q origin $BRANCH && git reset -q --hard $SHA && bash deploy/deploy.sh $SHA"

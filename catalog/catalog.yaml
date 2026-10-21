@@ -1,0 +1,71 @@
+# Каталог готовых моделей (B20). Правит владелец, перезапуск api после правки не нужен:
+# файл перечитывается, когда меняется его дата.
+#
+# Как добавить модель:
+#   1. положить STL (или 3MF) в catalog/models/ — в миллиметрах, стоит на столе, ≤ 100 МБ;
+#   2. добавить строку в `models` ниже: slug — латиницей, только буквы, цифры и дефис
+#      (он же — адрес страницы /catalog/<slug>); category — slug из `categories`;
+#   3. превью PNG сервер нарисует сам при первом открытии каталога (кэш в DATA_DIR/catalog/).
+# Модели ниже — стартовые заглушки из catalog/make_samples.py, их можно удалить.
+
+categories:
+  - slug: home
+    title: Для дома
+    text: Мелочи, которые проще напечатать, чем искать в магазине.
+  - slug: hardware
+    title: Крепёж и проставки
+    text: Шайбы, втулки, уголки — в нестандартных размерах.
+  - slug: workshop
+    title: Мастерская и принтер
+    text: Тестовые и вспомогательные детали.
+
+models:
+  - slug: coaster
+    title: Подставка под кружку
+    category: home
+    text: Круг Ø 90 мм с бортиком, чтобы капли не стекали на стол. Печатается без поддержек.
+    file: coaster.stl
+    material: PLA
+    license: Своя модель
+  - slug: wall-hook
+    title: Крючок настенный
+    category: home
+    text: Простой крючок под саморез для ключей, полотенца или кабеля. Высота 60 мм, вылет 25 мм.
+    file: wall-hook.stl
+    material: PETG
+    license: Своя модель
+  - slug: door-stop
+    title: Упор дверной
+    category: home
+    text: Клин 100 × 40 мм, высота 25 мм. Из PETG не скользит по плитке и не трескается.
+    file: door-stop.stl
+    material: PETG
+    license: Своя модель
+  - slug: tray-120x80
+    title: Лоток-органайзер 120 × 80
+    category: home
+    text: Открытый лоток для мелочей, стенки 2 мм, высота 30 мм. Для ящика стола или полки.
+    file: tray-120x80.stl
+    material: PLA
+    license: Своя модель
+  - slug: washer-m8
+    title: Шайба M8 широкая
+    category: hardware
+    text: Отверстие Ø 8,4, наружный Ø 24, толщина 3 мм. Для мебели и крепления по мягкому.
+    file: washer-m8.stl
+    material: PETG
+    license: Своя модель
+  - slug: spacer-m5
+    title: Втулка-проставка M5 × 20
+    category: hardware
+    text: Отверстие Ø 5,5, наружный Ø 10, длина 20 мм. Чтобы отнести плату или полку от стенки.
+    file: spacer-m5.stl
+    material: PETG
+    license: Своя модель
+  - slug: calibration-cube
+    title: Кубик калибровочный 20 мм
+    category: workshop
+    text: Куб 20 × 20 × 20 мм — проверить точность принтера или посмотреть, как выглядит материал.
+    file: calibration-cube.stl
+    material: PLA
+    license: Своя модель

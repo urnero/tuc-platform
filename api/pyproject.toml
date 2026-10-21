@@ -9,12 +9,26 @@ dependencies = [
     "pydantic>=2.8,<3",
     "pydantic-settings>=2.4,<3",
     "pyyaml>=6,<7",
+    "python-multipart>=0.0.9,<1",
+    "trimesh>=4.5,<6",
+    "numpy>=1.26,<3",
+    "lxml>=5,<7",
+    "networkx>=3,<4",
+    "arq>=0.26,<1",
+    "redis>=5,<6",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.13,<2",
+    "psycopg[binary]>=3.2,<4",
+    "httpx>=0.27,<1",
+    "aiogram>=3.13,<4",
+    "jinja2>=3.1,<4",
+    "pyjwt[crypto]>=2.8,<3",
+    "pillow>=10,<12",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<9",
-    "httpx>=0.27,<1",
     "ruff>=0.6,<1",
 ]
 
@@ -25,8 +39,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["app*"]
 
+[tool.setuptools.package-data]
+app = ["templates/**/*.html"]  # шаблоны админки (B09) едут в образ вместе с кодом
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100

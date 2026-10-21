@@ -39,3 +39,22 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
+
+  deploy-files:
+    # B10: файлы деплоя — синтаксис скриптов, сборка compose «по-серверному», конфиг Caddy.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck deploy/*.sh deploy/edge/*.sh
+      - name: compose для сервера собирается
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml -f deploy/compose.server.yml config -q
+          docker compose -f docker-compose.yml config -q
+      - name: Caddyfile общего Caddy валиден
+        working-directory: deploy/edge
+        run: |
+          printf 'ACME_EMAIL=ci@example.com\nPROD_DOMAIN=example.com\nSTAGING_DOMAIN=staging.example.com\n' > .env
+          RENDER_ONLY=1 bash render-sites.sh
+          docker run --rm -e ACME_EMAIL=ci@example.com -v "$PWD:/etc/caddy:ro" caddy:2.9-alpine \
+            caddy validate --config /etc/caddy/Caddyfile

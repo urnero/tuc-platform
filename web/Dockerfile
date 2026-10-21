@@ -14,6 +14,8 @@ FROM node:22-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
 COPY --from=build /app/.next/standalone ./
+# public/ (фото работ и т.п.) standalone-сборка сама не копирует
+COPY --from=build /app/public ./public
 COPY --from=build /app/.next/static ./.next/static
 EXPOSE 3000
 CMD ["node", "server.js"]

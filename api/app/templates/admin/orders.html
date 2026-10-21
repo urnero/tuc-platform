@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+{% block title %}Заказы{% endblock %}
+{% block content %}
+<h1>Заказы <span class="muted">({{ total }})</span></h1>
+
+{# Воронка (B12): уникальные загрузки на каждом шаге, оплаты — уникальные заказы. Таблица events. #}
+<p class="muted" title="Сколько моделей за {{ funnel_days }} дней дошло до каждого шага. Оплаты — только онлайн через ЮKassa. Таблица events, SQL — docs/ANALYTICS.md">
+  Воронка за {{ funnel_days }} дней:
+  загрузок <b>{{ funnel.upload }}</b> →
+  расчётов <b>{{ funnel.quote }}</b> →
+  заказов <b>{{ funnel.order }}</b> →
+  нажали «Оплатить» <b>{{ funnel.payment_started }}</b> →
+  онлайн-оплат <b>{{ funnel.paid }}</b>
+</p>
+
+<form class="filters" method="get" action="/admin/orders">
+  <div class="tabs">
+    {# Вкладки по статусам: число в скобках — сколько всего заказов в этом статусе #}
+    <a href="/admin/orders{% if q %}?q={{ q|urlencode }}{% endif %}" class="{% if not status %}on{% endif %}">Все</a>
+    <a href="/admin/orders?status=active{% if q %}&q={{ q|urlencode }}{% endif %}" class="{% if status == 'active' %}on{% endif %}">В работе ({{ active_count }})</a>
+    {% for s in ORDER_STATUSES %}
+    <a href="/admin/orders?status={{ s }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="{% if status == s %}on{% endif %}">{{ STATUS_ICONS[s] }} {{ STATUS_LABELS[s]|capitalize }} ({{ counts.get(s, 0) }})</a>
+    {% endfor %}
+  </div>
+  {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+  <input type="search" name="q" value="{{ q }}" placeholder="Номер, телефон, имя, e-mail, файл" size="32">
+  <button type="submit">Найти</button>
+  {% if q %}<a href="/admin/orders{% if status %}?status={{ status }}{% endif %}">сбросить</a>{% endif %}
+  <a class="btn ghost" href="/admin/orders.csv{{ params }}" title="Разделитель «;», UTF-8 — Excel откроет сразу">Скачать CSV</a>
+</form>
+
+{% if not orders %}
+<p class="muted">Заказов нет.</p>
+{% else %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>№</th><th>Создан (МСК)</th><th>Статус</th><th>Клиент</th><th>Что печатаем</th>
+      <th>Доставка</th><th class="num">Сумма</th><th>Оплата</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for o in orders %}
+    <tr>
+      <td><a href="/admin/orders/{{ o.id }}"><b>ТУЦ-{{ o.id }}</b></a></td>
+      <td>{{ o.created_at|dt }}</td>
+      <td><span class="pill {{ o.status }}">{{ STATUS_ICONS[o.status] }} {{ STATUS_LABELS[o.status] }}</span></td>
+      <td class="wrap">{{ o.customer_name }}<br><span class="muted">{{ o.phone|phone }}</span></td>
+      <td class="wrap">{{ o.material }} × {{ o.qty }} шт{% if o.supports %}, поддержки{% endif %}{% if o.postprocess != 'none' %}, {{ POSTPROCESS_LABELS.get(o.postprocess, o.postprocess) }}{% endif %}
+        {% if o.original_name %}<br><span class="muted">{{ o.original_name }}</span>{% endif %}</td>
+      <td>{{ DELIVERY_LABELS.get(o.delivery, o.delivery) }}</td>
+      <td class="num">{{ o.total|money }}</td>
+      <td>{% if o.id in paid_at %}<span class="muted" title="Онлайн, ЮKassa">💳 {{ paid_at[o.id]|dt }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if pages > 1 %}
+<div class="pager">
+  {% if prev_url %}<a href="{{ prev_url }}">← Новее</a>{% endif %}
+  <span class="muted">Страница {{ page }} из {{ pages }}</span>
+  {% if next_url %}<a href="{{ next_url }}">Старее →</a>{% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

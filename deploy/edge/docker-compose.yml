@@ -1,0 +1,29 @@
+# Общий Caddy на VPS: один на все стенды. Получает сертификаты Let's Encrypt,
+# принимает 80/443 и раздаёт запросы по доменам в контейнеры стендов через сеть tuc_edge.
+# Запуск: cd /srv/tuc/prod/deploy/edge && docker compose up -d
+# Файлы доменов sites/*.caddy пишет render-sites.sh из .env (PROD_DOMAIN, STAGING_DOMAIN).
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?Заполните ACME_EMAIL в deploy/edge/.env — на него Let's Encrypt шлёт письма о сертификатах}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+      - caddy_data:/data        # сертификаты — не терять, иначе упрёмся в лимиты Let's Encrypt
+      - caddy_config:/config
+    networks:
+      - edge
+
+networks:
+  edge:
+    name: tuc_edge   # стенды подключаются к ней как к внешней (deploy/compose.server.yml)
+
+volumes:
+  caddy_data:
+  caddy_config:

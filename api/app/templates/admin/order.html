@@ -1,0 +1,95 @@
+{% extends "admin/base.html" %}
+{% block title %}ТУЦ-{{ o.id }}{% endblock %}
+{% block content %}
+<p><a href="/admin/orders">← Заказы</a></p>
+<h1>Заказ ТУЦ-{{ o.id }}
+  <span class="pill {{ o.status }}">{{ STATUS_ICONS[o.status] }} {{ STATUS_LABELS[o.status] }}</span>
+  <span class="muted" style="font-weight:400">· {{ o.total|money }} · создан {{ o.created_at|dt }}</span>
+</h1>
+
+<h2>Статус</h2>
+<div class="actions">
+  {# Кнопки — логичные следующие шаги (те же, что в Telegram-боте) #}
+  {% for s in NEXT_STATUSES.get(o.status, []) %}
+  <form method="post" action="/admin/orders/{{ o.id }}/status">
+    <input type="hidden" name="status" value="{{ s }}">
+    <button type="submit" class="{% if s == 'cancelled' %}danger{% endif %}">{{ STATUS_ICONS[s] }} {{ STATUS_LABELS[s]|capitalize }}</button>
+  </form>
+  {% endfor %}
+  {# Любой другой статус — владельцу виднее #}
+  <form method="post" action="/admin/orders/{{ o.id }}/status" class="actions">
+    <select name="status">
+      {% for s in ORDER_STATUSES %}
+      <option value="{{ s }}" {% if s == o.status %}selected{% endif %}>{{ STATUS_LABELS[s]|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn ghost">Поставить</button>
+  </form>
+</div>
+
+<div class="grid">
+  <section>
+    <h2>Клиент</h2>
+    <dl>
+      <dt>Имя</dt><dd>{{ o.customer_name }}</dd>
+      <dt>Телефон</dt><dd><a href="tel:{{ o.phone }}">{{ o.phone|phone }}</a></dd>
+      {% if o.email %}<dt>E-mail</dt><dd><a href="mailto:{{ o.email }}">{{ o.email }}</a></dd>{% endif %}
+      <dt>Доставка</dt><dd>{{ DELIVERY_LABELS.get(o.delivery, o.delivery) }}</dd>
+      {% if o.address %}<dt>Адрес</dt><dd>{{ o.address }}</dd>{% endif %}
+      {% if o.comment %}<dt>Комментарий</dt><dd>{{ o.comment }}</dd>{% endif %}
+      <dt>Страница клиента</dt><dd><a href="/order/{{ o.token }}" target="_blank" rel="noopener">{{ site_url() }}/order/{{ o.token }}</a></dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Что печатаем</h2>
+    <dl>
+      <dt>Файл</dt>
+      <dd>{{ o.original_name or '—' }}
+        {% if has_model %} · <a href="/admin/orders/{{ o.id }}/file">скачать</a>{% else %} <span class="muted">(файла нет на диске)</span>{% endif %}
+        · <a href="/upload/{{ o.upload_id }}" target="_blank" rel="noopener">3D-просмотр ↗</a>
+      </dd>
+      <dt>Материал</dt><dd>{{ o.material }}{% if o.quote.tech %} ({{ o.quote.tech }}){% endif %}</dd>
+      <dt>Тираж</dt><dd>{{ o.qty }} шт</dd>
+      <dt>Поддержки</dt><dd>{{ 'да' if o.supports else 'нет' }}</dd>
+      <dt>Постобработка</dt><dd>{{ POSTPROCESS_LABELS.get(o.postprocess, o.postprocess) }}</dd>
+      {% if o.quote.print_time_s %}
+      <dt>Печать</dt><dd>{{ '%.1f'|format(o.quote.print_time_s / 3600) }} ч и {{ '%.0f'|format(o.quote.material_g or 0) }} г на штуку;
+        {{ '%.1f'|format(o.quote.print_time_s / 3600 * o.qty) }} ч и {{ '%.0f'|format((o.quote.material_g or 0) * o.qty) }} г на тираж</dd>
+      {% endif %}
+      <dt>G-code</dt><dd>{% if has_gcode %}<a href="/admin/orders/{{ o.id }}/gcode">скачать</a>{% else %}<span class="muted">нет (расчёт делал не настоящий слайсер или файл удалён)</span>{% endif %}</dd>
+      <dt>Расчёт</dt><dd class="muted">{{ o.quote_id }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Из чего сложилась цена</h2>
+    <table class="lines">
+      {% for label, value in price_lines %}
+      <tr class="{% if loop.last %}total{% endif %}"><td class="wrap">{{ label }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+    </table>
+    <p class="muted" style="font-size:13px">Снимок на момент заказа: правка pricing.yaml его не меняет.</p>
+  </section>
+
+  <section>
+    <h2>Платежи ЮKassa</h2>
+    {% if not payments %}
+    <p class="muted">Онлайн-оплату не начинали.</p>
+    {% else %}
+    <table>
+      <thead><tr><th>Создан</th><th>Статус</th><th class="num">Сумма</th><th>Оплачен</th><th>id ЮKassa</th></tr></thead>
+      {% for p in payments %}
+      <tr>
+        <td>{{ p.created_at|dt }}</td>
+        <td>{{ p.status }}</td>
+        <td class="num">{{ p.amount|money }}</td>
+        <td>{{ p.paid_at|dt or '—' }}</td>
+        <td class="muted" style="font-size:12px">{{ p.yookassa_id }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

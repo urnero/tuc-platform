@@ -1,0 +1,7 @@
+# Общий Caddy (см. docker-compose.yml рядом). Сами домены — в sites/*.caddy,
+# их генерирует render-sites.sh из шаблона site.caddy.tmpl. Руками не править.
+{
+	email {$ACME_EMAIL}
+}
+
+import sites/*.caddy
