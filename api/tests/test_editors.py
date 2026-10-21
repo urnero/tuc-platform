@@ -1,5 +1,5 @@
 """Параметрические редакторы (B21): схема editor.yaml, проверка параметров, команда OpenSCAD,
-сборка STL, «Заказать» → загрузка, уборка сборок, настоящий редактор spacer."""
+сборка STL, «Заказать» → загрузка, уборка сборок, настоящие редакторы spacer и bracket."""
 
 import json
 import os
@@ -576,7 +576,7 @@ def test_cleanup_job_includes_builds(client, editors_dir, fake_openscad, monkeyp
     assert not folder.exists()
 
 
-# --- настоящий редактор spacer и настоящий OpenSCAD -------------------------------------
+# --- настоящие редакторы (spacer, bracket) и настоящий OpenSCAD ----------------------------
 
 
 @pytest.fixture
@@ -593,7 +593,8 @@ def test_repo_editors_are_valid(client, real_editors):
     r = client.get("/api/v1/editors")
     assert r.status_code == 200, r.text
     editors = r.json()["editors"]
-    assert "spacer" in [e["slug"] for e in editors]
+    slugs = [e["slug"] for e in editors]
+    assert slugs[:2] == ["spacer", "bracket"]  # order: 10, 20
     for card in editors:
         assert card["scad_ready"], f"у редактора {card['slug']} нет scad-файла"
         editor = ed.load_editor(card["slug"])
@@ -628,3 +629,70 @@ def test_spacer_with_real_openscad(client, real_editors, monkeypatch):
     assert bad.json()["detail"]["errors"] == {
         "inner_d": "Отверстие должно быть меньше внешнего диаметра."
     }
+
+
+def test_bracket_schema_and_checks(client, real_editors):
+    """Кронштейн (B22): схема формы и правила между параметрами — без OpenSCAD."""
+    editor = ed.load_editor("bracket")
+    assert editor.title == "Кронштейн / уголок"
+    assert [p.name for p in editor.params] == [
+        "length_a",
+        "length_b",
+        "width",
+        "thickness",
+        "hole_d",
+        "holes_a",
+        "holes_b",
+        "hole_type",
+        "rib",
+        "rounded",
+    ]
+    assert editor.param("holes_a").integer is True
+    assert dict(editor.param("hole_type").options) == {
+        "plain": "Обычные",
+        "countersunk": "Под потайной винт",
+    }
+    # отверстие шире полки
+    _, errors = validate_params(editor, {"width": 8, "hole_d": 8})
+    assert list(errors) == ["hole_d"]
+    # толщина не меньше длины полки
+    _, errors = validate_params(editor, {"length_b": 15, "thickness": 15})
+    assert list(errors) == ["thickness"]
+    # дробное число отверстий
+    _, errors = validate_params(editor, {"holes_a": 1.5})
+    assert errors == {"holes_a": "Нужно целое число."}
+    clean, errors = validate_params(editor, {"holes_b": "3", "thickness": "3,5"})
+    assert errors == {} and clean["holes_b"] == 3 and clean["thickness"] == 3.5
+
+
+@pytest.mark.skipif(shutil.which("openscad") is None, reason="нужен настоящий OpenSCAD")
+def test_bracket_with_real_openscad(client, real_editors, monkeypatch):
+    monkeypatch.setattr(settings, "openscad_bin", "openscad")
+
+    def build(params: dict) -> dict:
+        r = client.post("/api/v1/editors/bracket/builds", json={"params": params})
+        assert r.status_code == 202, r.text
+        record = r.json()
+        assert record["status"] == "done", record["error"]
+        assert record["mesh"]["watertight"] is True
+        return record["mesh"]
+
+    # Голый уголок без отверстий и косынок: объём считается руками.
+    # 50×25×4 (полка A) + 46×25×4 (полка B над ней) = 9600 мм³ = 9.6 см³.
+    m = build({"holes_a": 0, "holes_b": 0, "rib": False, "rounded": False})
+    assert m["bbox_mm"] == {"x": 50.0, "y": 25.0, "z": 50.0}
+    assert abs(m["volume_cm3"] - 9.6) < 0.01
+
+    # Умолчания: отверстия и косынки убавляют/прибавляют объём, габариты те же.
+    m = build({})
+    assert m["bbox_mm"] == {"x": 50.0, "y": 25.0, "z": 50.0}
+    assert 11.5 < m["volume_cm3"] < 12.5
+
+    # Потай срезает ещё немного материала.
+    sunk = build({"hole_type": "countersunk"})
+    assert sunk["volume_cm3"] < m["volume_cm3"]
+
+    # Отверстия, которые не помещаются на короткой полке, пропускаются — модель всё равно
+    # строится, а не ломается.
+    m = build({"length_a": 15, "length_b": 15, "thickness": 14, "holes_a": 4, "holes_b": 4})
+    assert m["bbox_mm"] == {"x": 15.0, "y": 25.0, "z": 15.0}
