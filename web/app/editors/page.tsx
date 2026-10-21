@@ -7,12 +7,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { type Editor, loadEditors } from "@/lib/editors";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/editors",
   title: "Редакторы деталей — 3D-печать по вашим размерам — ТУЦ",
   description:
     "Задайте размеры в форме — модель построится сразу, дальше расчёт печати, цена и заказ. Без CAD и без своей модели.",
-};
+});
 
 const CARD_BORDER = { borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" };
 

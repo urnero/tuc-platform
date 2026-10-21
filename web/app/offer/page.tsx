@@ -12,6 +12,7 @@ import { COMPANY, formatDocumentsDate, requisite } from "@/lib/company";
 export const metadata: Metadata = {
   title: "Публичная оферта — ТУЦ",
   description: "Условия заказа 3D-печати в студии ТУЦ: цена, оплата, сроки, доставка, качество и возврат.",
+  alternates: { canonical: "/offer" },
 };
 
 export default function OfferPage() {

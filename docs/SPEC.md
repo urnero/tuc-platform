@@ -82,7 +82,7 @@ users, models (uploaded / catalog / generated), model_files, quotes (расчё�
 - B22 done feat: редактор 1 — кронштейн/уголок (размеры, отверстия)
 - B23 done feat: редактор 2 — коробка/органайзер (размеры, ячейки, крышка)
 - B24 todo feat: редактор 3 — табличка/бирка с текстом
-- B25 todo feat: SEO-страницы редакторов (SSR, метатеги, sitemap)
+- B25 done feat: SEO-страницы редакторов (SSR, метатеги, sitemap)
 
 ### Этап 3 — кастомизация и B2B
 

@@ -12,6 +12,7 @@ import { COMPANY } from "@/lib/company";
 export const metadata: Metadata = {
   title: "О студии — ТУЦ",
   description: "Студия 3D-печати ТУЦ в Москве: FDM-печать по вашим моделям из PLA, PETG и ABS, расчёт цены онлайн.",
+  alternates: { canonical: "/about" },
 };
 
 const STEPS = [

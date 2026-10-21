@@ -14,6 +14,7 @@ import { COMPANY, formatDocumentsDate, requisite } from "@/lib/company";
 export const metadata: Metadata = {
   title: "Политика обработки персональных данных — ТУЦ",
   description: "Какие данные собирает сайт студии ТУЦ, зачем, кому передаёт и как их удалить.",
+  alternates: { canonical: "/policy" },
 };
 
 export default function PolicyPage() {

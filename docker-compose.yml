@@ -10,9 +10,14 @@ services:
       - api
 
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        # Адрес сайта попадает в HTML (canonical, sitemap.xml, robots.txt) — см. B25.
+        SITE_URL: ${SITE_URL:-http://localhost:8080}
     environment:
       API_INTERNAL_URL: http://api:8000
+      SITE_URL: ${SITE_URL:-http://localhost:8080}
     expose:
       - "3000"
 

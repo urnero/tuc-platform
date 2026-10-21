@@ -128,6 +128,12 @@ cd /srv/tuc/prod && docker compose up -d
   и `docker compose exec worker openscad --version`. Сборки лежат в `data/editors/<редактор>/<id>/` и чистятся
   ночной уборкой через `CLEANUP_UPLOADS_DAYS`. Новый редактор — папка `editors/<slug>/` с `editor.yaml` и `model.scad`
   по образцу `editors/spacer/`; после деплоя появится на `/editors` сам (yaml перечитывается без перезапуска).
+- **Поиск (SEO, B25)**: `https://<домен>/sitemap.xml` перечисляет все страницы, редакторы и модели каталога,
+  `https://<домен>/robots.txt` закрывает админку, API и личные страницы заказов. Адреса в них берутся из `SITE_URL`
+  в `.env` стенда — он попадает в образ web при сборке, поэтому после смены домена нужен `deploy.sh` (пересборка).
+  На staging (`staging.<домен>`) robots.txt закрывает сайт целиком — он не должен попасть в поиск.
+  Чтобы Яндекс и Google начали индексировать: в Яндекс Вебмастере и Google Search Console добавить сайт
+  и указать адрес sitemap. Новый редактор или модель каталога попадают в sitemap сами (не позже чем через 10 минут).
 - **SQL к базе прода** с сервера: `docker compose exec postgres psql -U tuc -d tuc`.
 - **Google-таблица учёта** (B11): worker каждую ночь в 05:05 МСК переписывает лист «Заказы (сайт)».
   Ключ сервисного аккаунта положить в `/srv/tuc/prod/secrets/google-sa.json` (`chmod 600`, папка в

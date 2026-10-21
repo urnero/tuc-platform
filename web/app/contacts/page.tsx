@@ -11,6 +11,7 @@ import { COMPANY, phoneUrl, requisite, telegramUrl } from "@/lib/company";
 export const metadata: Metadata = {
   title: "Контакты — ТУЦ",
   description: "Как связаться со студией 3D-печати ТУЦ в Москве и где забрать заказ.",
+  alternates: { canonical: "/contacts" },
 };
 
 export default function ContactsPage() {
