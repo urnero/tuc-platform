@@ -1,0 +1,120 @@
+# Редактор «Коробка / органайзер» (B23). Формат файла описан в editors/spacer/editor.yaml.
+#
+# Открытая коробка со скруглёнными углами, внутри — перегородки на ячейки, по желанию крышка.
+# Крышка — отдельная деталь в том же STL: лежит рядом с коробкой, печатаются за один раз.
+# Размеры задаются снаружи (как коробка встанет на полку), толщина стенок и дна — отдельно.
+
+title: Коробка / органайзер
+text: >
+  Коробка под мелочь, лоток в ящик стола, органайзер для винтов или бисера. Задайте внешние
+  размеры, стенки, число ячеек и крышку — модель построится сразу, дальше расчёт и заказ.
+material: PLA
+order: 30
+
+params:
+  - name: length
+    label: Длина (снаружи)
+    type: number
+    unit: мм
+    min: 20
+    max: 220
+    step: 1
+    default: 100
+    hint: Вдоль длинной стороны стола принтера, до 220 мм.
+  - name: width
+    label: Ширина (снаружи)
+    type: number
+    unit: мм
+    min: 20
+    max: 200
+    step: 1
+    default: 70
+  - name: height
+    label: Высота (снаружи)
+    type: number
+    unit: мм
+    min: 10
+    max: 150
+    step: 1
+    default: 40
+    hint: Высота коробки без крышки.
+  - name: wall
+    label: Толщина стенок
+    type: number
+    unit: мм
+    min: 1.2
+    max: 4
+    step: 0.4
+    default: 1.6
+    hint: Кратно ширине линии 0,4 мм. 1,2 мм — лёгкий лоток, 2 мм и больше — под нагрузку.
+  - name: floor_t
+    label: Толщина дна
+    type: number
+    unit: мм
+    min: 1
+    max: 4
+    step: 0.2
+    default: 1.6
+  - name: corner_r
+    label: Скругление углов
+    type: number
+    unit: мм
+    min: 0
+    max: 15
+    step: 0.5
+    default: 3
+    hint: 0 — прямые углы. Если скругление больше, чем позволяет размер, оно уменьшится само.
+  - name: cells_x
+    label: Ячеек по длине
+    type: number
+    unit: шт
+    min: 1
+    max: 8
+    step: 1
+    integer: true
+    default: 2
+    hint: 1 — без перегородок. Если ячейки выходят уже 5 мм, лишние перегородки пропускаются.
+  - name: cells_y
+    label: Ячеек по ширине
+    type: number
+    unit: шт
+    min: 1
+    max: 8
+    step: 1
+    integer: true
+    default: 1
+  - name: divider
+    label: Толщина перегородок
+    type: number
+    unit: мм
+    min: 0.8
+    max: 3
+    step: 0.4
+    default: 1.2
+    hint: Перегородки идут от дна до верха; под вкладную крышку они ниже на высоту её бортика.
+  - name: lid
+    label: Крышка
+    type: choice
+    options:
+      - { value: none, label: Без крышки }
+      - { value: inset, label: Вкладная — бортик входит внутрь коробки }
+      - { value: cap, label: Колпачок — надевается на коробку снаружи }
+    default: none
+    hint: >
+      Крышка печатается рядом с коробкой, в том же файле; вместе они должны помещаться
+      на стол принтера (250 × 210 мм). Бортик крышки — 4 мм.
+  - name: lid_gap
+    label: Зазор крышки
+    type: number
+    unit: мм
+    min: 0.1
+    max: 0.8
+    step: 0.1
+    default: 0.3
+    hint: На сторону. FDM печатает с допуском ±0,3 мм — если крышка сидит туго, увеличьте зазор.
+
+checks:
+  - rule: floor_t < height
+    message: Дно должно быть тоньше высоты коробки.
+  - rule: wall < width
+    message: Стенки должны быть тоньше ширины коробки.

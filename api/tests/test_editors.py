@@ -1,5 +1,5 @@
 """Параметрические редакторы (B21): схема editor.yaml, проверка параметров, команда OpenSCAD,
-сборка STL, «Заказать» → загрузка, уборка сборок, настоящие редакторы spacer и bracket."""
+сборка STL, «Заказать» → загрузка, уборка сборок, настоящие редакторы spacer, bracket, box."""
 
 import json
 import os
@@ -576,7 +576,7 @@ def test_cleanup_job_includes_builds(client, editors_dir, fake_openscad, monkeyp
     assert not folder.exists()
 
 
-# --- настоящие редакторы (spacer, bracket) и настоящий OpenSCAD ----------------------------
+# --- настоящие редакторы (spacer, bracket, box) и настоящий OpenSCAD ----------------------------
 
 
 @pytest.fixture
@@ -594,7 +594,7 @@ def test_repo_editors_are_valid(client, real_editors):
     assert r.status_code == 200, r.text
     editors = r.json()["editors"]
     slugs = [e["slug"] for e in editors]
-    assert slugs[:2] == ["spacer", "bracket"]  # order: 10, 20
+    assert slugs[:3] == ["spacer", "bracket", "box"]  # order: 10, 20, 30
     for card in editors:
         assert card["scad_ready"], f"у редактора {card['slug']} нет scad-файла"
         editor = ed.load_editor(card["slug"])
@@ -696,3 +696,88 @@ def test_bracket_with_real_openscad(client, real_editors, monkeypatch):
     # строится, а не ломается.
     m = build({"length_a": 15, "length_b": 15, "thickness": 14, "holes_a": 4, "holes_b": 4})
     assert m["bbox_mm"] == {"x": 15.0, "y": 25.0, "z": 15.0}
+
+
+def test_box_schema_and_checks(client, real_editors):
+    """Коробка (B23): схема формы и правила между параметрами — без OpenSCAD."""
+    editor = ed.load_editor("box")
+    assert editor.title == "Коробка / органайзер"
+    assert [p.name for p in editor.params] == [
+        "length",
+        "width",
+        "height",
+        "wall",
+        "floor_t",
+        "corner_r",
+        "cells_x",
+        "cells_y",
+        "divider",
+        "lid",
+        "lid_gap",
+    ]
+    assert editor.param("cells_x").integer is True
+    assert list(dict(editor.param("lid").options)) == ["none", "inset", "cap"]
+    # дно не тоньше высоты
+    _, errors = validate_params(editor, {"height": 10, "floor_t": 4})
+    assert errors == {}
+    _, errors = validate_params(editor, {"height": 10, "floor_t": 12})
+    assert list(errors) == ["floor_t"]
+    # дробное число ячеек и чужая крышка
+    _, errors = validate_params(editor, {"cells_y": 2.5, "lid": "hinge"})
+    assert set(errors) == {"cells_y", "lid"}
+    clean, errors = validate_params(editor, {"cells_x": "3", "wall": "2,0", "lid": "cap"})
+    assert errors == {} and clean["cells_x"] == 3 and clean["wall"] == 2.0
+
+
+@pytest.mark.skipif(shutil.which("openscad") is None, reason="нужен настоящий OpenSCAD")
+def test_box_with_real_openscad(client, real_editors, monkeypatch):
+    monkeypatch.setattr(settings, "openscad_bin", "openscad")
+
+    def build(params: dict) -> dict:
+        r = client.post("/api/v1/editors/box/builds", json={"params": params})
+        assert r.status_code == 202, r.text
+        record = r.json()
+        assert record["status"] == "done", record["error"]
+        assert record["mesh"]["watertight"] is True
+        return record["mesh"]
+
+    # Коробка без скруглений и перегородок: объём считается руками.
+    # 100×70×40 − (100−3,2)×(70−3,2)×(40−1,6) = 280 000 − 248 303,6 = 31 696 мм³.
+    m = build({"corner_r": 0, "cells_x": 1, "cells_y": 1})
+    assert m["bbox_mm"] == {"x": 100.0, "y": 70.0, "z": 40.0}
+    assert abs(m["volume_cm3"] - 31.696) < 0.01
+
+    # Умолчания: скругление чуть убавляет, перегородка прибавляет; габариты те же.
+    m = build({})
+    assert m["bbox_mm"] == {"x": 100.0, "y": 70.0, "z": 40.0}
+    assert 33 < m["volume_cm3"] < 36
+
+    # Вкладная крышка лежит рядом по Y (коробка не шире, чем длиннее): габарит по Y
+    # = ширина + 10 мм + ширина; по X крышка не выступает.
+    inset = build({"lid": "inset"})
+    assert inset["bbox_mm"] == {"x": 100.0, "y": 150.0, "z": 40.0}
+    assert inset["volume_cm3"] > m["volume_cm3"] + 10
+
+    # Колпачок больше коробки на зазор и стенку с каждой стороны: 100 + 2·0,3 + 2·1,6 = 103,8.
+    cap = build({"lid": "cap"})
+    assert cap["bbox_mm"] == {"x": 103.8, "y": 153.8, "z": 40.0}
+
+    # Коробка шире, чем длиннее → крышка ложится по X.
+    wide = build({"length": 30, "width": 120, "lid": "cap"})
+    assert wide["bbox_mm"]["x"] > 60 and wide["bbox_mm"]["y"] < 125
+
+    # Крошечная коробка с толстыми стенками: 8×8 ячеек не помещаются — лишние перегородки
+    # пропускаются, скругление 15 мм ужимается до размера; модель строится, а не ломается.
+    m = build(
+        {
+            "length": 20,
+            "width": 20,
+            "height": 10,
+            "wall": 4,
+            "floor_t": 4,
+            "corner_r": 15,
+            "cells_x": 8,
+            "cells_y": 8,
+        }
+    )
+    assert m["bbox_mm"] == {"x": 20.0, "y": 20.0, "z": 10.0}
