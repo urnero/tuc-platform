@@ -576,7 +576,7 @@ def test_cleanup_job_includes_builds(client, editors_dir, fake_openscad, monkeyp
     assert not folder.exists()
 
 
-# --- настоящие редакторы (spacer, bracket, box) и настоящий OpenSCAD ----------------------------
+# --- настоящие редакторы (spacer, bracket, box, label) и настоящий OpenSCAD -------------------
 
 
 @pytest.fixture
@@ -594,7 +594,7 @@ def test_repo_editors_are_valid(client, real_editors):
     assert r.status_code == 200, r.text
     editors = r.json()["editors"]
     slugs = [e["slug"] for e in editors]
-    assert slugs[:3] == ["spacer", "bracket", "box"]  # order: 10, 20, 30
+    assert slugs[:4] == ["spacer", "bracket", "box", "label"]  # order: 10, 20, 30, 40
     for card in editors:
         assert card["scad_ready"], f"у редактора {card['slug']} нет scad-файла"
         editor = ed.load_editor(card["slug"])
@@ -781,3 +781,96 @@ def test_box_with_real_openscad(client, real_editors, monkeypatch):
         }
     )
     assert m["bbox_mm"] == {"x": 20.0, "y": 20.0, "z": 10.0}
+
+
+def test_label_schema_and_checks(client, real_editors):
+    """Табличка (B24): схема формы и правила — без OpenSCAD."""
+    editor = ed.load_editor("label")
+    assert editor.title == "Табличка / бирка с текстом"
+    assert [p.name for p in editor.params] == [
+        "text",
+        "text2",
+        "font_size",
+        "font",
+        "bold",
+        "style",
+        "text_h",
+        "thickness",
+        "width",
+        "height",
+        "margin",
+        "corner_r",
+        "frame",
+        "hole",
+        "hole_d",
+    ]
+    assert editor.param("text").type == "text" and editor.param("text").maxlen == 30
+    assert editor.param("text2").default == ""
+    assert list(dict(editor.param("font").options)) == ["sans", "serif", "mono"]
+    assert list(dict(editor.param("style").options)) == ["raised", "engraved"]
+    assert list(dict(editor.param("hole").options)) == ["none", "left", "both"]
+    # глубина букв не меньше толщины — текст прорезал бы табличку
+    _, errors = validate_params(editor, {"thickness": 1, "text_h": 1})
+    assert list(errors) == ["text_h"]
+    # слишком длинная надпись и перенос строки
+    _, errors = validate_params(editor, {"text": "x" * 31, "text2": "две\nстроки"})
+    assert set(errors) == {"text", "text2"}
+    # кириллица, кавычки и пустая вторая строка — нормальный ввод
+    clean, errors = validate_params(editor, {"text": 'Ёжик "в" тумане', "text2": "", "width": "0"})
+    assert errors == {} and clean["text"] == 'Ёжик "в" тумане' and clean["width"] == 0
+
+
+def test_label_text_goes_to_openscad_quoted(tmp_path):
+    """Надпись уходит в OpenSCAD строкой в кавычках: кавычки и слэши экранированы."""
+    params = {"text": 'Ёжик "в" \\ 1', "bold": True}
+    cmd = build_command(tmp_path / "m.scad", tmp_path / "o.stl", params)
+    assert "-D" in cmd
+    assert cmd[cmd.index("-D") + 1] == 'text="Ёжик \\"в\\" \\\\ 1"'
+    assert "bold=true" in cmd
+
+
+@pytest.mark.skipif(shutil.which("openscad") is None, reason="нужен настоящий OpenSCAD")
+def test_label_with_real_openscad(client, real_editors, monkeypatch):
+    monkeypatch.setattr(settings, "openscad_bin", "openscad")
+
+    def build(params: dict) -> dict:
+        r = client.post("/api/v1/editors/label/builds", json={"params": params})
+        assert r.status_code == 202, r.text
+        record = r.json()
+        assert record["status"] == "done", record["error"]
+        assert record["mesh"]["watertight"] is True
+        return record["mesh"]
+
+    # Пустая табличка без надписи: поля 4 мм с каждой стороны, скругление не ломает модель.
+    # 8 × (8 + 10,5 высота строки) × 2 мм — объём чуть меньше из-за скруглённых углов.
+    m = build({"text": "", "text2": ""})
+    assert m["bbox_mm"]["x"] == 8.0 and m["bbox_mm"]["z"] == 2.0
+    assert 0.25 < m["volume_cm3"] < 0.3
+
+    # Умолчания «ТУЦ»: выпуклый текст поднимает высоту до 2 + 1 мм, ширина — по надписи.
+    m = build({})
+    assert m["bbox_mm"]["z"] == 3.0
+    assert 30 < m["bbox_mm"]["x"] < 45
+
+    # Углублённый текст не меняет габариты и убавляет объём по сравнению с плоской табличкой.
+    plain = build({"text": "ТУЦ", "style": "engraved", "width": 40, "height": 20, "corner_r": 0})
+    assert plain["bbox_mm"] == {"x": 40.0, "y": 20.0, "z": 2.0}
+    assert plain["volume_cm3"] < 1.6  # 40 × 20 × 2 = 1,6 см³ минус буквы
+
+    # Две строки, отверстие слева, рамка: табличка выше и шире (место под отверстие),
+    # кириллица и латиница в одной надписи.
+    m = build({"text": "Ключи от дачи", "text2": "Return to Girg", "hole": "left", "frame": True})
+    assert m["bbox_mm"]["y"] > 30 and m["bbox_mm"]["x"] > 90
+    assert m["bbox_mm"]["z"] == 3.0
+
+    # Заданный размер меньше, чем нужно тексту: буквы ужимаются, габарит — ровно заданный.
+    m = build({"text": "Очень длинная надпись", "width": 50, "height": 15})
+    assert m["bbox_mm"] == {"x": 50.0, "y": 15.0, "z": 3.0}
+
+    # Огромный шрифт: автоматическая ширина упирается в 250 мм (стол принтера), не больше.
+    m = build({"text": "ОСТОРОЖНО, ЗЛАЯ СОБАКА", "font_size": 40})
+    assert m["bbox_mm"]["x"] == 250.0
+
+    # Кавычки и слэш в надписи не ломают запуск OpenSCAD.
+    m = build({"text": 'Ёжик "в" \\ тумане', "font": "serif", "bold": False})
+    assert m["bbox_mm"]["z"] == 3.0
