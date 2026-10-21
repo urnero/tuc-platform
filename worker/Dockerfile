@@ -1,4 +1,4 @@
-# Worker: тот же код, что в api/, плюс PrusaSlicer CLI. Запускает фоновые задачи arq.
+# Worker: тот же код, что в api/, плюс PrusaSlicer CLI и OpenSCAD CLI. Запускает фоновые задачи arq.
 # Сборка идёт из корня репо: docker build -f worker/Dockerfile .
 FROM python:3.12-slim
 
@@ -7,11 +7,15 @@ ARG PRUSA_SLICER_URL=https://github.com/prusa3d/PrusaSlicer/releases/download/ve
 WORKDIR /srv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
-# Библиотеки, которые нужны AppImage PrusaSlicer даже в режиме командной строки.
+# Библиотеки, которые нужны AppImage PrusaSlicer даже в режиме командной строки,
+# плюс OpenSCAD из репозитория Debian для параметрических редакторов (B21) и шрифты
+# для text() в будущих редакторах с надписями (B24).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates \
         libgtk-3-0 libglu1-mesa libgl1 libegl1 libwebkit2gtk-4.0-37 libdbus-1-3 \
-    && rm -rf /var/lib/apt/lists/*
+        openscad fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && openscad --version
 
 # Качаем AppImage и распаковываем (FUSE в контейнере нет, поэтому --appimage-extract).
 RUN curl -fsSL -o /tmp/prusa.AppImage "$PRUSA_SLICER_URL" \
@@ -27,6 +31,7 @@ COPY api/pyproject.toml ./
 COPY api/app ./app
 RUN pip install --no-cache-dir .
 
-# profiles/ монтируется из корня репо (см. docker-compose: ./profiles:/srv/profiles)
+# profiles/ и editors/ монтируются из корня репо (см. docker-compose: ./profiles:/srv/profiles,
+# ./editors:/srv/editors). OPENSCAD_BIN по умолчанию «openscad» — он в PATH.
 
 CMD ["arq", "app.worker.WorkerSettings"]

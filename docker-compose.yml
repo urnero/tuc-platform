@@ -26,6 +26,7 @@ services:
       - ./config:/srv/config:ro
       - ./profiles:/srv/profiles:ro
       - ./catalog:/srv/catalog:ro   # каталог готовых моделей (B20): catalog.yaml + models/
+      - ./editors:/srv/editors:ro   # параметрические редакторы (B21): editor.yaml + model.scad
       - ./secrets:/srv/secrets:ro  # ключ Google (B11): secrets/google-sa.json, в git не попадает
     expose:
       - "8000"
@@ -36,7 +37,8 @@ services:
         condition: service_started
 
   worker:
-    # фоновые задачи: слайсинг (PrusaSlicer), ночной экспорт в Google-таблицу (B11), позже рендер
+    # фоновые задачи: слайсинг (PrusaSlicer), сборка моделей в редакторах (OpenSCAD, B21),
+    # ночной экспорт в Google-таблицу (B11), ночная чистка файлов (B15)
     build:
       context: .
       dockerfile: worker/Dockerfile
@@ -47,6 +49,7 @@ services:
       - ./data:/data
       - ./config:/srv/config:ro
       - ./profiles:/srv/profiles:ro
+      - ./editors:/srv/editors:ro
       - ./secrets:/srv/secrets:ro
     depends_on:
       redis:

@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # Пустой REDIS_URL = очереди нет, слайсим прямо в API (разработка и тесты).
     redis_url: str = "redis://localhost:6379/0"
 
+    # Параметрические редакторы (B21): editors/<slug>/editor.yaml + model.scad.
+    # В docker монтируется как /srv/editors. OpenSCAD стоит только в контейнере worker.
+    editors_dir: Path = Path("editors")
+    openscad_bin: str = "openscad"
+    openscad_timeout_s: int = 120  # сколько ждём OpenSCAD на одну модель
+
     database_url: str = "postgresql+psycopg://tuc:change_me@localhost:5432/tuc"
 
     telegram_bot_token: str = ""

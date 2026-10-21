@@ -22,7 +22,8 @@ PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 # Шаги воронки (B12) по порядку. Пишутся в `events` сервером в момент, когда шаг случился:
 # upload — клиент загрузил модель; quote — посчитал цену; order — оформил заказ;
 # payment_started — нажал «Оплатить» (создан платёж в ЮKassa); paid — оплата прошла.
-EVENT_NAMES = ("upload", "quote", "order", "payment_started", "paid")
+# editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
+EVENT_NAMES = ("upload", "quote", "order", "payment_started", "paid", "editor_build")
 
 
 def utcnow() -> datetime:

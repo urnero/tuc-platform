@@ -23,9 +23,18 @@ export type Upload = {
   /** В каких единицах координаты файла. Числа в mesh всегда в мм. */
   units: Units;
   mesh: MeshInfo;
-  /** «catalog» — копия модели из каталога (B20), сделанная кнопкой «Заказать». */
-  source?: "catalog";
+  /** «catalog» — копия модели из каталога (B20); «editor» — модель, построенная в редакторе (B21). */
+  source?: "catalog" | "editor";
   catalog?: { slug: string; title: string; material: string };
+  editor?: {
+    slug: string;
+    title: string;
+    material: string;
+    build_id: string;
+    params: Record<string, number | boolean | string>;
+    /** Параметры словами (считает API): «Внешний диаметр 20 мм, Форма: Круглая». */
+    summary: string;
+  };
 };
 
 /** Во сколько раз умножить координаты файла, чтобы получить мм. */

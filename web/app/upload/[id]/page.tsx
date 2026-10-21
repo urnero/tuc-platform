@@ -83,8 +83,11 @@ export default function ModelPage() {
 
   const m = upload.mesh;
   const fileUrl = `/api/v1/uploads/${upload.id}/file`;
-  // Модель из каталога (B20): назад — в каталог, единицы известны (мм), материал подставлен.
+  // Модель из каталога (B20) или редактора (B21): назад — туда, откуда пришли, единицы
+  // известны (мм), материал подставлен.
   const fromCatalog = upload.source === "catalog" && upload.catalog;
+  const fromEditor = upload.source === "editor" && upload.editor;
+  const knownUnits = fromCatalog || fromEditor;
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -96,6 +99,14 @@ export default function ModelPage() {
         >
           ← Назад к модели в каталоге
         </Link>
+      ) : fromEditor ? (
+        <Link
+          href={`/editors/${upload.editor!.slug}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад в редактор
+        </Link>
       ) : (
         <Link
           href="/upload"
@@ -106,8 +117,13 @@ export default function ModelPage() {
         </Link>
       )}
       <h1 className="text-2xl font-bold leading-tight">
-        {fromCatalog ? upload.catalog!.title : upload.original_name}
+        {fromCatalog ? upload.catalog!.title : fromEditor ? upload.editor!.title : upload.original_name}
       </h1>
+      {fromEditor && upload.editor!.summary && (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Параметры: {upload.editor!.summary}
+        </p>
+      )}
 
       <ModelViewer
         url={fileUrl}
@@ -144,7 +160,7 @@ export default function ModelPage() {
           </dd>
         </dl>
 
-        {!fromCatalog && (
+        {!knownUnits && (
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span style={{ color: "var(--muted)" }}>Единицы в файле:</span>
             <Toggle
@@ -174,7 +190,7 @@ export default function ModelPage() {
 
       <SliceCalc
         uploadId={upload.id}
-        defaultMaterial={fromCatalog ? upload.catalog!.material : "PLA"}
+        defaultMaterial={fromCatalog ? upload.catalog!.material : fromEditor ? upload.editor!.material : "PLA"}
       />
     </main>
   );

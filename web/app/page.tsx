@@ -55,6 +55,9 @@ export default async function Home() {
             <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
               Нет модели? Выберите в каталоге →
             </Link>
+            <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+              Или задайте размеры в редакторе →
+            </Link>
           </div>
         </div>
         <UploadDropzone idleText="Перетащите STL или 3MF сюда" />

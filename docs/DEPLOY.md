@@ -121,8 +121,13 @@ cd /srv/tuc/prod && docker compose up -d
 - **Бэкап** БД прода: каждую ночь в 03:15 в `/srv/tuc/backups/prod-ГГГГ-ММ-ДД.sql.gz`, 14 дней.
   Восстановить: `zcat файл.sql.gz | docker compose exec -T postgres psql -U tuc -d tuc`.
   Папку с моделями `/srv/tuc/prod/data/` бэкап не трогает — при переезде копируйте её отдельно.
-- **Цены, профили и каталог** (`config/pricing.yaml`, `profiles/`, `catalog/`) правятся в репозитории и приезжают деплоем.
+- **Цены, профили, каталог и редакторы** (`config/pricing.yaml`, `profiles/`, `catalog/`, `editors/`) правятся в репозитории и приезжают деплоем.
   На сервере файлы репозитория не править: `deploy.sh` делает `git reset --hard`, правки пропадут.
+- **Редакторы деталей** (B21): модели строит worker (в его образе есть OpenSCAD), поэтому страница редактора
+  без работающего worker покажет «В очереди…» и не дождётся — проверка: `docker compose logs worker | grep -i openscad`
+  и `docker compose exec worker openscad --version`. Сборки лежат в `data/editors/<редактор>/<id>/` и чистятся
+  ночной уборкой через `CLEANUP_UPLOADS_DAYS`. Новый редактор — папка `editors/<slug>/` с `editor.yaml` и `model.scad`
+  по образцу `editors/spacer/`; после деплоя появится на `/editors` сам (yaml перечитывается без перезапуска).
 - **SQL к базе прода** с сервера: `docker compose exec postgres psql -U tuc -d tuc`.
 - **Google-таблица учёта** (B11): worker каждую ночь в 05:05 МСК переписывает лист «Заказы (сайт)».
   Ключ сервисного аккаунта положить в `/srv/tuc/prod/secrets/google-sa.json` (`chmod 600`, папка в

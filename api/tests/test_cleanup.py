@@ -168,6 +168,7 @@ def test_no_uploads_dir(data_dir, session):
     assert report.to_dict() == {
         "checked": 0,
         "deleted": 0,
+        "editor_builds": 0,
         "freed_mb": 0,
         "no_order": 0,
         "orders_closed": 0,

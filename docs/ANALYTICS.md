@@ -9,7 +9,8 @@
 
 | `name` | Когда пишется | Ключ шага | Что в `props` |
 |---|---|---|---|
-| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug` |
+| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) или в редакторе (B21) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug`; из редактора — `source = "editor"`, `editor_slug`, `build_id` |
+| `editor_build` | клиент нажал «Построить модель» в редакторе (B21) — ещё до загрузки, поэтому не шаг воронки и в сводке админки не показывается | — (`props.build_id`) | `editor_slug`, `build_id`, `params`, `cached` (true — такие параметры уже строили, OpenSCAD не запускался) |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty` |
 | `payment_started` | клиент нажал «Оплатить», платёж в ЮKassa создан | `upload_id`, `order_id` | `amount`, `yookassa_id` |
@@ -131,4 +132,31 @@ from events e
 join events o on o.upload_id = e.upload_id and o.name = 'order'
 where e.name = 'upload' and e.props->>'source' = 'catalog'
 group by 1 order by 2 desc;
+```
+
+## Редакторы (B21)
+
+```sql
+-- Сколько раз строили модель в каждом редакторе и сколько из этого дошло до загрузки и заказа, за 30 дней.
+-- Сборку и загрузку связывает build_id: он есть в props у editor_build и у upload из редактора.
+with builds as (
+  select props->>'editor_slug' as editor, props->>'build_id' as build_id, count(*) as clicks
+  from events
+  where name = 'editor_build' and created_at > now() - interval '30 days'
+  group by 1, 2
+)
+select b.editor,
+       sum(b.clicks) as builds,
+       count(distinct u.upload_id) as uploads,
+       count(distinct o.upload_id) as orders
+from builds b
+left join events u on u.name = 'upload' and u.props->>'build_id' = b.build_id
+left join events o on o.name = 'order' and o.upload_id = u.upload_id
+group by 1 order by 2 desc;
+
+-- Какие параметры выбирают чаще (пример для редактора spacer: внешний диаметр).
+select props->'params'->>'outer_d' as outer_d, count(*) as builds
+from events
+where name = 'editor_build' and props->>'editor_slug' = 'spacer'
+group by 1 order by 2 desc limit 20;
 ```

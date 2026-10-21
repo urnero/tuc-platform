@@ -67,3 +67,14 @@ def fake_slicer(monkeypatch):
     monkeypatch.setattr(settings, "profiles_dir", REPO_ROOT / "profiles")
     monkeypatch.setattr(settings, "redis_url", "")
     return FAKE_SLICER
+
+
+FAKE_OPENSCAD = Path(__file__).resolve().parent / "fake_openscad.py"
+
+
+@pytest.fixture
+def fake_openscad(monkeypatch):
+    """Вместо OpenSCAD — tests/fake_openscad.py (пишет коробку); без Redis — строим в API."""
+    monkeypatch.setattr(settings, "openscad_bin", f"{sys.executable} {FAKE_OPENSCAD}")
+    monkeypatch.setattr(settings, "redis_url", "")
+    return FAKE_OPENSCAD
