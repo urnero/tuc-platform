@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     site_url: str = "http://localhost:8080"
     data_dir: Path = Path("./data")
     pricing_path: Path = Path("config/pricing.yaml")
+    # Каталог готовых моделей (B20): catalog.yaml + models/. В docker монтируется как /srv/catalog.
+    catalog_dir: Path = Path("catalog")
 
     # Загрузка моделей (B02)
     max_upload_mb: int = 100

@@ -48,9 +48,14 @@ export default async function Home() {
             FDM-печать из PLA, PETG и ABS по вашим STL/3MF. Цену считает сервер, оплата картой онлайн, статус заказа
             — по ссылке.{minOrder && <> {minOrder}.</>}
           </p>
-          <a href="#how" className="w-fit text-sm underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
-            Как это работает ↓
-          </a>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <a href="#how" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+              Как это работает ↓
+            </a>
+            <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+              Нет модели? Выберите в каталоге →
+            </Link>
+          </div>
         </div>
         <UploadDropzone idleText="Перетащите STL или 3MF сюда" />
       </section>
@@ -117,7 +122,7 @@ export default async function Home() {
 
       {/* Примеры работ / что печатаем */}
       <section className="flex flex-col gap-6">
-        <SectionTitle id="works" title={worksTitle(WORKS)} subtitle="Нет готовой модели? Напишите нам — подскажем, как подготовить файл." />
+        <SectionTitle id="works" title={worksTitle(WORKS)} subtitle="Нет своей модели? Посмотрите готовые в каталоге или напишите нам — подскажем, как подготовить файл." />
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {WORKS.map((w) => {
             const src = workImageUrl(w);

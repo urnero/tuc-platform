@@ -23,6 +23,9 @@ export type Upload = {
   /** В каких единицах координаты файла. Числа в mesh всегда в мм. */
   units: Units;
   mesh: MeshInfo;
+  /** «catalog» — копия модели из каталога (B20), сделанная кнопкой «Заказать». */
+  source?: "catalog";
+  catalog?: { slug: string; title: string; material: string };
 };
 
 /** Во сколько раз умножить координаты файла, чтобы получить мм. */

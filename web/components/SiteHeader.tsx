@@ -7,6 +7,7 @@ import Link from "next/link";
 import { COMPANY } from "@/lib/company";
 
 const LINKS = [
+  { href: "/catalog", label: "Каталог" },
   { href: "/#how", label: "Как это работает" },
   { href: "/#materials", label: "Материалы" },
   { href: "/contacts", label: "Контакты" },

@@ -24,7 +24,10 @@ import {
 const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[420px] items-center justify-center rounded-lg border" style={{ borderColor: "var(--muted)" }}>
+    <div
+      className="flex h-[420px] items-center justify-center rounded-lg border"
+      style={{ borderColor: "var(--muted)" }}
+    >
       Загружаем 3D-просмотр…
     </div>
   ),
@@ -40,7 +43,10 @@ export default function ModelPage() {
   useEffect(() => {
     fetch(`/api/v1/uploads/${id}`)
       .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 404 ? "Загрузка не найдена." : `Ошибка ${r.status}.`);
+        if (!r.ok)
+          throw new Error(
+            r.status === 404 ? "Загрузка не найдена." : `Ошибка ${r.status}.`,
+          );
         setUpload((await r.json()) as Upload);
       })
       .catch((e: Error) => setError(e.message));
@@ -77,19 +83,46 @@ export default function ModelPage() {
 
   const m = upload.mesh;
   const fileUrl = `/api/v1/uploads/${upload.id}/file`;
+  // Модель из каталога (B20): назад — в каталог, единицы известны (мм), материал подставлен.
+  const fromCatalog = upload.source === "catalog" && upload.catalog;
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
-      <Link href="/upload" className="text-sm" style={{ color: "var(--accent)" }}>
-        ← Загрузить другую модель
-      </Link>
-      <h1 className="text-2xl font-bold leading-tight">{upload.original_name}</h1>
+      {fromCatalog ? (
+        <Link
+          href={`/catalog/${upload.catalog!.slug}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад к модели в каталоге
+        </Link>
+      ) : (
+        <Link
+          href="/upload"
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Загрузить другую модель
+        </Link>
+      )}
+      <h1 className="text-2xl font-bold leading-tight">
+        {fromCatalog ? upload.catalog!.title : upload.original_name}
+      </h1>
 
-      <ModelViewer url={fileUrl} ext={upload.ext} scale={UNIT_SCALE[upload.units]} />
+      <ModelViewer
+        url={fileUrl}
+        ext={upload.ext}
+        scale={UNIT_SCALE[upload.units]}
+      />
 
-      <section className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+      <section
+        className="flex flex-col gap-4 rounded-lg border p-6"
+        style={{ borderColor: "var(--muted)" }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Габариты: {formatDims(m.bbox_mm, showUnits)}</h2>
+          <h2 className="text-lg font-semibold">
+            Габариты: {formatDims(m.bbox_mm, showUnits)}
+          </h2>
           <Toggle
             value={showUnits}
             onChange={setShowUnits}
@@ -111,18 +144,20 @@ export default function ModelPage() {
           </dd>
         </dl>
 
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span style={{ color: "var(--muted)" }}>Единицы в файле:</span>
-          <Toggle
-            value={upload.units}
-            onChange={(u) => void setFileUnits(u)}
-            labels={{ mm: "мм", inch: "дюймы" }}
-            disabled={saving}
-          />
-          {m.unit_hint === "maybe_inches" && upload.units === "mm" && (
-            <span>Модель очень маленькая — возможно, файл в дюймах?</span>
-          )}
-        </div>
+        {!fromCatalog && (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span style={{ color: "var(--muted)" }}>Единицы в файле:</span>
+            <Toggle
+              value={upload.units}
+              onChange={(u) => void setFileUnits(u)}
+              labels={{ mm: "мм", inch: "дюймы" }}
+              disabled={saving}
+            />
+            {m.unit_hint === "maybe_inches" && upload.units === "mm" && (
+              <span>Модель очень маленькая — возможно, файл в дюймах?</span>
+            )}
+          </div>
+        )}
 
         {m.warnings.length > 0 && (
           <ul className="flex flex-col gap-1 text-sm">
@@ -137,7 +172,10 @@ export default function ModelPage() {
         </p>
       </section>
 
-      <SliceCalc uploadId={upload.id} />
+      <SliceCalc
+        uploadId={upload.id}
+        defaultMaterial={fromCatalog ? upload.catalog!.material : "PLA"}
+      />
     </main>
   );
 }
@@ -157,7 +195,11 @@ function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="inline-flex overflow-hidden rounded-md border text-sm" style={{ borderColor: "var(--muted)" }} title={title}>
+    <div
+      className="inline-flex overflow-hidden rounded-md border text-sm"
+      style={{ borderColor: "var(--muted)" }}
+      title={title}
+    >
       {(["mm", "inch"] as Units[]).map((u) => (
         <button
           key={u}

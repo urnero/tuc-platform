@@ -9,7 +9,7 @@
 
 | `name` | Когда пишется | Ключ шага | Что в `props` |
 |---|---|---|---|
-| `upload` | клиент загрузил модель, файл принят и проверен | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings` |
+| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug` |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty` |
 | `payment_started` | клиент нажал «Оплатить», платёж в ЮKassa создан | `upload_id`, `order_id` | `amount`, `yookassa_id` |
@@ -112,3 +112,23 @@ order by s.created_at desc;
 2. В нужном месте кода — `track("имя", upload_id=…, order_id=…, props={…})` (`api/app/events.py`).
    Если под рукой есть сессия БД — передать `db=db`, событие уедет одной транзакцией с основной записью.
 3. Строку в таблицу выше и, если шаг нужен в сводке админки, — в `FUNNEL_KEY` и шаблон `admin/orders.html`.
+
+## Каталог против своих моделей (B20)
+
+```sql
+-- Сколько загрузок и заказов пришло из каталога, а сколько — по своим файлам, за 30 дней.
+select coalesce(e.props->>'source', 'own') as source,
+       count(distinct e.upload_id) as uploads,
+       count(distinct o.upload_id) as orders
+from events e
+left join events o on o.upload_id = e.upload_id and o.name = 'order'
+where e.name = 'upload' and e.created_at > now() - interval '30 days'
+group by 1;
+
+-- Какие модели каталога заказывают чаще.
+select e.props->>'catalog_slug' as model, count(*) as orders
+from events e
+join events o on o.upload_id = e.upload_id and o.name = 'order'
+where e.name = 'upload' and e.props->>'source' = 'catalog'
+group by 1 order by 2 desc;
+```

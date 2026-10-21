@@ -19,6 +19,7 @@
 - `api/` — Python 3.12, FastAPI, SQLAlchemy 2 + Alembic (таблицы `app/models.py`, миграции `alembic/versions/`), PostgreSQL 16, Redis + arq.
 - `web/` — Next.js 15 (App Router), TypeScript, Tailwind, Three.js (@react-three/fiber).
 - `worker/` — Dockerfile: код `api/` + PrusaSlicer CLI; задачи arq в `api/app/worker.py`. Профили слайсера — `profiles/`. OpenSCAD CLI (редакторы) добавится в B21.
+- Каталог готовых моделей — `catalog/catalog.yaml` + `catalog/models/` (B20), читает `api/app/catalog.py`; превью рисует `api/app/render.py`.
 - Бот — не отдельный пакет: aiogram 3 в `api/app/bot.py` (запуск `python -m app.bot`, сервис `bot` в compose из образа api). Тексты/кнопки и отправка из API — `api/app/telegram.py`.
 - Инфра: `docker-compose.yml` (caddy, web, api, worker, bot, postgres, redis) — локальный запуск. Сервер — `deploy/`: один VPS, стенды `/srv/tuc/prod` (main) и `/srv/tuc/staging` (dev), `compose.server.yml` поверх основного compose, общий Caddy с HTTPS в `deploy/edge`. Деплой — `.github/workflows/deploy.yml` после зелёного CI, по SSH запускает `deploy/deploy.sh`. Инструкция владельцу — `docs/DEPLOY.md`.
 - Ветки: `dev` — рабочая, ночные сборки пушат сюда. `main` — прод, сливает владелец через PR.

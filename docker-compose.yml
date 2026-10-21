@@ -25,6 +25,7 @@ services:
       - ./data:/data
       - ./config:/srv/config:ro
       - ./profiles:/srv/profiles:ro
+      - ./catalog:/srv/catalog:ro   # каталог готовых моделей (B20): catalog.yaml + models/
       - ./secrets:/srv/secrets:ro  # ключ Google (B11): secrets/google-sa.json, в git не попадает
     expose:
       - "8000"

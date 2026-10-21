@@ -121,7 +121,7 @@ cd /srv/tuc/prod && docker compose up -d
 - **Бэкап** БД прода: каждую ночь в 03:15 в `/srv/tuc/backups/prod-ГГГГ-ММ-ДД.sql.gz`, 14 дней.
   Восстановить: `zcat файл.sql.gz | docker compose exec -T postgres psql -U tuc -d tuc`.
   Папку с моделями `/srv/tuc/prod/data/` бэкап не трогает — при переезде копируйте её отдельно.
-- **Цены и профили** (`config/pricing.yaml`, `profiles/`) правятся в репозитории и приезжают деплоем.
+- **Цены, профили и каталог** (`config/pricing.yaml`, `profiles/`, `catalog/`) правятся в репозитории и приезжают деплоем.
   На сервере файлы репозитория не править: `deploy.sh` делает `git reset --hard`, правки пропадут.
 - **SQL к базе прода** с сервера: `docker compose exec postgres psql -U tuc -d tuc`.
 - **Google-таблица учёта** (B11): worker каждую ночь в 05:05 МСК переписывает лист «Заказы (сайт)».

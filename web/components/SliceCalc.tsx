@@ -36,10 +36,16 @@ const POLL_MS = 2000;
 
 const selectStyle = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
 
-export default function SliceCalc({ uploadId }: { uploadId: string }) {
+type Props = {
+  uploadId: string;
+  /** Материал, выбранный заранее (модель из каталога, B20). По умолчанию PLA. */
+  defaultMaterial?: string;
+};
+
+export default function SliceCalc({ uploadId, defaultMaterial = "PLA" }: Props) {
   const [materials, setMaterials] = useState<string[]>(["PLA", "PETG", "ABS"]);
   const [pricing, setPricing] = useState<Pricing | null>(null);
-  const [material, setMaterial] = useState("PLA");
+  const [material, setMaterial] = useState(defaultMaterial);
   const [supports, setSupports] = useState(false);
   const [qty, setQty] = useState(1);
   const [postprocess, setPostprocess] = useState("none");
