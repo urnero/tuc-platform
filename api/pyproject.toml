@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml>=6,<7",
     "python-multipart>=0.0.9,<1",
     "trimesh>=4.5,<6",
+    "manifold3d>=3.0,<4",  # булевы операции (объединить/вырезать) для тиснения (B30)
     "numpy>=1.26,<3",
     "lxml>=5,<7",
     "networkx>=3,<4",
@@ -40,7 +41,7 @@ build-backend = "setuptools.build_meta"
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["templates/**/*.html"]  # шаблоны админки (B09) едут в образ вместе с кодом
+app = ["templates/**/*.html", "scad/*.scad"]  # шаблоны админки (B09) и scad тиснения (B30)
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

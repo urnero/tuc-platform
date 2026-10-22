@@ -3,6 +3,7 @@
 /**
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
+ * блок «Надпись или логотип на модели» (B30, components/EmbossPanel.tsx),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx).
  */
 
@@ -10,6 +11,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import EmbossPanel from "@/components/EmbossPanel";
 import SliceCalc from "@/components/SliceCalc";
 import {
   formatBytes,
@@ -87,7 +89,8 @@ export default function ModelPage() {
   // известны (мм), материал подставлен.
   const fromCatalog = upload.source === "catalog" && upload.catalog;
   const fromEditor = upload.source === "editor" && upload.editor;
-  const knownUnits = fromCatalog || fromEditor;
+  const fromEmboss = upload.source === "emboss" && upload.emboss;
+  const knownUnits = fromCatalog || fromEditor || fromEmboss;
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -107,6 +110,14 @@ export default function ModelPage() {
         >
           ← Назад в редактор
         </Link>
+      ) : fromEmboss ? (
+        <Link
+          href={`/upload/${upload.emboss!.parent_id}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад к модели без тиснения
+        </Link>
       ) : (
         <Link
           href="/upload"
@@ -122,6 +133,11 @@ export default function ModelPage() {
       {fromEditor && upload.editor!.summary && (
         <p className="text-sm" style={{ color: "var(--muted)" }}>
           Параметры: {upload.editor!.summary}
+        </p>
+      )}
+      {fromEmboss && (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
         </p>
       )}
 
@@ -188,9 +204,17 @@ export default function ModelPage() {
         </p>
       </section>
 
+      <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
+
       <SliceCalc
         uploadId={upload.id}
-        defaultMaterial={fromCatalog ? upload.catalog!.material : fromEditor ? upload.editor!.material : "PLA"}
+        defaultMaterial={
+          fromCatalog
+            ? upload.catalog!.material
+            : fromEditor
+              ? upload.editor!.material
+              : (fromEmboss && upload.emboss!.material) || "PLA"
+        }
       />
     </main>
   );

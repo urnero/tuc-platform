@@ -9,8 +9,9 @@
 
 | `name` | Когда пишется | Ключ шага | Что в `props` |
 |---|---|---|---|
-| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) или в редакторе (B21) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug`; из редактора — `source = "editor"`, `editor_slug`, `build_id` |
+| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) или в редакторе (B21) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug`; из редактора — `source = "editor"`, `editor_slug`, `build_id`; у модели с тиснением (B30) — `source = "emboss"`, `parent_upload_id` (исходная загрузка), `job_id`, `kind` (text / logo), `style` (raised / engraved) |
 | `editor_build` | клиент нажал «Построить модель» в редакторе (B21) — ещё до загрузки, поэтому не шаг воронки и в сводке админки не показывается | — (`props.build_id`) | `editor_slug`, `build_id`, `params`, `cached` (true — такие параметры уже строили, OpenSCAD не запускался) |
+| `emboss_build` | клиент нажал «Нанести» на странице модели (B30) — тиснение надписи/логотипа; как и `editor_build`, не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `params` (kind, text, font, bold, size_mm, depth_mm, style, face, dx, dy, angle) |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty` |
 | `payment_started` | клиент нажал «Оплатить», платёж в ЮKassa создан | `upload_id`, `order_id` | `amount`, `yookassa_id` |
@@ -159,4 +160,31 @@ select props->'params'->>'outer_d' as outer_d, count(*) as builds
 from events
 where name = 'editor_build' and props->>'editor_slug' = 'spacer'
 group by 1 order by 2 desc limit 20;
+```
+
+## Тиснение (B30)
+
+```sql
+-- Сколько раз наносили надпись/логотип и сколько таких моделей дошло до заказа, за 30 дней.
+-- Нажатие «Нанести» (emboss_build) и новую загрузку (upload, source = emboss) связывает job_id.
+with builds as (
+  select props->'params'->>'kind' as kind, props->'params'->>'style' as style,
+         props->>'job_id' as job_id, count(*) as clicks
+  from events
+  where name = 'emboss_build' and created_at > now() - interval '30 days'
+  group by 1, 2, 3
+)
+select b.kind, b.style,
+       sum(b.clicks) as clicks,
+       count(distinct u.upload_id) as models,
+       count(distinct o.upload_id) as orders
+from builds b
+left join events u on u.name = 'upload' and u.props->>'source' = 'emboss' and u.props->>'job_id' = b.job_id
+left join events o on o.name = 'order' and o.upload_id = u.upload_id
+group by 1, 2 order by 3 desc;
+
+-- На какую грань наносят чаще.
+select props->'params'->>'face' as face, count(*) as clicks
+from events where name = 'emboss_build'
+group by 1 order by 2 desc;
 ```

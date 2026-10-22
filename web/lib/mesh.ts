@@ -23,8 +23,9 @@ export type Upload = {
   /** В каких единицах координаты файла. Числа в mesh всегда в мм. */
   units: Units;
   mesh: MeshInfo;
-  /** «catalog» — копия модели из каталога (B20); «editor» — модель, построенная в редакторе (B21). */
-  source?: "catalog" | "editor";
+  /** «catalog» — копия модели из каталога (B20); «editor» — модель, построенная в редакторе (B21);
+   *  «emboss» — копия другой загрузки с надписью или логотипом (B30). */
+  source?: "catalog" | "editor" | "emboss";
   catalog?: { slug: string; title: string; material: string };
   editor?: {
     slug: string;
@@ -34,6 +35,20 @@ export type Upload = {
     params: Record<string, number | boolean | string>;
     /** Параметры словами (считает API): «Внешний диаметр 20 мм, Форма: Круглая». */
     summary: string;
+  };
+  /** SVG-логотип, загруженный к модели для тиснения (B30). */
+  logo?: { name: string; size_bytes: number };
+  emboss?: {
+    /** Исходная загрузка, на которую нанесли тиснение, и её имя файла. */
+    parent_id: string;
+    parent_name: string;
+    job_id: string;
+    params: Record<string, number | boolean | string>;
+    /** Что нанесли, словами: «Надпись «ТУЦ» (без засечек, жирный) 10 мм, выпуклая 1 мм, спереди». */
+    summary: string;
+    warnings: string[];
+    /** Материал исходной модели из каталога/редактора, если был. */
+    material?: string | null;
   };
 };
 

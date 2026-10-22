@@ -4,6 +4,7 @@
 Задачи:
 - slice_upload — посчитать печать для загрузки (B04);
 - build_editor — построить STL в параметрическом редакторе через OpenSCAD (B21);
+- emboss_upload — нанести надпись/логотип на загруженную модель (B30): OpenSCAD + trimesh;
 - export_sheet — ночной экспорт заказов в Google-таблицу (B11), по расписанию cron;
 - cleanup_files — ночное удаление файлов моделей по срокам из политики ПДн (B15), cron.
 """
@@ -16,6 +17,7 @@ from arq.cron import cron
 from app.cleanup import cleanup_job
 from app.config import settings
 from app.editors import run_build
+from app.emboss import run_emboss
 from app.sheets import export_orders_job
 from app.slice_jobs import run_slice
 
@@ -28,6 +30,11 @@ async def slice_upload(ctx: dict, upload_id: str, material: str, supports: bool 
 async def build_editor(ctx: dict, slug: str, build_id: str) -> dict:
     """OpenSCAD — тоже отдельный процесс, ждём его в потоке."""
     return await asyncio.to_thread(run_build, slug, build_id)
+
+
+async def emboss_upload(ctx: dict, upload_id: str, job_id: str) -> dict:
+    """Тиснение: OpenSCAD строит надпись, trimesh соединяет её с моделью — всё в потоке."""
+    return await asyncio.to_thread(run_emboss, upload_id, job_id)
 
 
 async def export_sheet(ctx: dict) -> dict | None:
@@ -47,7 +54,7 @@ def redis_settings() -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [slice_upload, build_editor, export_sheet, cleanup_files]
+    functions = [slice_upload, build_editor, emboss_upload, export_sheet, cleanup_files]
     # Время — по часам контейнера (UTC), ночью по МСК, когда заказов уже не оформляют:
     # 01:35 UTC = 04:35 МСК — чистка файлов; 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу.
     cron_jobs = [

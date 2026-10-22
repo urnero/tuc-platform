@@ -23,7 +23,15 @@ PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 # upload — клиент загрузил модель; quote — посчитал цену; order — оформил заказ;
 # payment_started — нажал «Оплатить» (создан платёж в ЮKassa); paid — оплата прошла.
 # editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
-EVENT_NAMES = ("upload", "quote", "order", "payment_started", "paid", "editor_build")
+EVENT_NAMES = (
+    "upload",
+    "quote",
+    "order",
+    "payment_started",
+    "paid",
+    "editor_build",
+    "emboss_build",
+)
 
 
 def utcnow() -> datetime:

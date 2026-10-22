@@ -1,5 +1,5 @@
-"""Точка входа API: здоровье, загрузка и каталог моделей, редакторы, расчёт печати, цена, заказы,
-оплата."""
+"""Точка входа API: здоровье, загрузка и каталог моделей, редакторы, тиснение, расчёт печати,
+цена, заказы, оплата."""
 
 from fastapi import FastAPI
 
@@ -7,6 +7,7 @@ from app.admin import router as admin_router
 from app.catalog import router as catalog_router
 from app.config import settings
 from app.editors import router as editors_router
+from app.emboss import router as emboss_router
 from app.orders import router as orders_router
 from app.payments import router as payments_router
 from app.quotes import router as quotes_router
@@ -22,6 +23,7 @@ app.include_router(payments_router)
 app.include_router(admin_router)
 app.include_router(catalog_router)
 app.include_router(editors_router)
+app.include_router(emboss_router)
 
 
 @app.get("/health")
