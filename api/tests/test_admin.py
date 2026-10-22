@@ -151,6 +151,23 @@ def test_orders_csv(client, admin_on, pricing_file, fake_slicer, db):
     assert len(r.content.decode("utf-8-sig").splitlines()) == 1  # только заголовок
 
 
+def test_orders_csv_escapes_formulas(client, admin_on, pricing_file, fake_slicer, db):
+    """QA 2026-10-22: имя клиента «=HYPERLINK(...)» в CSV не должно стать формулой Excel."""
+    _order(client, name='=HYPERLINK("http://evil.example";"жми")')
+    text = client.get("/admin/orders.csv", headers=AUTH).content.decode("utf-8-sig")
+    header, row = text.splitlines()
+    cols = dict(zip(header.split(";"), next(csv.reader([row], delimiter=";")), strict=True))
+    assert cols["customer_name"].startswith("'=HYPERLINK")
+    assert cols["id"] == "1"  # числа и обычный текст не трогаем
+    assert cols["phone"] == "+79991234567"  # телефон с «+» — не формула
+
+    from app.admin import csv_safe
+
+    assert csv_safe("-2+3+cmd|' /C calc'!A0") == "'-2+3+cmd|' /C calc'!A0"
+    assert csv_safe("@SUM(A1)") == "'@SUM(A1)"
+    assert csv_safe("-5") == "-5" and csv_safe("") == "" and csv_safe(7) == 7
+
+
 # --- карточка, статус, файлы -------------------------------------------------------
 
 

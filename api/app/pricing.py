@@ -19,6 +19,7 @@
     594   # (50 г × 4 ₽ + 2 ч × 120 ₽) × 1.35 = 594 ₽; самовывоз, без постобработки
 """
 
+import math
 from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -208,7 +209,9 @@ def calc_price(
 
     postprocess_cost = pricing.postprocess[postprocess] * qty
     delivery_cost = pricing.delivery[delivery]
-    total = int(round(print_part + postprocess_cost + delivery_cost))
+    # До рубля «по-школьному»: 526,5 → 527. Встроенный round() округляет половинки
+    # к чётному (526,5 → 526) — для денег так не принято.
+    total = math.floor(print_part + postprocess_cost + delivery_cost + 0.5)
 
     r2 = lambda v: round(v, 2)  # noqa: E731 — короткая запись для сумм в ответе
     return Quote(

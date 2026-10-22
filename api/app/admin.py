@@ -258,6 +258,24 @@ def orders_page(
     )
 
 
+_PLAIN_NUMBER = re.compile(r"^[+-][\d\s().-]*$")  # «+7 999 123-45-67», «-5» — просто число
+
+
+def csv_safe(value: object) -> object:
+    """Защита от формул в CSV: Excel выполняет ячейки, начинающиеся с «=», «+», «-», «@»
+    (клиент может написать так имя или комментарий). Такие строки получают апостроф
+    впереди — Excel покажет их как текст. Числа, телефоны вида «+7…» и пустые строки
+    не трогаем. В Google-таблицу (app/sheets.py) значения идут как RAW — там формулы
+    не выполняются."""
+    if not isinstance(value, str) or not value:
+        return value
+    if value[0] in ("=", "@", "\t", "\r"):
+        return "'" + value
+    if value[0] in ("+", "-") and not _PLAIN_NUMBER.match(value):
+        return "'" + value
+    return value
+
+
 @router.get("/orders.csv", include_in_schema=False)
 def orders_csv(_: Admin, db: Db, status: str = "", q: str = "") -> Response:
     """Заказы по тем же фильтрам файлом CSV: разделитель «;», UTF-8 с BOM — Excel откроет сразу."""
@@ -267,7 +285,7 @@ def orders_csv(_: Admin, db: Db, status: str = "", q: str = "") -> Response:
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";", lineterminator="\n")
     w.writerow(COLUMNS)  # те же колонки, что в Google-таблице (app/export.py)
-    w.writerows(order_rows(db, orders))
+    w.writerows([csv_safe(v) for v in row] for row in order_rows(db, orders))
     stamp = (datetime.now(UTC) + MSK).strftime("%Y-%m-%d")
     return Response(
         "﻿" + buf.getvalue(),

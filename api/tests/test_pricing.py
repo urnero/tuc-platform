@@ -123,6 +123,15 @@ def test_calc_rounds_to_ruble(simple):
     assert isinstance(q.total, int)
 
 
+def test_calc_rounds_half_up(simple):
+    """QA 2026-10-22: 35,1 г × 10 ₽ × 1,5 = 526,5 → 527, а не 526 (round() к чётному)."""
+    q = calc_price(simple, material="PLA", material_g=35.1, print_time_s=0)
+    assert q.print_subtotal == 526.5
+    assert q.total == 527
+    q = calc_price(simple, material="PLA", material_g=35.1, print_time_s=0, qty=3)
+    assert q.print_subtotal == 1579.5 and q.total == 1580
+
+
 @pytest.mark.parametrize(
     "kwargs, text",
     [
