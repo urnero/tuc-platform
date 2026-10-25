@@ -9,6 +9,8 @@ GET  /api/v1/uploads/{id}/slice?material=PLA&supports=false
 GET  /api/v1/materials                 — список материалов для формы.
 
 Готовый расчёт не пересчитываем: тот же материал и поддержки → отдаём сохранённое.
+Исключение — единицы модели поменялись (PATCH /uploads/{id} {units}): запись для
+других единиц устарела, считаем заново.
 """
 
 from arq import create_pool
@@ -35,32 +37,36 @@ def list_materials() -> dict:
     return {"materials": list(MATERIALS)}
 
 
-async def _enqueue(request: Request, upload_id: str, material: str, supports: bool) -> None:
+async def _enqueue(
+    request: Request, upload_id: str, material: str, supports: bool, units: str
+) -> None:
     """Кладёт задачу в arq. Пул соединений с Redis держим один на процесс (в app.state)."""
     pool = getattr(request.app.state, "arq_pool", None)
     if pool is None:
         pool = await create_pool(redis_settings())
         request.app.state.arq_pool = pool
-    # _job_id — чтобы одна и та же загрузка не попала в очередь дважды
-    job_id = f"slice:{upload_id}:{material}:{supports}"
+    # _job_id — чтобы одна и та же загрузка не попала в очередь дважды.
+    # Единицы в id: после смены «мм → дюймы» это уже другой расчёт.
+    job_id = f"slice:{upload_id}:{material}:{supports}:{units}"
     await pool.enqueue_job("slice_upload", upload_id, material, supports, _job_id=job_id)
 
 
 @router.post("/uploads/{upload_id}/slice", status_code=202)
 async def create_slice(upload_id: str, body: SliceRequest, request: Request) -> dict:
-    load_meta(upload_id)  # 404, если загрузки нет
+    meta = load_meta(upload_id)  # 404, если загрузки нет
+    units = meta.get("units", "mm")
     try:
         key = slice_key(body.material, body.supports)
     except SlicerError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    record = load_record(upload_id, key)
+    record = load_record(upload_id, key, units=units)
     if record and record["status"] in ("queued", "running", "done"):
-        return record  # уже считаем или уже посчитали
+        return record  # уже считаем или уже посчитали (для текущих единиц)
 
-    record = save_record(upload_id, new_record(upload_id, body.material, body.supports))
+    record = save_record(upload_id, new_record(upload_id, body.material, body.supports, units))
     if settings.redis_url:
-        await _enqueue(request, upload_id, record["material"], body.supports)
+        await _enqueue(request, upload_id, record["material"], body.supports, units)
         return record
     # Без очереди — считаем здесь же. Для разработки и тестов, в проде так не делаем.
     return await run_in_threadpool(run_slice, upload_id, record["material"], body.supports)
@@ -68,11 +74,12 @@ async def create_slice(upload_id: str, body: SliceRequest, request: Request) -> 
 
 @router.get("/uploads/{upload_id}/slice")
 def get_slice(upload_id: str, material: str = "PLA", supports: bool = False) -> dict:
-    load_meta(upload_id)
+    meta = load_meta(upload_id)
     try:
-        record = load_record(upload_id, slice_key(material, supports))
+        key = slice_key(material, supports)
     except SlicerError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    record = load_record(upload_id, key, units=meta.get("units", "mm"))
     if record is None:
         raise HTTPException(status_code=404, detail="Расчёт ещё не запрашивали.")
     return record

@@ -187,3 +187,14 @@ def test_alembic_matches_models(tmp_path, monkeypatch):
     # откат тоже работает
     command.downgrade(cfg, "base")
     assert "orders" not in inspect(create_engine(url)).get_table_names()
+
+
+def test_create_order_after_units_change_404(client, pricing_file, fake_slicer, db):
+    """[ДЕНЬГИ] расчёт цены сделан в мм, потом клиент переключил «файл в дюймах» —
+    заказ по старому (в 16 000 раз заниженному) расчёту не оформить: его больше нет."""
+    quote = _quote(client)
+    r = client.patch(f"/api/v1/uploads/{quote['upload_id']}", json={"units": "inch"})
+    assert r.status_code == 200
+    r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
+    assert r.status_code == 404
+    assert "заново" in r.json()["detail"]

@@ -206,7 +206,10 @@ export default function ModelPage() {
 
       <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
 
+      {/* key: после смены «мм → дюймы» сервер удаляет старые расчёты печати и цены —
+          перерисовываем калькулятор с нуля, чтобы не показывать цену для старых единиц. */}
       <SliceCalc
+        key={upload.units}
         uploadId={upload.id}
         defaultMaterial={
           fromCatalog

@@ -18,6 +18,8 @@ export type SliceRecord = {
   key: string;
   material: string;
   supports: boolean;
+  /** Единицы модели (mm | inch), для которых посчитано; после смены единиц запись устаревает. */
+  units?: string;
   status: SliceStatus;
   created_at: string;
   finished_at: string | null;

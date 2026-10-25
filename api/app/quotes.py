@@ -79,7 +79,8 @@ def create_quote(upload_id: str, body: QuoteRequest) -> dict:
     except SlicerError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    record = load_record(upload_id, key)
+    # Расчёт печати должен быть для текущих единиц модели: после «мм → дюймы» старый не годится.
+    record = load_record(upload_id, key, units=meta.get("units", "mm"))
     if record is None or record["status"] != "done":
         status = record["status"] if record else "none"
         raise HTTPException(
@@ -106,6 +107,7 @@ def create_quote(upload_id: str, body: QuoteRequest) -> dict:
         "id": f"{upload_id}-{secrets.token_hex(3)}",
         "upload_id": upload_id,
         "original_name": meta.get("original_name"),
+        "units": meta.get("units", "mm"),  # единицы модели, по которым посчитаны граммы и часы
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "slice_key": key,
         **quote.to_dict(),

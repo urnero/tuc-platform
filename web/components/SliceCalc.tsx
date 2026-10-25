@@ -74,6 +74,8 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA" }: Props) 
     const timer = setTimeout(async () => {
       const r = await fetch(url);
       if (r.ok) setRecord((await r.json()) as SliceRecord);
+      // 404 — расчёта больше нет (например, поменяли единицы модели): возвращаем кнопку.
+      else if (r.status === 404) setRecord(null);
     }, POLL_MS);
     return () => clearTimeout(timer);
   }, [record, uploadId]);
