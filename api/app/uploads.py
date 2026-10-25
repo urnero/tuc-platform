@@ -17,13 +17,14 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config import settings
 from app.events import track
+from app.limits import uploads_guard
 from app.meshcheck import ALLOWED_EXT, UNITS, MeshError, inspect_file, inspect_mesh
 
 router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
@@ -78,7 +79,7 @@ async def _read_limited(file: UploadFile, limit_bytes: int) -> bytes:
     return b"".join(chunks)
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(uploads_guard)])
 async def create_upload(file: UploadFile) -> dict:
     original_name = _safe_name(file.filename)
     ext = _ext_of(original_name)

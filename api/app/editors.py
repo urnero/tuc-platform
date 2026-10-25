@@ -38,7 +38,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -46,6 +46,7 @@ from pydantic import BaseModel
 from app import jobs
 from app.config import settings
 from app.events import track
+from app.limits import uploads_guard
 from app.meshcheck import MeshError, inspect_file
 from app.openscad import OpenScadError, run_openscad
 from app.uploads import _save_meta, upload_dir
@@ -611,7 +612,9 @@ def get_build_file(slug: str, build_id: str) -> FileResponse:
     return FileResponse(path, media_type="application/octet-stream", filename=f"{editor.slug}.stl")
 
 
-@router.post("/{slug}/builds/{build_id}/upload", status_code=201)
+@router.post(
+    "/{slug}/builds/{build_id}/upload", status_code=201, dependencies=[Depends(uploads_guard)]
+)
 async def upload_from_build(slug: str, build_id: str) -> dict:
     """Кнопка «Заказать»: копируем построенный STL в обычную загрузку (как каталог, B20).
 

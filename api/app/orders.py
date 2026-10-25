@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.events import track
+from app.limits import orders_guard
 from app.models import ORDER_STATUSES, Order, Payment
 from app.quotes import load_quote
 from app.telegram import ACTIVE_STATUSES, STATUS_LABELS, notify_owner_new_order
@@ -100,7 +101,7 @@ class OrderCreate(BaseModel):
         return v
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(orders_guard)])
 def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict:
     if not body.consent:
         raise HTTPException(status_code=422, detail="Нужно согласие на обработку данных.")

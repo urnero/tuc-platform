@@ -31,6 +31,20 @@ def open_box_stl() -> bytes:
     return broken.export(file_type="stl")
 
 
+@pytest.fixture(autouse=True)
+def no_limits(monkeypatch):
+    """Ограничения частоты и проверка диска (app/limits.py) в обычных тестах выключены —
+    иначе сотни загрузок с одного «testclient» упёрлись бы в 429. Тесты лимитов включают их сами."""
+    from app.limits import limiter
+
+    monkeypatch.setattr(settings, "rate_limit_uploads_per_min", 0)
+    monkeypatch.setattr(settings, "rate_limit_orders_per_min", 0)
+    monkeypatch.setattr(settings, "min_free_disk_gb", 0)
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Каждый тест пишет файлы в свою временную папку."""

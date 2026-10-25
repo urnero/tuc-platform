@@ -29,12 +29,13 @@ from pathlib import Path
 
 import trimesh
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 
 from app.config import settings
 from app.events import track
+from app.limits import uploads_guard
 from app.meshcheck import ALLOWED_EXT, MeshError, MeshInfo, inspect_file
 from app.render import render_png
 from app.uploads import _save_meta, upload_dir
@@ -275,7 +276,7 @@ def get_model_file(slug: str) -> FileResponse:
     )
 
 
-@router.post("/{slug}/upload", status_code=201)
+@router.post("/{slug}/upload", status_code=201, dependencies=[Depends(uploads_guard)])
 async def upload_from_catalog(slug: str) -> dict:
     """Кнопка «Заказать»: делаем из модели каталога обычную загрузку.
 

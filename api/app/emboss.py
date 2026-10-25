@@ -40,7 +40,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from lxml import etree
 from pydantic import BaseModel
@@ -48,6 +48,7 @@ from pydantic import BaseModel
 from app import jobs
 from app.config import settings
 from app.events import track
+from app.limits import uploads_guard
 from app.meshcheck import UNITS, MeshError, inspect_file
 from app.openscad import OpenScadError, run_openscad
 from app.uploads import _save_meta, load_meta, upload_dir
@@ -548,7 +549,11 @@ def emboss_options() -> dict:
     }
 
 
-@router.post("/api/v1/uploads/{upload_id}/embosses", status_code=202)
+@router.post(
+    "/api/v1/uploads/{upload_id}/embosses",
+    status_code=202,
+    dependencies=[Depends(uploads_guard)],
+)
 async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -> dict:
     meta = load_meta(upload_id)
     params, errors = validate_params(body.params, has_logo=logo_path(upload_id).is_file())

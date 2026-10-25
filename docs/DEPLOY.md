@@ -153,6 +153,14 @@ cd /srv/tuc/prod && docker compose up -d
   `127.0.0.1:5433`, база `tuc`, пользователь `tuc_ro`. В Superset — «+ Database → PostgreSQL», тот же адрес
   (если Superset в Docker на ноутбуке — вместо `127.0.0.1` укажите `host.docker.internal`).
   Таблицы: `orders`, `payments`, `events` (воронка; готовые SQL — `docs/ANALYTICS.md`).
+- **Защита от цикла запросов и переполнения диска** (`api/app/limits.py`): с одного IP можно создать не больше
+  `RATE_LIMIT_UPLOADS_PER_MIN=10` загрузок (файл, «Заказать» из каталога и редактора, тиснение) и
+  `RATE_LIMIT_ORDERS_PER_MIN=5` заказов в минуту — дальше api отвечает 429 «Слишком много … подряд» и сайт показывает
+  это как ошибку. Если на диске с `data/` свободно меньше `MIN_FREE_DISK_GB=2`, новые загрузки получают 503
+  «На сервере закончилось место» — проверить `df -h /srv/tuc`, место освобождает ночная уборка (выше) или
+  `docker system prune` для старых образов. Лимиты правятся в `.env` стенда (0 = выключить), затем `docker compose up -d`.
+  Счётчик живёт в памяти api, перезапуск его обнуляет. Пачка 429 в `docker compose logs api` от одного адреса — чей-то скрипт,
+  а не клиент; при желании такой IP можно закрыть в Caddy (`deploy/edge/site.caddy.tmpl`, директива `@blocked remote_ip …` + `respond 403`).
 - **Добавить второй домен / сменить домен**: поправить `/srv/tuc/prod/deploy/edge/.env`
   и выполнить `bash /srv/tuc/prod/deploy/edge/render-sites.sh`.
 
