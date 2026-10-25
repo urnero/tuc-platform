@@ -372,7 +372,7 @@ def test_emboss_queued_with_redis(client, fake_openscad, monkeypatch):
     monkeypatch.setattr(settings, "redis_url", "redis://localhost:6379/0")
     calls = []
 
-    async def fake_enqueue(request, upload_id, job_id):
+    async def fake_enqueue(request, upload_id, job_id, attempt=0):
         calls.append((upload_id, job_id))
 
     monkeypatch.setattr(em, "_enqueue", fake_enqueue)

@@ -70,7 +70,9 @@ def new_record(upload_id: str, material: str, supports: bool, units: str = "mm")
         "supports": supports,
         "units": units,  # единицы модели на момент расчёта
         "status": "queued",
+        "attempt": 0,  # номер попытки; растёт, если прежняя задача была брошена (app/jobs.py)
         "created_at": _now(),
+        "started_at": None,  # когда worker взял задачу
         "finished_at": None,
         "error": None,
         "result": None,  # заполняется из SliceResult.to_dict()
@@ -81,7 +83,7 @@ def run_slice(upload_id: str, material: str, supports: bool = False) -> dict:
     """Сама работа: читает meta.json загрузки, зовёт слайсер, пишет результат в запись."""
     key = slice_key(material, supports)
     record = load_record(upload_id, key) or new_record(upload_id, material, supports)
-    record["status"] = "running"
+    record.update(status="running", started_at=_now())
     save_record(upload_id, record)
 
     folder = settings.data_dir / "uploads" / upload_id

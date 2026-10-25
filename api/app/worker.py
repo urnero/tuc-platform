@@ -11,13 +11,12 @@
 
 import asyncio
 
-from arq.connections import RedisSettings
 from arq.cron import cron
 
 from app.cleanup import cleanup_job
-from app.config import settings
 from app.editors import run_build
 from app.emboss import run_emboss
+from app.jobs import job_timeout_s, redis_settings
 from app.sheets import export_orders_job
 from app.slice_jobs import run_slice
 
@@ -47,12 +46,6 @@ async def cleanup_files(ctx: dict) -> dict:
     return await asyncio.to_thread(cleanup_job)
 
 
-def redis_settings() -> RedisSettings:
-    # Пустой REDIS_URL бывает только в разработке без очереди — воркер тогда не запускают,
-    # а API считает сам. Чтобы импорт модуля не падал, подставляем localhost.
-    return RedisSettings.from_dsn(settings.redis_url or "redis://localhost:6379/0")
-
-
 class WorkerSettings:
     functions = [slice_upload, build_editor, emboss_upload, export_sheet, cleanup_files]
     # Время — по часам контейнера (UTC), ночью по МСК, когда заказов уже не оформляют:
@@ -63,5 +56,6 @@ class WorkerSettings:
     ]
     redis_settings = redis_settings()
     max_jobs = 1  # слайсер грузит процессор целиком — по одной модели за раз
-    job_timeout = settings.slice_timeout_s + 60
+    # Таймаут задачи — там же, где API решает, что задача брошена (app/jobs.py).
+    job_timeout = job_timeout_s()
     keep_result = 3600

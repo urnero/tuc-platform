@@ -466,7 +466,7 @@ def test_build_queued_with_redis(client, editors_dir, fake_openscad, monkeypatch
     monkeypatch.setattr(settings, "redis_url", "redis://localhost:6379/0")
     calls = []
 
-    async def fake_enqueue(request, slug, build_id):
+    async def fake_enqueue(request, slug, build_id, attempt=0):
         calls.append((slug, build_id))
 
     monkeypatch.setattr(ed, "_enqueue", fake_enqueue)

@@ -43,6 +43,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from app import jobs
 from app.config import settings
 from app.events import track
 from app.meshcheck import MeshError, inspect_file
@@ -448,7 +449,9 @@ def new_build(editor: Editor, params: dict) -> dict:
         "editor": editor.slug,
         "params": params,
         "status": "queued",
+        "attempt": 0,  # номер попытки; растёт, если прежняя задача была брошена (app/jobs.py)
         "created_at": _now(),
+        "started_at": None,  # когда worker взял задачу
         "finished_at": None,
         "error": None,
         "mesh": None,  # MeshInfo.to_dict() после сборки
@@ -461,7 +464,7 @@ def run_build(slug: str, build_id: str) -> dict:
     record = load_build(slug, build_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Сборка не найдена.")
-    record["status"] = "running"
+    record.update(status="running", started_at=_now())
     save_build(record)
     try:
         editor = load_editor(slug)
@@ -527,7 +530,7 @@ def _editor_or_404(slug: str) -> Editor:
 
 
 def _build_or_404(slug: str, build_id: str) -> dict:
-    record = load_build(slug, build_id)
+    record = jobs.settle(load_build(slug, build_id), save_build)  # брошенная → error
     if record is None:
         raise HTTPException(status_code=404, detail="Сборка не найдена.")
     return record
@@ -551,17 +554,11 @@ def get_editor(slug: str) -> dict:
     return editor_card(_editor_or_404(slug))
 
 
-async def _enqueue(request: Request, slug: str, build_id: str) -> None:
-    """Кладёт задачу в arq (тот же пул Redis, что у слайсера — app.state.arq_pool)."""
-    from arq import create_pool
-
-    from app.worker import redis_settings
-
-    pool = getattr(request.app.state, "arq_pool", None)
-    if pool is None:
-        pool = await create_pool(redis_settings())
-        request.app.state.arq_pool = pool
-    await pool.enqueue_job("build_editor", slug, build_id, _job_id=f"editor:{slug}:{build_id}")
+async def _enqueue(request: Request, slug: str, build_id: str, attempt: int = 0) -> None:
+    """Кладёт задачу в arq (общий пул — app/jobs.py). attempt > 0 — повтор после брошенной
+    сборки, id задачи другой (см. jobs.retry_job_id)."""
+    job_id = jobs.retry_job_id(f"editor:{slug}:{build_id}", attempt)
+    await jobs.enqueue(request, "build_editor", slug, build_id, job_id=job_id)
 
 
 @router.post("/{slug}/builds", status_code=202)
@@ -572,7 +569,7 @@ async def create_build(slug: str, body: BuildRequest, request: Request) -> dict:
         raise HTTPException(status_code=422, detail={"errors": errors})
 
     build_id = build_id_for(editor, params)
-    record = load_build(slug, build_id)
+    record = jobs.settle(load_build(slug, build_id), save_build)  # брошенная → error
     cached = record is not None and record["status"] in ("queued", "running", "done")
     await run_in_threadpool(
         track,
@@ -582,9 +579,17 @@ async def create_build(slug: str, body: BuildRequest, request: Request) -> dict:
     if cached:
         return record  # уже строим или уже построили
 
-    record = save_build(new_build(editor, params))
+    attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
+    record = new_build(editor, params)
+    record["attempt"] = attempt
+    save_build(record)
     if settings.redis_url:
-        await _enqueue(request, slug, build_id)
+        try:
+            await _enqueue(request, slug, build_id, attempt)
+        except jobs.QueueUnavailable:
+            # В очередь не попало — записи быть не должно, иначе клиент ждал бы её вечно.
+            record_path(slug, build_id).unlink(missing_ok=True)
+            raise jobs.queue_unavailable() from None
         return record
     # Без очереди — строим здесь же (разработка и тесты; в проде OpenSCAD есть только в worker).
     return await run_in_threadpool(run_build, slug, build_id)

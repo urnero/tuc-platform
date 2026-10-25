@@ -45,6 +45,7 @@ from fastapi.concurrency import run_in_threadpool
 from lxml import etree
 from pydantic import BaseModel
 
+from app import jobs
 from app.config import settings
 from app.events import track
 from app.meshcheck import UNITS, MeshError, inspect_file
@@ -323,7 +324,9 @@ def new_job(upload_id: str, job_id: str, params: dict) -> dict:
         "upload_id": upload_id,
         "params": params,
         "status": "queued",
+        "attempt": 0,  # номер попытки; растёт, если прежняя задача была брошена (app/jobs.py)
         "created_at": _now(),
+        "started_at": None,  # когда worker взял задачу
         "finished_at": None,
         "error": None,
         "warnings": [],  # "merged_without_boolean" — выпуклое тиснение просто приложено
@@ -445,7 +448,7 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
     record = load_job(upload_id, job_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Сборка не найдена.")
-    record["status"] = "running"
+    record.update(status="running", started_at=_now())
     save_job(record)
     params = record["params"]
     try:
@@ -523,18 +526,11 @@ class EmbossRequest(BaseModel):
     params: dict = {}
 
 
-async def _enqueue(request: Request, upload_id: str, job_id: str) -> None:
-    from arq import create_pool
-
-    from app.worker import redis_settings
-
-    pool = getattr(request.app.state, "arq_pool", None)
-    if pool is None:
-        pool = await create_pool(redis_settings())
-        request.app.state.arq_pool = pool
-    await pool.enqueue_job(
-        "emboss_upload", upload_id, job_id, _job_id=f"emboss:{upload_id}:{job_id}"
-    )
+async def _enqueue(request: Request, upload_id: str, job_id: str, attempt: int = 0) -> None:
+    """Кладёт задачу в arq (общий пул — app/jobs.py). attempt > 0 — повтор после брошенной
+    задачи, id другой (см. jobs.retry_job_id)."""
+    arq_id = jobs.retry_job_id(f"emboss:{upload_id}:{job_id}", attempt)
+    await jobs.enqueue(request, "emboss_upload", upload_id, job_id, job_id=arq_id)
 
 
 @router.get("/api/v1/emboss/options")
@@ -560,7 +556,7 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
         raise HTTPException(status_code=422, detail={"errors": errors})
 
     job_id = job_id_for(upload_id, meta, params)
-    record = load_job(upload_id, job_id)
+    record = jobs.settle(load_job(upload_id, job_id), save_job)  # брошенная → error
     cached = record is not None and record["status"] in ("queued", "running", "done")
     await run_in_threadpool(
         track,
@@ -571,9 +567,17 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
     if cached:
         return record
 
-    record = save_job(new_job(upload_id, job_id, params))
+    attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
+    record = new_job(upload_id, job_id, params)
+    record["attempt"] = attempt
+    save_job(record)
     if settings.redis_url:
-        await _enqueue(request, upload_id, job_id)
+        try:
+            await _enqueue(request, upload_id, job_id, attempt)
+        except jobs.QueueUnavailable:
+            # В очередь не попало — записи быть не должно, иначе клиент ждал бы её вечно.
+            job_path(upload_id, job_id).unlink(missing_ok=True)
+            raise jobs.queue_unavailable() from None
         return record
     # Без очереди — строим здесь же (разработка и тесты; в проде OpenSCAD есть только в worker).
     return await run_in_threadpool(run_emboss, upload_id, job_id)
@@ -582,7 +586,7 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
 @router.get("/api/v1/uploads/{upload_id}/embosses/{job_id}")
 def get_emboss(upload_id: str, job_id: str) -> dict:
     load_meta(upload_id)
-    record = load_job(upload_id, job_id)
+    record = jobs.settle(load_job(upload_id, job_id), save_job)  # брошенная → error
     if record is None:
         raise HTTPException(status_code=404, detail="Сборка не найдена.")
     return record
