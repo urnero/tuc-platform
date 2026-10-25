@@ -103,3 +103,16 @@ def test_patch_bad_units_422(client):
 
 def test_patch_unknown_404(client):
     assert client.patch("/api/v1/uploads/" + "0" * 32, json={"units": "mm"}).status_code == 404
+
+
+def test_upload_3mf_zip_bomb_422(client):
+    """Zip-бомба под видом 3MF: маленький архив, внутри гигантский XML — 422, не OOM."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("3D/3dmodel.model", b" " * (4 * 1024 * 1024))
+    r = _post(client, "bomb.3mf", buf.getvalue())
+    assert r.status_code == 422, r.text
+    assert "3MF" in r.json()["detail"]

@@ -88,3 +88,77 @@ def test_inch_units_scale_everything():
 def test_bad_units_raise():
     with pytest.raises(MeshError):
         inspect_mesh(box_stl(), "stl", units="cm")
+
+
+# --- 3MF как zip: защита от zip-бомбы (BUG [БЕЗОПАСНОСТЬ]) ---
+
+
+def _zip_3mf(parts: dict[str, bytes]) -> bytes:
+    """Собирает zip с заданными файлами внутри — «3MF» для проверки защиты."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in parts.items():
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_3mf_bomb_high_ratio_rejected():
+    """Мегабайт пробелов сжимается в ~1 КБ (отношение ~1000×) — такой архив не распаковываем."""
+    bomb = _zip_3mf({"3D/3dmodel.model": b" " * (1024 * 1024)})
+    assert len(bomb) < 10 * 1024  # действительно «бомба»: маленький архив, большой внутри
+    with pytest.raises(MeshError, match="сжатие"):
+        inspect_mesh(bomb, "3mf")
+
+
+def test_3mf_too_big_unpacked_rejected(monkeypatch):
+    """Сумма размеров внутри архива больше лимита → отказ до trimesh (лимит занижен для теста)."""
+    import os
+
+    from app import meshcheck
+
+    monkeypatch.setattr(meshcheck, "MAX_3MF_UNPACKED_MB", 1)
+    # Случайные байты не сжимаются — отношение ~1×, срабатывает именно проверка размера.
+    big = _zip_3mf({"3D/3dmodel.model": os.urandom(2 * 1024 * 1024)})
+    with pytest.raises(MeshError, match="распакованном"):
+        inspect_mesh(big, "3mf")
+
+
+def test_3mf_too_many_entries_rejected(monkeypatch):
+    from app import meshcheck
+
+    monkeypatch.setattr(meshcheck, "MAX_3MF_ENTRIES", 5)
+    many = _zip_3mf({f"f{i}.xml": b"<a/>" for i in range(6)})
+    with pytest.raises(MeshError, match="много файлов"):
+        inspect_mesh(many, "3mf")
+
+
+def test_3mf_honest_archive_passes_check():
+    """Настоящий 3MF (из trimesh) проходит все три проверки без ошибок."""
+    from app.meshcheck import check_3mf_archive
+
+    check_3mf_archive(box_3mf())
+    assert inspect_mesh(box_3mf(), "3mf").bbox_mm == {"x": 20.0, "y": 30.0, "z": 40.0}
+
+
+def test_3mf_declared_size_is_what_python_unpacks():
+    """Опора защиты: Python при чтении обрезает запись по размеру из оглавления.
+
+    Подменяем в архиве объявленный размер на меньший и убеждаемся, что zipfile отдаёт
+    не больше объявленного (или ругается на CRC — тоже отказ) — значит, сумма file_size
+    из оглавления и есть верхняя граница того, что развернётся в памяти.
+    """
+    import io
+    import zipfile
+
+    raw = _zip_3mf({"3D/3dmodel.model": b"x" * 1000})
+    zf = zipfile.ZipFile(io.BytesIO(raw))
+    info = zf.infolist()[0]
+    info.file_size = 10  # «врём» в оглавлении
+    try:
+        data = zf.open(info).read()
+    except zipfile.BadZipFile:
+        return  # обрезал и не сошлась контрольная сумма — распаковка остановлена
+    assert len(data) <= 10
