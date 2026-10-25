@@ -7,6 +7,9 @@ POST /api/v1/uploads/{id}/quote         — body {material, supports, qty, postp
                                           и считает цену. Если печать ещё не посчитана — 409:
                                           сначала POST /uploads/{id}/slice.
 GET  /api/v1/quotes/{quote_id}          — сохранённый расчёт цены (его потом заказывает B06).
+                                          Расчёт действует QUOTE_TTL_HOURS (24 ч): цены в
+                                          pricing.yaml могли измениться. Старше — 410 Gone,
+                                          в ответе есть `expires_at`.
 
 Расчёты лежат файлами: DATA_DIR/uploads/<id>/quotes/<quote_id>.json. В B06 переедут в БД.
 """
@@ -14,7 +17,7 @@ GET  /api/v1/quotes/{quote_id}          — сохранённый расчёт 
 import json
 import re
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -61,6 +64,32 @@ def load_quote(quote_id: str) -> dict | None:
     if not path.is_file():
         return None
     return json.loads(path.read_text("utf-8"))
+
+
+def quote_expires_at(quote: dict) -> datetime | None:
+    """Когда расчёт перестаёт действовать: created_at + QUOTE_TTL_HOURS. None = без срока."""
+    if settings.quote_ttl_hours <= 0:
+        return None
+    created = quote.get("created_at")
+    if not created:
+        # Расчёт без даты (старый формат) считаем просроченным: цена по нему ненадёжна.
+        return datetime.fromtimestamp(0, UTC)
+    return datetime.fromisoformat(created) + timedelta(hours=settings.quote_ttl_hours)
+
+
+def quote_is_expired(quote: dict) -> bool:
+    expires = quote_expires_at(quote)
+    return expires is not None and datetime.now(UTC) >= expires
+
+
+def with_expiry(quote: dict) -> dict:
+    """Расчёт для ответа API: плюс `expires_at` (ISO, UTC) или null, если срока нет."""
+    expires = quote_expires_at(quote)
+    return quote | {"expires_at": expires.isoformat(timespec="seconds") if expires else None}
+
+
+def quote_expired_detail() -> str:
+    return f"Расчёт устарел (действует {settings.quote_ttl_hours} ч). Рассчитайте цену заново."
 
 
 @router.get("/pricing")
@@ -127,7 +156,7 @@ def create_quote(upload_id: str, body: QuoteRequest) -> dict:
             "total": quote.total,
         },
     )
-    return data
+    return with_expiry(data)
 
 
 @router.get("/quotes/{quote_id}")
@@ -135,4 +164,6 @@ def get_quote(quote_id: str) -> dict:
     quote = load_quote(quote_id)
     if quote is None:
         raise HTTPException(status_code=404, detail="Расчёт не найден.")
-    return quote
+    if quote_is_expired(quote):
+        raise HTTPException(status_code=410, detail=quote_expired_detail())
+    return with_expiry(quote)

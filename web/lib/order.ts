@@ -132,3 +132,16 @@ export function formatDate(iso: string): string {
     minute: "2-digit",
   });
 }
+
+/** Из id расчёта (`<upload_id>-<хвост>`) — id загрузки, чтобы вернуть клиента на страницу модели. */
+export function uploadIdFromQuote(quoteId: string): string | null {
+  const m = /^([0-9a-f]{32})-[0-9a-f]{6}$/.exec(quoteId);
+  return m ? m[1] : null;
+}
+
+/** Текст ошибки для страницы заказа, если расчёт не загрузился (GET /api/v1/quotes/{id}). */
+export function quoteLoadError(status: number): string {
+  if (status === 404) return "Расчёт не найден. Рассчитайте цену заново.";
+  if (status === 410) return "Расчёт устарел — он действует 24 часа, цены могли измениться. Рассчитайте цену заново.";
+  return `Ошибка ${status}.`;
+}

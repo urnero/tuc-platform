@@ -21,6 +21,7 @@ export type Quote = {
   upload_id: string;
   original_name?: string | null;
   created_at: string;
+  expires_at?: string | null; // до какого момента расчёт принимает заказ (null — без срока)
   currency: string;
   material: string;
   tech: string;

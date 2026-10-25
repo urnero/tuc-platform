@@ -11,7 +11,16 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
-import { EMPTY_FORM, needsAddress, type Order, type OrderForm, toRequest, validateForm } from "@/lib/order";
+import {
+  EMPTY_FORM,
+  needsAddress,
+  type Order,
+  type OrderForm,
+  quoteLoadError,
+  toRequest,
+  uploadIdFromQuote,
+  validateForm,
+} from "@/lib/order";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS, type Quote, quoteLines } from "@/lib/pricing";
 
 const fieldStyle = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
@@ -42,7 +51,7 @@ function NewOrder() {
     }
     fetch(`/api/v1/quotes/${encodeURIComponent(quoteId)}`)
       .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 404 ? "Расчёт не найден. Рассчитайте цену заново." : `Ошибка ${r.status}.`);
+        if (!r.ok) throw new Error(quoteLoadError(r.status));
         setQuote((await r.json()) as Quote);
       })
       .catch((e: Error) => setLoadError(e.message));
@@ -80,11 +89,13 @@ function NewOrder() {
   }
 
   if (loadError) {
+    // Расчёт устарел или не найден: ведём обратно к модели, если по id расчёта понятно, к какой.
+    const uploadId = uploadIdFromQuote(quoteId);
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
         <p role="alert">{loadError}</p>
-        <Link href="/upload" style={{ color: "var(--accent)" }}>
-          ← Загрузить модель
+        <Link href={uploadId ? `/upload/${uploadId}` : "/upload"} style={{ color: "var(--accent)" }}>
+          {uploadId ? "← К модели и расчёту цены" : "← Загрузить модель"}
         </Link>
       </main>
     );

@@ -1,5 +1,8 @@
 """Заказы (B06): телефон, создание заказа, страница статуса, миграции Alembic."""
 
+import json
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from alembic.config import Config
 from conftest import REPO_ROOT, box_stl
@@ -11,6 +14,7 @@ from app.db import Base
 from app.models import ORDER_STATUSES, Order
 from app.orders import PhoneError, normalize_phone
 from app.pricing import reload_pricing
+from app.quotes import quotes_dir
 
 PRICING_YAML = REPO_ROOT / "config" / "pricing.yaml"
 
@@ -93,9 +97,77 @@ def test_create_order_pickup(client, pricing_file, fake_slicer, db):
         row = conn.execute(select(Order.id, Order.phone, Order.total)).one()
     assert row == (1, "+79991234567", quote["total"])
 
-    # второй заказ получает следующий номер
-    r2 = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
+    # второй заказ (по новому расчёту) получает следующий номер
+    quote2 = _quote(client)
+    r2 = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote2["id"]})
     assert r2.status_code == 201 and r2.json()["id"] == 2
+
+
+def test_create_order_quote_used_once_409(client, pricing_file, fake_slicer):
+    """[ДЕНЬГИ] один расчёт — один заказ: повторная отправка формы с тем же quote_id → 409."""
+    quote = _quote(client)
+    r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
+    assert r.status_code == 201, r.text
+    r2 = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
+    assert r2.status_code == 409
+    assert "уже оформлен" in r2.json()["detail"]
+    # сам расчёт по-прежнему читается (страница заказа показывает его в снимке)
+    assert client.get(f"/api/v1/quotes/{quote['id']}").status_code == 200
+
+
+def _age_quote(quote: dict, hours: float) -> None:
+    """Подделать дату расчёта: будто он сделан `hours` часов назад."""
+    path = quotes_dir(quote["upload_id"]) / f"{quote['id']}.json"
+    data = json.loads(path.read_text("utf-8"))
+    data["created_at"] = (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="seconds")
+    path.write_text(json.dumps(data), "utf-8")
+
+
+def test_quote_has_expires_at(client, pricing_file, fake_slicer, monkeypatch):
+    monkeypatch.setattr(settings, "quote_ttl_hours", 24)
+    quote = _quote(client)
+    created = datetime.fromisoformat(quote["created_at"])
+    assert datetime.fromisoformat(quote["expires_at"]) == created + timedelta(hours=24)
+    got = client.get(f"/api/v1/quotes/{quote['id']}").json()
+    assert got["expires_at"] == quote["expires_at"]
+    # файл на диске срока не хранит — он считается от created_at при каждом чтении
+    path = quotes_dir(quote["upload_id"]) / f"{quote['id']}.json"
+    assert "expires_at" not in json.loads(path.read_text("utf-8"))
+
+
+def test_create_order_expired_quote_410(client, pricing_file, fake_slicer, monkeypatch):
+    """[ДЕНЬГИ] расчёт старше QUOTE_TTL_HOURS не принимает заказ: цены могли измениться."""
+    monkeypatch.setattr(settings, "quote_ttl_hours", 24)
+    quote = _quote(client)
+    _age_quote(quote, hours=23.5)  # ещё действует
+    assert client.get(f"/api/v1/quotes/{quote['id']}").status_code == 200
+
+    _age_quote(quote, hours=24.5)
+    r = client.get(f"/api/v1/quotes/{quote['id']}")
+    assert r.status_code == 410
+    assert "устарел" in r.json()["detail"] and "24 ч" in r.json()["detail"]
+    r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
+    assert r.status_code == 410
+    assert "заново" in r.json()["detail"]
+
+
+def test_quote_without_created_at_is_expired(client, pricing_file, fake_slicer):
+    """Старый файл расчёта без даты — считаем просроченным, а не вечным."""
+    quote = _quote(client)
+    path = quotes_dir(quote["upload_id"]) / f"{quote['id']}.json"
+    data = json.loads(path.read_text("utf-8"))
+    del data["created_at"]
+    path.write_text(json.dumps(data), "utf-8")
+    assert client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]}).status_code == 410
+
+
+def test_quote_ttl_zero_means_forever(client, pricing_file, fake_slicer, monkeypatch):
+    monkeypatch.setattr(settings, "quote_ttl_hours", 0)
+    quote = _quote(client)
+    assert quote["expires_at"] is None
+    _age_quote(quote, hours=24 * 400)
+    assert client.get(f"/api/v1/quotes/{quote['id']}").status_code == 200
+    assert client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]}).status_code == 201
 
 
 def test_create_order_courier_needs_address(client, pricing_file, fake_slicer):

@@ -6,9 +6,11 @@ import {
   isValidEmail,
   isValidPhone,
   needsAddress,
+  quoteLoadError,
   STATUS_LABELS,
   STATUS_STEPS,
   toRequest,
+  uploadIdFromQuote,
   validateForm,
 } from "./order";
 
@@ -100,5 +102,24 @@ describe("formatDate", () => {
   });
   it("непонятную строку возвращает как есть", () => {
     expect(formatDate("вчера")).toBe("вчера");
+  });
+});
+
+describe("uploadIdFromQuote", () => {
+  it("достаёт id загрузки из id расчёта", () => {
+    expect(uploadIdFromQuote("0123456789abcdef0123456789abcdef-a1b2c3")).toBe("0123456789abcdef0123456789abcdef");
+  });
+  it("возвращает null для мусора", () => {
+    expect(uploadIdFromQuote("")).toBeNull();
+    expect(uploadIdFromQuote("../etc/passwd")).toBeNull();
+    expect(uploadIdFromQuote("0123456789abcdef0123456789abcdef")).toBeNull();
+  });
+});
+
+describe("quoteLoadError", () => {
+  it("объясняет 404 и 410, остальное — кодом", () => {
+    expect(quoteLoadError(404)).toContain("не найден");
+    expect(quoteLoadError(410)).toContain("устарел");
+    expect(quoteLoadError(500)).toBe("Ошибка 500.");
   });
 });

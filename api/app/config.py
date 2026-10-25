@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     rate_limit_orders_per_min: int = 5
     # Если на диске с DATA_DIR свободно меньше, новые загрузки получают 503. 0 = не проверять.
     min_free_disk_gb: float = 2
+    # Сколько часов действует расчёт цены (quote). Старше — заказ по нему не оформить (410):
+    # цены в pricing.yaml могли измениться. 0 = без срока.
+    quote_ttl_hours: int = 24
 
     # Слайсинг (B04)
     profiles_dir: Path = Path("profiles")  # ini-профили PrusaSlicer: printer, print, filament/*

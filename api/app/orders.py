@@ -7,6 +7,8 @@ GET  /api/v1/orders/{token}    — заказ для страницы стату
                                   только клиент (token случайный), логина пока нет.
 
 Заказ — строка в таблице `orders` (app/models.py). Цена фиксируется снимком расчёта.
+Расчёт годится один раз и не дольше QUOTE_TTL_HOURS (24 ч): по просроченному — 410,
+по уже заказанному — 409, в обоих случаях клиенту нужно пересчитать цену (цены могли измениться).
 После создания заказа владельцу уходит сообщение в Telegram (B07, `app/telegram.py`) —
 в фоне, после ответа клиенту, чтобы сбой Telegram не ломал оформление.
 Оплата (B08) — `app/payments.py`: в ответе заказа есть блок `payment`
@@ -30,7 +32,7 @@ from app.db import get_db
 from app.events import track
 from app.limits import orders_guard
 from app.models import ORDER_STATUSES, Order, Payment
-from app.quotes import load_quote
+from app.quotes import load_quote, quote_expired_detail, quote_is_expired
 from app.telegram import ACTIVE_STATUSES, STATUS_LABELS, notify_owner_new_order
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
@@ -108,6 +110,16 @@ def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict
     quote = load_quote(body.quote_id)
     if quote is None:
         raise HTTPException(status_code=404, detail="Расчёт не найден. Рассчитайте цену заново.")
+    if quote_is_expired(quote):
+        raise HTTPException(status_code=410, detail=quote_expired_detail())
+    # Один расчёт — один заказ: иначе повторные отправки формы плодят дубли,
+    # а старый расчёт можно было бы заказывать бесконечно после смены цен.
+    if db.scalar(select(Order.id).where(Order.quote_id == quote["id"]).limit(1)) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="По этому расчёту заказ уже оформлен. "
+            "Для нового заказа рассчитайте цену заново.",
+        )
     if quote["delivery"] != "pickup" and not body.address:
         raise HTTPException(status_code=422, detail="Для доставки курьером нужен адрес.")
 
