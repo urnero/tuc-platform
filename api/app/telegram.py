@@ -204,7 +204,10 @@ def send_message(chat_id: str | int, text: str, reply_markup: dict | None = None
 
 # Имя бота (@username) для ссылки «Получать статусы в Telegram» (B34): спрашиваем у Telegram
 # один раз (getMe) и помним. Если Telegram не ответил — пробуем снова не раньше чем через 5 минут.
-_bot_username: dict = {"name": None, "checked_at": 0.0}
+# `checked_at` — время последней попытки (time.monotonic) или None, если ещё не спрашивали.
+# Именно None, а не 0: monotonic считает от загрузки системы, и на свежей машине (CI) она
+# меньше 5 минут — с нулём кэш думал бы, что «только что спрашивали», и не ходил в Telegram.
+_bot_username: dict = {"name": None, "checked_at": None}
 BOT_USERNAME_RETRY_S = 300
 
 
@@ -213,8 +216,11 @@ def bot_username() -> str | None:
     if not settings.telegram_bot_token:
         return None
     cache = _bot_username
-    if cache["name"] or time.monotonic() - cache["checked_at"] < BOT_USERNAME_RETRY_S:
+    if cache["name"]:
         return cache["name"]
+    asked_at = cache["checked_at"]
+    if asked_at is not None and time.monotonic() - asked_at < BOT_USERNAME_RETRY_S:
+        return None  # недавно не ответил — не дёргаем Telegram снова
     cache["checked_at"] = time.monotonic()
     try:
         r = httpx.get(f"{TG_API}/bot{settings.telegram_bot_token}/getMe", timeout=10)
@@ -229,7 +235,7 @@ def bot_username() -> str | None:
 
 def forget_bot_username() -> None:
     """Сбросить кэш getMe (для тестов и смены токена)."""
-    _bot_username.update(name=None, checked_at=0.0)
+    _bot_username.update(name=None, checked_at=None)
 
 
 def notify_owner_new_order(order: dict) -> bool:

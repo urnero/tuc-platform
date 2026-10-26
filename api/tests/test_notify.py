@@ -236,6 +236,23 @@ def test_bot_username_failure_is_cached(monkeypatch):
     assert tg.bot_username() is None
 
 
+def test_bot_username_asks_on_fresh_machine(monkeypatch):
+    """Сразу после загрузки системы time.monotonic() меньше 5 минут (так на CI). Кэш «ещё не
+    спрашивали» не должен принимать это за «только что спрашивали» — getMe должен уйти."""
+    monkeypatch.setattr(settings, "telegram_bot_token", "123:ABC")
+    monkeypatch.setattr(tg.time, "monotonic", lambda: 42.0)  # машина работает 42 секунды
+    calls = []
+
+    def fake_get(url, timeout=None):
+        calls.append(url)
+        return httpx.Response(200, json={"ok": True, "result": {"username": "tuc_print_bot"}})
+
+    monkeypatch.setattr(tg.httpx, "get", fake_get)
+    tg.forget_bot_username()
+    assert tg.bot_username() == "tuc_print_bot"
+    assert len(calls) == 1
+
+
 # --- бот: /start <token> и /stop --------------------------------------------------
 
 
