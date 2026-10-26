@@ -4,6 +4,7 @@
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
  * блок «Надпись или логотип на модели» (B30, components/EmbossPanel.tsx),
+ * блок «Раскраска по частям» (B31, components/PaintPanel.tsx),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx).
  */
 
@@ -12,6 +13,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import EmbossPanel from "@/components/EmbossPanel";
+import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
 import {
   formatBytes,
@@ -90,7 +92,8 @@ export default function ModelPage() {
   const fromCatalog = upload.source === "catalog" && upload.catalog;
   const fromEditor = upload.source === "editor" && upload.editor;
   const fromEmboss = upload.source === "emboss" && upload.emboss;
-  const knownUnits = fromCatalog || fromEditor || fromEmboss;
+  const fromPaint = upload.source === "paint" && upload.paint;
+  const knownUnits = fromCatalog || fromEditor || fromEmboss || fromPaint;
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -118,6 +121,14 @@ export default function ModelPage() {
         >
           ← Назад к модели без тиснения
         </Link>
+      ) : fromPaint ? (
+        <Link
+          href={`/upload/${upload.paint!.parent_id}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад к модели без раскраски
+        </Link>
       ) : (
         <Link
           href="/upload"
@@ -140,11 +151,31 @@ export default function ModelPage() {
           Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
         </p>
       )}
+      {fromPaint && (
+        <div className="flex flex-col gap-2 text-sm" style={{ color: "var(--muted)" }}>
+          <p>
+            Это копия модели «{upload.paint!.parent_name}» в цветах: {upload.paint!.summary}.
+          </p>
+          <ul className="flex flex-wrap gap-3">
+            {upload.paint!.colors.map((c) => (
+              <li key={c.key} className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="inline-block h-4 w-4 rounded-full border"
+                  style={{ background: c.hex, borderColor: "var(--muted)" }}
+                />
+                {c.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ModelViewer
         url={fileUrl}
         ext={upload.ext}
         scale={UNIT_SCALE[upload.units]}
+        keepMaterials={Boolean(fromPaint)}
       />
 
       <section
@@ -204,7 +235,23 @@ export default function ModelPage() {
         </p>
       </section>
 
-      <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
+      {/* Раскрашенную модель (3MF с цветами) не тисним и не красим заново: тиснение склеило бы
+          детали в одну и потеряло цвета. Хотите иначе — вернитесь к исходной модели. */}
+      {fromPaint ? (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Изменить цвета или добавить надпись можно на{" "}
+          <Link href={`/upload/${upload.paint!.parent_id}`} style={{ color: "var(--accent)" }}>
+            исходной модели
+          </Link>
+          .
+        </p>
+      ) : (
+        <>
+          <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
+          {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
+          <PaintPanel key={upload.units} uploadId={upload.id} />
+        </>
+      )}
 
       {/* key: после смены «мм → дюймы» сервер удаляет старые расчёты печати и цены —
           перерисовываем калькулятор с нуля, чтобы не показывать цену для старых единиц. */}
@@ -216,7 +263,9 @@ export default function ModelPage() {
             ? upload.catalog!.material
             : fromEditor
               ? upload.editor!.material
-              : (fromEmboss && upload.emboss!.material) || "PLA"
+              : (fromEmboss && upload.emboss!.material) ||
+                (fromPaint && upload.paint!.material) ||
+                "PLA"
         }
       />
     </main>

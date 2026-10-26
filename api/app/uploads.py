@@ -4,7 +4,8 @@ POST /api/v1/uploads          — принять STL/3MF (≤ MAX_UPLOAD_MB), п
 GET  /api/v1/uploads/{id}     — данные загрузки (габариты, объём, предупреждения).
 GET  /api/v1/uploads/{id}/file — сам файл (нужен 3D-просмотру в браузере, B03).
 PATCH /api/v1/uploads/{id}    — клиент говорит, в каких единицах файл (mm | inch); пересчитываем
-                                габариты и удаляем старые расчёты печати и цены (slices/, quotes/).
+                                габариты и удаляем старые расчёты печати и цены (slices/, quotes/)
+                                и разборку на детали для раскраски (paint/).
 
 Хранение: DATA_DIR/uploads/<id>/model.<ext> + meta.json.
 БД появится в B06 вместе с заказами — тогда meta.json переедет в таблицу models.
@@ -160,7 +161,8 @@ async def patch_upload(upload_id: str, patch: UploadPatch) -> dict:
     # Расчёты печати (граммы, часы, G-code) и цены сделаны для старых единиц —
     # в дюймах модель в 25,4³ ≈ 16 000 раз больше. Удаляем, клиент посчитает заново.
     # Заказы не страдают: у заказа свой снимок расчёта в БД (колонка orders.quote).
-    for sub in ("slices", "quotes"):
+    # Разборка на детали для раскраски (B31) тоже сделана в старых единицах.
+    for sub in ("slices", "quotes", "paint"):
         shutil.rmtree(upload_dir(upload_id) / sub, ignore_errors=True)
     return meta
 

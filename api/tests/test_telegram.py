@@ -85,6 +85,14 @@ def test_order_card_courier_address(session):
     assert "курьер по Москве — Тверская, 1" in tg.order_card(o)
 
 
+def test_order_card_decor_line(session):
+    """Раскраска по частям (B31) / тиснение (B30) — строка «Оформление» из снимка расчёта."""
+    quote = QUOTE | {"decor": "Деталь 1 — красный, Деталь 2 — <синий>"}
+    o = make_order(session, quote=quote).to_dict()
+    assert "Оформление: Деталь 1 — красный, Деталь 2 — &lt;синий&gt;" in tg.order_card(o)
+    assert "Оформление" not in tg.order_card(make_order(session).to_dict())
+
+
 def test_fmt_money():
     assert tg.fmt_money(900) == "900 ₽"
     assert tg.fmt_money(12345.4) == "12 345 ₽"

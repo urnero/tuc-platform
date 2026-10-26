@@ -23,6 +23,7 @@ PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 # upload — клиент загрузил модель; quote — посчитал цену; order — оформил заказ;
 # payment_started — нажал «Оплатить» (создан платёж в ЮKassa); paid — оплата прошла.
 # editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
+# emboss_build / paint_build — тоже не шаги: клиент запустил тиснение (B30) / раскраску (B31).
 EVENT_NAMES = (
     "upload",
     "quote",
@@ -31,6 +32,7 @@ EVENT_NAMES = (
     "paid",
     "editor_build",
     "emboss_build",
+    "paint_build",
 )
 
 

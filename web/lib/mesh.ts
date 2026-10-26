@@ -24,8 +24,9 @@ export type Upload = {
   units: Units;
   mesh: MeshInfo;
   /** «catalog» — копия модели из каталога (B20); «editor» — модель, построенная в редакторе (B21);
-   *  «emboss» — копия другой загрузки с надписью или логотипом (B30). */
-  source?: "catalog" | "editor" | "emboss";
+   *  «emboss» — копия другой загрузки с надписью или логотипом (B30);
+   *  «paint» — копия другой загрузки, детали покрашены в свои цвета, 3MF (B31). */
+  source?: "catalog" | "editor" | "emboss" | "paint";
   catalog?: { slug: string; title: string; material: string };
   editor?: {
     slug: string;
@@ -48,6 +49,20 @@ export type Upload = {
     summary: string;
     warnings: string[];
     /** Материал исходной модели из каталога/редактора, если был. */
+    material?: string | null;
+  };
+  paint?: {
+    /** Исходная загрузка, которую раскрасили, и её имя файла. */
+    parent_id: string;
+    parent_name: string;
+    job_id: string;
+    /** Детали по порядку с выбранным цветом. */
+    parts: { name: string; color: string; color_name: string; hex: string }[];
+    /** Разные цвета, которые использованы. */
+    colors: { key: string; name: string; hex: string }[];
+    /** Словами: «Деталь 1 — красный, Деталь 2 — синий» или «вся модель — красный». */
+    summary: string;
+    /** Материал исходной модели из каталога/редактора/тиснения, если был. */
     material?: string | null;
   };
 };

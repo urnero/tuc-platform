@@ -5,6 +5,7 @@
 - slice_upload — посчитать печать для загрузки (B04);
 - build_editor — построить STL в параметрическом редакторе через OpenSCAD (B21);
 - emboss_upload — нанести надпись/логотип на загруженную модель (B30): OpenSCAD + trimesh;
+- paint_upload — собрать 3MF с деталями модели в выбранных цветах (B31): trimesh;
 - export_sheet — ночной экспорт заказов в Google-таблицу (B11), по расписанию cron;
 - cleanup_files — ночное удаление файлов моделей по срокам из политики ПДн (B15), cron.
 """
@@ -17,6 +18,7 @@ from app.cleanup import cleanup_job
 from app.editors import run_build
 from app.emboss import run_emboss
 from app.jobs import job_timeout_s, redis_settings
+from app.paint import run_paint
 from app.sheets import export_orders_job
 from app.slice_jobs import run_slice
 
@@ -36,6 +38,11 @@ async def emboss_upload(ctx: dict, upload_id: str, job_id: str) -> dict:
     return await asyncio.to_thread(run_emboss, upload_id, job_id)
 
 
+async def paint_upload(ctx: dict, upload_id: str, job_id: str) -> dict:
+    """Раскраска по частям: trimesh режет модель на детали и пишет 3MF — в потоке."""
+    return await asyncio.to_thread(run_paint, upload_id, job_id)
+
+
 async def export_sheet(ctx: dict) -> dict | None:
     """Переписать лист заказов в Google-таблице (app/sheets.py). Без ключей — пропуск."""
     return await asyncio.to_thread(export_orders_job)
@@ -47,7 +54,14 @@ async def cleanup_files(ctx: dict) -> dict:
 
 
 class WorkerSettings:
-    functions = [slice_upload, build_editor, emboss_upload, export_sheet, cleanup_files]
+    functions = [
+        slice_upload,
+        build_editor,
+        emboss_upload,
+        paint_upload,
+        export_sheet,
+        cleanup_files,
+    ]
     # Время — по часам контейнера (UTC), ночью по МСК, когда заказов уже не оформляют:
     # 01:35 UTC = 04:35 МСК — чистка файлов; 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу.
     cron_jobs = [

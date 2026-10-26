@@ -87,7 +87,7 @@ users, models (uploaded / catalog / generated), model_files, quotes (расчё�
 ### Этап 3 — кастомизация и B2B
 
 - B30 done feat: тиснение текста/логотипа (SVG) на загруженной модели (OpenSCAD import + extrude)
-- B31 todo feat: раскраска по частям модели (выбор цвета частей, экспорт 3MF multi-color)
+- B31 done feat: раскраска по частям модели (выбор цвета частей, экспорт 3MF multi-color)
 - B32 todo feat: кабинет клиента — история заказов, повтор заказа
 - B33 todo feat: B2B — счёт для юрлица, партии, скидки
 - B34 todo feat: статусы печати из Telegram → клиенту (email / Telegram)

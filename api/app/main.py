@@ -9,6 +9,7 @@ from app.config import settings
 from app.editors import router as editors_router
 from app.emboss import router as emboss_router
 from app.orders import router as orders_router
+from app.paint import router as paint_router
 from app.payments import router as payments_router
 from app.quotes import router as quotes_router
 from app.slices import router as slices_router
@@ -24,6 +25,7 @@ app.include_router(admin_router)
 app.include_router(catalog_router)
 app.include_router(editors_router)
 app.include_router(emboss_router)
+app.include_router(paint_router)
 
 
 @app.get("/health")

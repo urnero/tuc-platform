@@ -121,7 +121,7 @@ cd /srv/tuc/prod && docker compose up -d
 - **Бэкап** БД прода: каждую ночь в 03:15 в `/srv/tuc/backups/prod-ГГГГ-ММ-ДД.sql.gz`, 14 дней.
   Восстановить: `zcat файл.sql.gz | docker compose exec -T postgres psql -U tuc -d tuc`.
   Папку с моделями `/srv/tuc/prod/data/` бэкап не трогает — при переезде копируйте её отдельно.
-- **Цены, профили, каталог и редакторы** (`config/pricing.yaml`, `profiles/`, `catalog/`, `editors/`) правятся в репозитории и приезжают деплоем.
+- **Цены, профили, каталог и редакторы** (`config/pricing.yaml`, `config/colors.yaml`, `profiles/`, `catalog/`, `editors/`) правятся в репозитории и приезжают деплоем.
   На сервере файлы репозитория не править: `deploy.sh` делает `git reset --hard`, правки пропадут.
 - **Редакторы деталей** (B21): модели строит worker (в его образе есть OpenSCAD), поэтому страница редактора
   без работающего worker покажет «В очереди…» и не дождётся — проверка: `docker compose logs worker | grep -i openscad`

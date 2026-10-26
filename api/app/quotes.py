@@ -41,6 +41,15 @@ class QuoteRequest(BaseModel):
     delivery: str = "pickup"
 
 
+def decor_summary(meta: dict) -> str | None:
+    """Как оформлена загрузка, словами: раскраска по частям (B31) или тиснение (B30)."""
+    for key in ("paint", "emboss"):
+        summary = (meta.get(key) or {}).get("summary")
+        if summary:
+            return str(summary)
+    return None
+
+
 def quotes_dir(upload_id: str) -> Path:
     return settings.data_dir / "uploads" / upload_id / "quotes"
 
@@ -136,6 +145,9 @@ def create_quote(upload_id: str, body: QuoteRequest) -> dict:
         "id": f"{upload_id}-{secrets.token_hex(3)}",
         "upload_id": upload_id,
         "original_name": meta.get("original_name"),
+        # Как оформлена модель — раскраска по частям (B31) или тиснение (B30), словами.
+        # Попадает в снимок расчёта в заказе и в карточку заказа в Telegram.
+        "decor": decor_summary(meta),
         "units": meta.get("units", "mm"),  # единицы модели, по которым посчитаны граммы и часы
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "slice_key": key,

@@ -101,6 +101,9 @@ def order_card(order: dict, header: str | None = None) -> str:
         lines.append(f"Печать: ~{hours:.1f} ч, {grams:.0f} г на весь тираж")
     if order.get("original_name"):
         lines.append(f"Файл: {esc(order['original_name'])}")
+    if quote.get("decor"):
+        # Раскраска по частям (B31) или тиснение (B30): «Деталь 1 — красный, Деталь 2 — синий».
+        lines.append(f"Оформление: {esc(quote['decor'])}")
     if order.get("comment"):
         lines.append(f"Комментарий: {esc(order['comment'])}")
     created = fmt_msk(order.get("created_at"))

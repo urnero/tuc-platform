@@ -118,6 +118,9 @@ def test_several_orders_on_one_upload(data_dir, session):
     assert _exists(data_dir, upload_id)
 
     active.status = "done"
+    # onupdate поставил бы в updated_at реальное «сейчас», и тест зависел бы от даты запуска —
+    # закрываем заказ явно 10 дней назад от NOW.
+    active.updated_at = NOW - timedelta(days=10)
     session.commit()
     cleanup.run_cleanup(session, now=NOW)
     assert _exists(data_dir, upload_id)  # закрыт 10 дней назад — рано

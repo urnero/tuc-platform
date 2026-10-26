@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     site_url: str = "http://localhost:8080"
     data_dir: Path = Path("./data")
     pricing_path: Path = Path("config/pricing.yaml")
+    # Цвета пластика для раскраски по частям (B31): key, name, hex. После правки перезапустить api.
+    colors_path: Path = Path("config/colors.yaml")
     # Каталог готовых моделей (B20): catalog.yaml + models/. В docker монтируется как /srv/catalog.
     catalog_dir: Path = Path("catalog")
 

@@ -4,6 +4,8 @@
  * 3D-просмотр загруженной модели (B03).
  * Берёт файл из /api/v1/uploads/{id}/file, показывает в WebGL: вращение мышью, сетка-пол,
  * модель отцентрирована и стоит на полу. Размер сцены подстраивается под модель.
+ * Раскраска по частям (B31): partColors красит диапазоны треугольников STL своими цветами,
+ * keepMaterials оставляет цвета деталей из 3MF (результат раскраски).
  *
  * Только на клиенте: в page.tsx подключать через next/dynamic с ssr: false.
  */
@@ -15,11 +17,19 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 
+/** Диапазон треугольников STL одного цвета (раскраска по частям, B31). */
+export type PartColor = { start: number; count: number; hex: string };
+
 type Props = {
   url: string;
   ext: "stl" | "3mf";
   /** Во сколько раз умножить координаты файла (25.4, если файл в дюймах). */
   scale?: number;
+  /** Только для STL: покрасить треугольники по диапазонам (детали модели своими цветами). */
+  partColors?: PartColor[];
+  /** Только для 3MF: оставить цвета из файла (basematerials), а не красить всё одним. */
+  keepMaterials?: boolean;
+  height?: number;
 };
 
 const MATERIAL = new THREE.MeshStandardMaterial({
@@ -28,20 +38,56 @@ const MATERIAL = new THREE.MeshStandardMaterial({
   roughness: 0.6,
 });
 
+const PAINTED = new THREE.MeshStandardMaterial({
+  vertexColors: true,
+  metalness: 0.1,
+  roughness: 0.6,
+});
+
+/** Пишет атрибут color: у STL каждый треугольник — три своих вершины подряд, поэтому
+ *  треугольник k — это вершины 3k, 3k+1, 3k+2. Треугольники вне диапазонов — серые. */
+export function applyPartColors(geometry: THREE.BufferGeometry, parts: PartColor[]) {
+  const n = geometry.getAttribute("position").count;
+  const colors = new Float32Array(n * 3).fill(0.5);
+  const c = new THREE.Color();
+  for (const part of parts) {
+    c.set(part.hex);
+    const from = part.start * 3;
+    const to = Math.min(n, (part.start + part.count) * 3);
+    for (let v = from; v < to; v++) {
+      colors[v * 3] = c.r;
+      colors[v * 3 + 1] = c.g;
+      colors[v * 3 + 2] = c.b;
+    }
+  }
+  const attr = geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+  if (attr && attr.count === n) {
+    (attr.array as Float32Array).set(colors);
+    attr.needsUpdate = true;
+  } else {
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  }
+}
+
 /** Загружает модель, центрирует её и ставит на «пол» (z = 0 → y = 0 в сцене). */
-function Model({ url, ext, scale = 1 }: Props) {
+function Model({ url, ext, scale = 1, partColors, keepMaterials }: Props) {
   // STL → геометрия, 3MF → группа объектов. Приводим к одному виду: Object3D.
   const loaded = useLoader(ext === "stl" ? STLLoader : ThreeMFLoader, url);
+  const painted = Boolean(partColors && loaded instanceof THREE.BufferGeometry);
 
   const { object, size } = useMemo(() => {
     let obj: THREE.Object3D;
     if (loaded instanceof THREE.BufferGeometry) {
-      obj = new THREE.Mesh(loaded, MATERIAL);
+      // Перекраска: геометрия та же, меняется только атрибут цвета.
+      if (painted && partColors) applyPartColors(loaded, partColors);
+      obj = new THREE.Mesh(loaded, painted ? PAINTED : MATERIAL);
     } else {
       obj = loaded as THREE.Group;
-      obj.traverse((child) => {
-        if (child instanceof THREE.Mesh) child.material = MATERIAL;
-      });
+      if (!keepMaterials) {
+        obj.traverse((child) => {
+          if (child instanceof THREE.Mesh) child.material = MATERIAL;
+        });
+      }
     }
     // В 3D-печати «вверх» — ось Z. В three.js вверх — Y. Поворачиваем модель.
     const wrapper = new THREE.Group();
@@ -55,7 +101,7 @@ function Model({ url, ext, scale = 1 }: Props) {
     // Центр в ноль по X/Z, нижняя грань на y = 0.
     wrapper.position.set(-center.x, -box.min.y, -center.z);
     return { object: wrapper, size: sz };
-  }, [loaded, scale]);
+  }, [loaded, scale, painted, partColors, keepMaterials]);
 
   const longest = Math.max(size.x, size.y, size.z, 1);
   return (
@@ -97,7 +143,10 @@ function CameraFit({ longest }: { longest: number }) {
 
 export default function ModelViewer(props: Props) {
   return (
-    <div className="h-[420px] w-full overflow-hidden rounded-lg border" style={{ borderColor: "var(--muted)" }}>
+    <div
+      className="w-full overflow-hidden rounded-lg border"
+      style={{ borderColor: "var(--muted)", height: props.height ?? 420 }}
+    >
       <Canvas camera={{ fov: 45, near: 0.1, far: 100000 }}>
         <color attach="background" args={["#1a2220"]} />
         <ambientLight intensity={0.6} />
