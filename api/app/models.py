@@ -1,5 +1,5 @@
-"""Таблицы БД: `orders` (B06, реквизиты юрлица и способ оплаты — B33), `payments` (B08),
-`events` (B12), `login_codes` и `client_sessions` (кабинет клиента, B32).
+"""Таблицы БД: `orders` (B06; реквизиты юрлица и способ оплаты — B33; Telegram клиента — B34),
+`payments` (B08), `events` (B12), `login_codes` и `client_sessions` (кабинет клиента, B32).
 Изменил таблицу → добавь миграцию в alembic/versions/.
 
 Загрузки, расчёты печати и цены по-прежнему лежат файлами в DATA_DIR (см. DECISIONS.md):
@@ -77,6 +77,9 @@ class Order(Base):
     company_address: Mapped[str | None] = mapped_column(Text, nullable=True)  # юридический адрес
     # online | invoice (PAYMENT_METHODS). У заказов до B33 — online.
     payment_method: Mapped[str] = mapped_column(String(16), nullable=False, default="online")
+    # Куда слать клиенту статусы в Telegram (B34): chat_id, если клиент нажал «Получать статусы
+    # в Telegram» на странице заказа и написал боту /start <token>. NULL — только e-mail.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Что печатаем: ссылки на файлы в DATA_DIR и ключевые поля расчёта (удобно для SQL)
     upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -107,6 +110,7 @@ class Order(Base):
             "comment": self.comment,
             "company": self.company_dict(),
             "payment_method": self.payment_method,
+            "telegram_chat_id": self.telegram_chat_id,
             "upload_id": self.upload_id,
             "quote_id": self.quote_id,
             "original_name": self.original_name,

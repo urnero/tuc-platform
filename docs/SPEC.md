@@ -90,7 +90,7 @@ users, models (uploaded / catalog / generated), model_files, quotes (расчё�
 - B31 done feat: раскраска по частям модели (выбор цвета частей, экспорт 3MF multi-color)
 - B32 done feat: кабинет клиента — история заказов, повтор заказа
 - B33 done feat: B2B — счёт для юрлица, партии, скидки
-- B34 todo feat: статусы печати из Telegram → клиенту (email / Telegram)
+- B34 done feat: статусы печати из Telegram → клиенту (email / Telegram)
 
 ## 8. Правила ночной сборки
 

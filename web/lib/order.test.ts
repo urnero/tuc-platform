@@ -8,6 +8,7 @@ import {
   isValidKpp,
   isValidPhone,
   needsAddress,
+  notificationsBlock,
   paysByInvoice,
   prefillForm,
   quoteLoadError,
@@ -131,6 +132,37 @@ describe("статусы", () => {
   it("у каждого шага есть подпись", () => {
     for (const s of STATUS_STEPS) expect(STATUS_LABELS[s]).toBeTruthy();
     expect(STATUS_STEPS[0]).toBe("new");
+  });
+});
+
+describe("notificationsBlock (B34)", () => {
+  const link = "https://t.me/tuc_bot?start=abc";
+  it("e-mail и Telegram — одной фразой, ссылка на бота — пока он не подключён", () => {
+    const n = { email: "a@b.ru", telegram_linked: false, telegram_link: link };
+    expect(notificationsBlock({ status: "new", notifications: n })).toEqual({
+      text: "Когда статус изменится, напишем на e-mail a@b.ru.",
+      telegramLink: link,
+    });
+    const both = { email: "a@b.ru", telegram_linked: true, telegram_link: null };
+    expect(notificationsBlock({ status: "printing", notifications: both })).toEqual({
+      text: "Когда статус изменится, напишем на e-mail a@b.ru и в Telegram.",
+      telegramLink: null,
+    });
+  });
+  it("без каналов — зовём подключить Telegram или следить за страницей", () => {
+    const only = { email: null, telegram_linked: false, telegram_link: link };
+    expect(notificationsBlock({ status: "paid", notifications: only })?.text).toMatch(/подключите Telegram/);
+    const none = { email: null, telegram_linked: false, telegram_link: null };
+    expect(notificationsBlock({ status: "paid", notifications: none })).toEqual({
+      text: "Следите за статусом на этой странице — она обновляется при каждом открытии.",
+      telegramLink: null,
+    });
+  });
+  it("выданный и отменённый заказ, старый ответ API без блока — ничего", () => {
+    const n = { email: "a@b.ru", telegram_linked: true, telegram_link: null };
+    expect(notificationsBlock({ status: "done", notifications: n })).toBeNull();
+    expect(notificationsBlock({ status: "cancelled", notifications: n })).toBeNull();
+    expect(notificationsBlock({ status: "new" })).toBeNull();
   });
 });
 

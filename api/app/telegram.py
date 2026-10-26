@@ -12,6 +12,7 @@
 
 import html
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -114,6 +115,9 @@ def order_card(order: dict, header: str | None = None) -> str:
         lines.append(f"Оформление: {esc(quote['decor'])}")
     if order.get("comment"):
         lines.append(f"Комментарий: {esc(order['comment'])}")
+    if order.get("telegram_chat_id"):
+        # Клиент подключил бота (B34): смена статуса кнопкой уйдёт ему и в Telegram.
+        lines.append("Статусы клиенту: Telegram" + (" и e-mail" if order.get("email") else ""))
     created = fmt_msk(order.get("created_at"))
     if created:
         lines.append(f"Создан: {created} МСК")
@@ -196,6 +200,36 @@ def send_message(chat_id: str | int, text: str, reply_markup: dict | None = None
     except httpx.HTTPError as e:
         log.warning("telegram sendMessage failed: %s", e)
         return False
+
+
+# Имя бота (@username) для ссылки «Получать статусы в Telegram» (B34): спрашиваем у Telegram
+# один раз (getMe) и помним. Если Telegram не ответил — пробуем снова не раньше чем через 5 минут.
+_bot_username: dict = {"name": None, "checked_at": 0.0}
+BOT_USERNAME_RETRY_S = 300
+
+
+def bot_username() -> str | None:
+    """@username бота без «@» или None (нет токена / Telegram не ответил)."""
+    if not settings.telegram_bot_token:
+        return None
+    cache = _bot_username
+    if cache["name"] or time.monotonic() - cache["checked_at"] < BOT_USERNAME_RETRY_S:
+        return cache["name"]
+    cache["checked_at"] = time.monotonic()
+    try:
+        r = httpx.get(f"{TG_API}/bot{settings.telegram_bot_token}/getMe", timeout=10)
+        if r.status_code == 200:
+            cache["name"] = (r.json().get("result") or {}).get("username") or None
+        else:
+            log.warning("telegram getMe %s: %s", r.status_code, r.text[:200])
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("telegram getMe failed: %s", e)
+    return cache["name"]
+
+
+def forget_bot_username() -> None:
+    """Сбросить кэш getMe (для тестов и смены токена)."""
+    _bot_username.update(name=None, checked_at=0.0)
 
 
 def notify_owner_new_order(order: dict) -> bool:

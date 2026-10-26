@@ -8,13 +8,24 @@
  * Вернувшись с формы (?payment=check), страница зовёт /payment/check и показывает итог.
  * Заказ от организации (B33) платится по счёту: вместо «Оплатить» — ссылка на счёт
  * /order/<token>/invoice и подсказка про безнал.
+ * Уведомления (B34): блок «Когда статус изменится, напишем …» и кнопка «Получать статусы
+ * в Telegram» — ссылка на бота с token заказа, бот сам привяжет чат к заказу.
  */
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
-import { formatDate, formatPhone, type Order, paysByInvoice, STATUS_HINTS, STATUS_LABELS, STATUS_STEPS } from "@/lib/order";
+import {
+  formatDate,
+  formatPhone,
+  notificationsBlock,
+  type Order,
+  paysByInvoice,
+  STATUS_HINTS,
+  STATUS_LABELS,
+  STATUS_STEPS,
+} from "@/lib/order";
 import { canPay, checkResultText, type PaymentCheck, type PaymentStart, paymentHint } from "@/lib/payment";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS } from "@/lib/pricing";
 
@@ -93,6 +104,7 @@ function OrderStatus() {
   const stepIndex = STATUS_STEPS.indexOf(order.status);
   const cancelled = order.status === "cancelled";
   const invoice = paysByInvoice(order);
+  const notifications = notificationsBlock(order);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -165,6 +177,22 @@ function OrderStatus() {
               <p className="text-sm" role="alert">
                 {payError}
               </p>
+            )}
+          </div>
+        )}
+        {notifications && (
+          <div className="flex flex-wrap items-center gap-3 text-sm" data-testid="notifications">
+            <span style={{ color: "var(--muted)" }}>{notifications.text}</span>
+            {notifications.telegramLink && (
+              <a
+                href={notifications.telegramLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border px-4 py-2 font-semibold"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+              >
+                Получать статусы в Telegram
+              </a>
             )}
           </div>
         )}

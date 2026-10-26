@@ -20,7 +20,9 @@ GET  /api/v1/orders/{token}    — заказ для страницы стату
 (включена ли онлайн-оплата, статус платежа, ссылка на форму ЮKassa).
 
 Смена статуса — `change_status()`: её зовёт бот (B07), ЮKassa (B08, ставит paid),
-админка (B09, `app/admin.py`).
+админка (B09, `app/admin.py`). После смены клиенту уходит письмо и/или сообщение в Telegram
+(B34, `app/notify.py`); при создании заказа — письмо «принят». В ответе заказа блок
+`notifications`: куда приходят статусы и ссылка на бота для подключения Telegram.
 """
 
 import re
@@ -32,6 +34,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import notify
+from app import telegram as tg
 from app.b2b import Company
 from app.config import settings
 from app.db import get_db
@@ -189,9 +193,31 @@ def create_order(
     db.commit()
     db.refresh(order)
     data = order.to_dict()
-    # Владельцу — в Telegram, уже после того, как клиент получил ответ.
+    # Владельцу — в Telegram, клиенту — письмо «принят» (B34); уже после ответа клиенту.
     background.add_task(notify_owner_new_order, data)
-    return data | {"payment": payment_summary(db, order)}
+    background.add_task(notify.order_created, data)
+    return order_response(db, order)
+
+
+def order_response(db: Session, order: Order) -> dict:
+    """Заказ для клиента: поля таблицы + блок оплаты (B08) + блок уведомлений (B34)."""
+    return order.to_dict() | {
+        "payment": payment_summary(db, order),
+        "notifications": notifications_summary(order),
+    }
+
+
+def notifications_summary(order: Order) -> dict:
+    """Блок `notifications` (B34): на какой e-mail приходят статусы, подключён ли Telegram
+    и ссылка на бота, по которой клиент его подключает (`/start <token заказа>`).
+    Ссылки нет, если бот не настроен (нет токена) или Telegram уже подключён."""
+    bot = tg.bot_username() if settings.telegram_bot_token else None
+    linked = bool(order.telegram_chat_id)
+    return {
+        "email": order.email if order.email and settings.smtp_host else None,
+        "telegram_linked": linked,
+        "telegram_link": f"https://t.me/{bot}?start={order.token}" if bot and not linked else None,
+    }
 
 
 # --- оплата (B08): что про платёж видит страница статуса -----------------------
@@ -237,9 +263,10 @@ def list_orders(db: Session, active_only: bool = True, limit: int = 20) -> list[
     return list(db.scalars(q.order_by(Order.id.desc()).limit(limit)))
 
 
-def change_status(db: Session, order_id: int, status: str) -> Order:
+def change_status(db: Session, order_id: int, status: str, notify_client: bool = True) -> Order:
     """Поставить заказу статус. Любой переход разрешён — владелец знает, что делает;
-    бот лишь предлагает кнопками логичные шаги (telegram.NEXT_STATUSES)."""
+    бот лишь предлагает кнопками логичные шаги (telegram.NEXT_STATUSES).
+    После записи клиенту уходит уведомление (B34, в фоне); `notify_client=False` — без него."""
     if status not in ORDER_STATUSES:
         raise StatusError(f"Неизвестный статус «{status}».")
     order = get_order_by_id(db, order_id)
@@ -250,7 +277,32 @@ def change_status(db: Session, order_id: int, status: str) -> Order:
     order.status = status
     db.commit()
     db.refresh(order)
+    if notify_client:
+        notify.status_changed(order.to_dict())
     return order
+
+
+def link_telegram(db: Session, token: str, chat_id: int | str) -> Order | None:
+    """Клиент написал боту `/start <token>` (B34): запомнить его chat_id у заказа.
+    None — такого заказа нет (ссылка не из нашего сайта)."""
+    if not TOKEN_RE.match(token or ""):
+        return None
+    order = db.scalar(select(Order).where(Order.token == token))
+    if order is None:
+        return None
+    order.telegram_chat_id = str(chat_id)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def unlink_telegram(db: Session, chat_id: int | str) -> int:
+    """Клиент написал боту /stop: больше не слать ему статусы. → сколько заказов отвязали."""
+    orders = list(db.scalars(select(Order).where(Order.telegram_chat_id == str(chat_id))))
+    for order in orders:
+        order.telegram_chat_id = None
+    db.commit()
+    return len(orders)
 
 
 def get_order_by_token(db: Session, token: str) -> Order:
@@ -265,4 +317,4 @@ def get_order_by_token(db: Session, token: str) -> Order:
 @router.get("/{token}")
 def get_order(token: str, db: Db) -> dict:
     order = get_order_by_token(db, token)
-    return order.to_dict() | {"payment": payment_summary(db, order)}
+    return order_response(db, order)

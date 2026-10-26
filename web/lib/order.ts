@@ -1,5 +1,6 @@
 /** Заказ (B06): типы ответа API /orders, статусы, проверка формы на клиенте.
- *  B33: заказ от организации или ИП — блок `company`, оплата по счёту (`payment_method = invoice`). */
+ *  B33: заказ от организации или ИП — блок `company`, оплата по счёту (`payment_method = invoice`).
+ *  B34: блок `notifications` — куда клиенту приходят статусы (e-mail, Telegram-бот). */
 
 import type { PaymentInfo } from "./payment";
 import type { Quote } from "./pricing";
@@ -15,6 +16,15 @@ export type Company = {
   inn: string;
   kpp: string | null;
   address: string | null;
+};
+
+/** Уведомления о статусе (B34): e-mail, на который они приходят (null — писем не будет:
+ *  e-mail не указан или почта на сервере не настроена), подключён ли Telegram и ссылка на бота
+ *  `https://t.me/<бот>?start=<token>` — её нет, если бот не настроен или уже подключён. */
+export type Notifications = {
+  email: string | null;
+  telegram_linked: boolean;
+  telegram_link: string | null;
 };
 
 /** GET /api/v1/orders/{token} и ответ POST /api/v1/orders. */
@@ -44,6 +54,7 @@ export type Order = {
   currency: string;
   quote: Quote;
   payment?: PaymentInfo; // оплата (B08): есть в ответах API начиная с B08
+  notifications?: Notifications; // статусы клиенту (B34)
 };
 
 /** Что видит клиент на странице статуса. */
@@ -97,6 +108,25 @@ export const EMPTY_FORM: OrderForm = {
   kpp: "",
   companyAddress: "",
 };
+
+/** Блок «Уведомления» на странице заказа (B34): одна фраза о том, куда приходят статусы,
+ *  и ссылка на бота, если Telegram ещё можно подключить. Для отменённых и выданных заказов —
+ *  ничего: статусов больше не будет. */
+export function notificationsBlock(
+  order: Pick<Order, "status" | "notifications">,
+): { text: string; telegramLink: string | null } | null {
+  const n = order.notifications;
+  if (!n || order.status === "done" || order.status === "cancelled") return null;
+  const channels: string[] = [];
+  if (n.email) channels.push(`на e-mail ${n.email}`);
+  if (n.telegram_linked) channels.push("в Telegram");
+  const text = channels.length
+    ? `Когда статус изменится, напишем ${channels.join(" и ")}.`
+    : n.telegram_link
+      ? "Чтобы узнавать о готовности без захода на сайт, подключите Telegram."
+      : "Следите за статусом на этой странице — она обновляется при каждом открытии.";
+  return { text, telegramLink: n.telegram_link };
+}
 
 /** Заказ оплачивается по счёту (B33)? У ответов API до B33 поля нет — считаем «онлайн». */
 export function paysByInvoice(order: Pick<Order, "payment_method">): boolean {
