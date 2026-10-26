@@ -211,5 +211,6 @@ def test_cli_and_cron(data_dir, db, capsys):
     assert worker.cleanup_files in worker.WorkerSettings.functions
     assert [c.name for c in worker.WorkerSettings.cron_jobs] == [
         "cron:cleanup_files",
+        "cron:anonymize_orders",
         "cron:export_sheet",
     ]

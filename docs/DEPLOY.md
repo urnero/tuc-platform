@@ -146,6 +146,12 @@ cd /srv/tuc/prod && docker compose up -d
   закрытых больше года назад (`CLEANUP_UPLOADS_DAYS`, `CLEANUP_ORDER_FILES_DAYS` в `.env`; 0 — не удалять).
   Записи заказов в БД остаются, у заказа в админке просто пропадает кнопка «Скачать файл». Посмотреть, что удалится:
   `docker compose exec api python -m app.cleanup --dry-run`; удалить сейчас — без `--dry-run`. Логи: `docker compose logs worker | grep Очистка`.
+- **Обезличивание заказов** (B35): worker каждую ночь в 04:50 МСК стирает данные клиента (имя, телефон, e-mail, адрес,
+  комментарий, реквизиты организации, Telegram) в заказах «выдан»/«отменён», закрытых больше 5 лет назад
+  (`ANONYMIZE_ORDERS_DAYS=1826` в `.env`; 0 — не обезличивать), и сырой ответ ЮKassa у их оплат. Суммы, материалы и
+  снимок расчёта остаются, в `orders.anonymized_at` — дата. Посмотреть, кого коснётся:
+  `docker compose exec api python -m app.anonymize --dry-run`; выполнить сейчас — без `--dry-run`.
+  Логи: `docker compose logs worker | grep Обезличивание`. Первые такие заказы появятся не раньше 2031 года.
 - **Superset / DBeaver / pandas к базе** (B11): один раз на стенде `bash /srv/tuc/prod/deploy/readonly-user.sh` —
   создаст пользователя `tuc_ro` (только SELECT, в том числе для будущих таблиц) и запишет пароль в `.env`
   (`POSTGRES_RO_PASSWORD`). Postgres снаружи виден только на `127.0.0.1` сервера (prod — порт 5433, staging — 5434),

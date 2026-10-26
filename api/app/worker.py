@@ -7,13 +7,15 @@
 - emboss_upload — нанести надпись/логотип на загруженную модель (B30): OpenSCAD + trimesh;
 - paint_upload — собрать 3MF с деталями модели в выбранных цветах (B31): trimesh;
 - export_sheet — ночной экспорт заказов в Google-таблицу (B11), по расписанию cron;
-- cleanup_files — ночное удаление файлов моделей по срокам из политики ПДн (B15), cron.
+- cleanup_files — ночное удаление файлов моделей по срокам из политики ПДн (B15), cron;
+- anonymize_orders — ночное обезличивание заказов старше 5 лет (B35), cron.
 """
 
 import asyncio
 
 from arq.cron import cron
 
+from app.anonymize import anonymize_job
 from app.cleanup import cleanup_job
 from app.editors import run_build
 from app.emboss import run_emboss
@@ -53,6 +55,11 @@ async def cleanup_files(ctx: dict) -> dict:
     return await asyncio.to_thread(cleanup_job)
 
 
+async def anonymize_orders(ctx: dict) -> dict:
+    """Стереть данные клиента в заказах, закрытых больше 5 лет назад (app/anonymize.py)."""
+    return await asyncio.to_thread(anonymize_job)
+
+
 class WorkerSettings:
     functions = [
         slice_upload,
@@ -61,11 +68,14 @@ class WorkerSettings:
         paint_upload,
         export_sheet,
         cleanup_files,
+        anonymize_orders,
     ]
     # Время — по часам контейнера (UTC), ночью по МСК, когда заказов уже не оформляют:
-    # 01:35 UTC = 04:35 МСК — чистка файлов; 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу.
+    # 01:35 UTC = 04:35 МСК — чистка файлов; 01:50 UTC = 04:50 МСК — обезличивание заказов;
+    # 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу (уже без данных обезличенных заказов).
     cron_jobs = [
         cron(cleanup_files, hour=1, minute=35, timeout=600),
+        cron(anonymize_orders, hour=1, minute=50, timeout=300),
         cron(export_sheet, hour=2, minute=5, timeout=300),
     ]
     redis_settings = redis_settings()

@@ -91,6 +91,7 @@ users, models (uploaded / catalog / generated), model_files, quotes (расчё�
 - B32 done feat: кабинет клиента — история заказов, повтор заказа
 - B33 done feat: B2B — счёт для юрлица, партии, скидки
 - B34 done feat: статусы печати из Telegram → клиенту (email / Telegram)
+- B35 done chore: обезличивание заказов старше 5 лет после выполнения (cron в worker, `app/anonymize.py`)
 
 ## 8. Правила ночной сборки
 

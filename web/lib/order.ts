@@ -55,6 +55,7 @@ export type Order = {
   quote: Quote;
   payment?: PaymentInfo; // оплата (B08): есть в ответах API начиная с B08
   notifications?: Notifications; // статусы клиенту (B34)
+  anonymized_at?: string | null; // B35: данные клиента стёрты (заказу больше 5 лет)
 };
 
 /** Что видит клиент на странице статуса. */

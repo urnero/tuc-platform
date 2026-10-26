@@ -228,6 +228,12 @@ function OrderStatus() {
 
       <section className="flex flex-col gap-3 rounded-lg border p-6 text-sm" style={{ borderColor: "var(--muted)" }}>
         <h2 className="text-lg font-semibold">Контакты</h2>
+        {order.anonymized_at && (
+          <p style={{ color: "var(--muted)" }}>
+            С выполнения заказа прошло больше 5 лет — имя, телефон, e-mail и адрес из него удалены (политика обработки
+            персональных данных, раздел 6).
+          </p>
+        )}
         <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1">
           <dt style={{ color: "var(--muted)" }}>Имя</dt>
           <dd className="text-right">{order.customer_name}</dd>

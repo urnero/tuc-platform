@@ -80,6 +80,10 @@ class Order(Base):
     # Куда слать клиенту статусы в Telegram (B34): chat_id, если клиент нажал «Получать статусы
     # в Telegram» на странице заказа и написал боту /start <token>. NULL — только e-mail.
     telegram_chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Обезличивание (B35): через 5 лет после закрытия заказа ночной cron (app/anonymize.py)
+    # стирает имя, телефон, e-mail, адрес, комментарий, реквизиты и chat_id и ставит сюда дату.
+    # NULL — данные клиента на месте. Суммы, материал, снимок расчёта остаются для аналитики.
+    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Что печатаем: ссылки на файлы в DATA_DIR и ключевые поля расчёта (удобно для SQL)
     upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -111,6 +115,7 @@ class Order(Base):
             "company": self.company_dict(),
             "payment_method": self.payment_method,
             "telegram_chat_id": self.telegram_chat_id,
+            "anonymized_at": _iso(self.anonymized_at) if self.anonymized_at else None,
             "upload_id": self.upload_id,
             "quote_id": self.quote_id,
             "original_name": self.original_name,
