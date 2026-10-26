@@ -23,6 +23,16 @@ export const COMPANY = {
   /** Адрес для писем и претензий (почтовый, с индексом). */
   legalAddress: "",
 
+  // --- Банковские реквизиты — для счёта юрлицам (B33, /order/<token>/invoice) ---
+  /** Название банка, например «АО „Т-Банк“». */
+  bankName: "",
+  /** БИК банка — 9 цифр. */
+  bik: "",
+  /** Расчётный счёт — 20 цифр. */
+  bankAccount: "",
+  /** Корреспондентский счёт банка — 20 цифр. */
+  corrAccount: "",
+
   // --- Контакты для клиентов ---
   /** Почта для вопросов по заказам и для отзыва согласия на обработку ПДн. */
   email: "",
@@ -52,6 +62,10 @@ export const FIELD_LABELS: Record<CompanyField, string> = {
   inn: "ИНН",
   ogrnip: "ОГРНИП",
   legalAddress: "адрес",
+  bankName: "банк",
+  bik: "БИК",
+  bankAccount: "расчётный счёт",
+  corrAccount: "корреспондентский счёт",
   email: "e-mail",
   phone: "телефон",
   telegram: "Telegram",
@@ -73,9 +87,17 @@ export function requisite(field: CompanyField, company: typeof COMPANY = COMPANY
   return field === "legalName" ? LEGAL_NAME_PLACEHOLDER : PLACEHOLDER;
 }
 
+/** Без этих полей счёт юрлицу (B33) оплатить нельзя: банк не проведёт платёж. */
+export const INVOICE_FIELDS: CompanyField[] = ["legalName", "inn", "legalAddress", "bankName", "bik", "bankAccount", "corrAccount"];
+
 /** Обязательные поля, которые ещё пусты (для предупреждения владельцу на страницах). */
 export function missingRequisites(company: typeof COMPANY = COMPANY): string[] {
   return REQUIRED_FIELDS.filter((f) => company[f].trim() === "").map((f) => FIELD_LABELS[f]);
+}
+
+/** Реквизиты для счёта, которые ещё пусты (по-русски) — пока они есть, счёт показывается с предупреждением. */
+export function missingInvoiceRequisites(company: typeof COMPANY = COMPANY): string[] {
+  return INVOICE_FIELDS.filter((f) => company[f].trim() === "").map((f) => FIELD_LABELS[f]);
 }
 
 /** «2026-10-21» → «21 октября 2026 г.» — так дата редакции пишется в документах. */

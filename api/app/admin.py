@@ -188,6 +188,8 @@ def orders_query(status: str, q: str):
             func.lower(Order.customer_name).like(like),
             func.lower(func.coalesce(Order.email, "")).like(like),
             func.lower(func.coalesce(Order.original_name, "")).like(like),
+            func.lower(func.coalesce(Order.company_name, "")).like(like),  # B33
+            func.coalesce(Order.company_inn, "").like(like),
         ]
         stmt = stmt.where(or_(*conds))
     return stmt.order_by(Order.id.desc())

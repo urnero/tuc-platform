@@ -46,12 +46,12 @@
       <td><a href="/admin/orders/{{ o.id }}"><b>ТУЦ-{{ o.id }}</b></a></td>
       <td>{{ o.created_at|dt }}</td>
       <td><span class="pill {{ o.status }}">{{ STATUS_ICONS[o.status] }} {{ STATUS_LABELS[o.status] }}</span></td>
-      <td class="wrap">{{ o.customer_name }}<br><span class="muted">{{ o.phone|phone }}</span></td>
+      <td class="wrap">{{ o.customer_name }}{% if o.company_name %} · <b title="Юрлицо, оплата по счёту">{{ o.company_name }}</b>{% endif %}<br><span class="muted">{{ o.phone|phone }}</span></td>
       <td class="wrap">{{ o.material }} × {{ o.qty }} шт{% if o.supports %}, поддержки{% endif %}{% if o.postprocess != 'none' %}, {{ POSTPROCESS_LABELS.get(o.postprocess, o.postprocess) }}{% endif %}
         {% if o.original_name %}<br><span class="muted">{{ o.original_name }}</span>{% endif %}</td>
       <td>{{ DELIVERY_LABELS.get(o.delivery, o.delivery) }}</td>
       <td class="num">{{ o.total|money }}</td>
-      <td>{% if o.id in paid_at %}<span class="muted" title="Онлайн, ЮKassa">💳 {{ paid_at[o.id]|dt }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% if o.id in paid_at %}<span class="muted" title="Онлайн, ЮKassa">💳 {{ paid_at[o.id]|dt }}</span>{% elif o.payment_method == 'invoice' %}<span class="muted" title="Юрлицо, безнал">🧾 по счёту</span>{% else %}<span class="muted">—</span>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

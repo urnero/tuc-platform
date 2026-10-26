@@ -15,7 +15,7 @@
 | `paint_build` | клиент нажал «Собрать модель в цветах» на странице модели (B31) — раскраска по частям; не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `parts` (сколько деталей), `colors` (сколько разных цветов) |
 | `account_login` | клиент вошёл в кабинет по коду из письма (B32); не шаг воронки, ключей нет — считаем только факт и время (кто вошёл — в `client_sessions`) | — | — |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
-| `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty` |
+| `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty`, `payment_method` (`online` — карта через ЮKassa, `invoice` — по счёту), `b2b` (true — заказ от организации или ИП, B33) |
 | `payment_started` | клиент нажал «Оплатить», платёж в ЮKassa создан | `upload_id`, `order_id` | `amount`, `yookassa_id` |
 | `paid` | ЮKassa подтвердила оплату (один раз, повторные вебхуки не дублируют) | `upload_id`, `order_id` | `amount`, `yookassa_id` |
 
@@ -243,4 +243,34 @@ where email is not null
 group by lower(email)
 having count(*) > 1
 order by orders desc;
+```
+
+## B2B — заказы организаций (B33)
+
+```sql
+-- Доля и деньги заказов от организаций за 30 дней. Юрлицо — у заказа заполнен company_name,
+-- такие заказы платят по счёту (payment_method = 'invoice'); «оплачен» ставит владелец вручную.
+select payment_method,
+       count(*) as orders,
+       sum(total) as total_rub,
+       round(avg(qty)) as avg_qty,
+       count(*) filter (where status in ('paid', 'printing', 'ready', 'done')) as paid_orders
+from orders
+where created_at > now() - interval '30 days'
+group by payment_method;
+
+-- Кто из организаций заказывает чаще всего (по ИНН — название могли написать по-разному).
+select company_inn, max(company_name) as company, count(*) as orders, sum(total) as total_rub,
+       max(created_at) at time zone 'Europe/Moscow' as last_order_msk
+from orders
+where company_inn is not null
+group by company_inn
+order by total_rub desc;
+
+-- Счета, которые ждут оплаты дольше 5 дней — повод напомнить бухгалтерии.
+select id, company_name, email, total, created_at at time zone 'Europe/Moscow' as created_msk
+from orders
+where payment_method = 'invoice' and status = 'new'
+  and created_at < now() - interval '5 days'
+order by created_at;
 ```

@@ -3,6 +3,7 @@
 
 Одна строка — один заказ. Часы и граммы — на весь тираж (на штуку × qty),
 даты — по Москве, оплата — дата успешного платежа ЮKassa (пусто, если платили не на сайте).
+Заказы организаций (B33): `company_name`, `company_inn`, `payment_method` = invoice (по счёту).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,8 @@ COLUMNS = [
     "id", "number", "created_msk", "status", "status_label", "customer_name", "phone",
     "email", "delivery", "address", "material", "supports", "qty", "postprocess", "total",
     "print_time_h", "material_g", "original_name", "comment", "paid_msk", "upload_id",
+    # B33: добавлены в конец, чтобы формулы владельца на старые колонки не сдвинулись.
+    "company_name", "company_inn", "payment_method",
 ]
 
 
@@ -54,6 +57,7 @@ def order_row(o: Order, paid_at: datetime | None) -> list:
         round((quote.get("print_time_s") or 0) / 3600 * o.qty, 2),
         round((quote.get("material_g") or 0) * o.qty, 1),
         o.original_name or "", o.comment or "", fmt_dt(paid_at), o.upload_id,
+        o.company_name or "", o.company_inn or "", o.payment_method,
     ]
 
 

@@ -101,7 +101,13 @@ def test_full_funnel_is_recorded(client, pricing_file, fake_slicer, yookassa, db
         "delivery": "pickup",
         "total": quote["total"],
     }
-    assert order_ev.props == {"total": order["total"], "delivery": "pickup", "qty": 2}
+    assert order_ev.props == {
+        "total": order["total"],
+        "delivery": "pickup",
+        "qty": 2,
+        "payment_method": "online",  # B33: как платит (online | invoice) и от организации ли
+        "b2b": False,
+    }
     assert started.props["amount"] == order["total"] == paid.props["amount"]
     assert paid.props["yookassa_id"] == p["payment"]["yookassa_id"]
     assert all(e.created_at is not None for e in rows)

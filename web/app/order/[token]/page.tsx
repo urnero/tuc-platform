@@ -6,13 +6,15 @@
  * Статус меняет владелец (бот B07, админка B09).
  * Оплата (B08): кнопка «Оплатить» → POST /api/v1/orders/{token}/payment → форма ЮKassa.
  * Вернувшись с формы (?payment=check), страница зовёт /payment/check и показывает итог.
+ * Заказ от организации (B33) платится по счёту: вместо «Оплатить» — ссылка на счёт
+ * /order/<token>/invoice и подсказка про безнал.
  */
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
-import { formatDate, formatPhone, type Order, STATUS_HINTS, STATUS_LABELS, STATUS_STEPS } from "@/lib/order";
+import { formatDate, formatPhone, type Order, paysByInvoice, STATUS_HINTS, STATUS_LABELS, STATUS_STEPS } from "@/lib/order";
 import { canPay, checkResultText, type PaymentCheck, type PaymentStart, paymentHint } from "@/lib/payment";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS } from "@/lib/pricing";
 
@@ -90,6 +92,7 @@ function OrderStatus() {
 
   const stepIndex = STATUS_STEPS.indexOf(order.status);
   const cancelled = order.status === "cancelled";
+  const invoice = paysByInvoice(order);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -127,12 +130,26 @@ function OrderStatus() {
             {payResult}
           </p>
         )}
-        {paymentHint(order.status, order.payment) && (
+        {invoice && order.status === "new" && (
+          <div className="flex flex-col gap-2" data-testid="invoice">
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              Заказ от организации: оплата безналом по счёту. Когда деньги поступят, заказ станет «Оплачен» и уйдёт в печать.
+            </p>
+            <Link
+              href={`/order/${encodeURIComponent(token)}/invoice`}
+              className="self-start rounded-lg px-5 py-3 text-base font-semibold"
+              style={{ background: "var(--accent)", color: "var(--bg)" }}
+            >
+              Счёт на оплату {order.number}
+            </Link>
+          </div>
+        )}
+        {!invoice && paymentHint(order.status, order.payment) && (
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             {paymentHint(order.status, order.payment)}
           </p>
         )}
-        {canPay(order.status, order.payment) && (
+        {!invoice && canPay(order.status, order.payment) && (
           <div className="flex flex-col gap-2">
             <button
               type="button"
@@ -195,6 +212,20 @@ function OrderStatus() {
             </>
           )}
         </dl>
+        {order.company && (
+          <p>
+            Покупатель: {order.company.name}, ИНН {order.company.inn}
+            {order.company.kpp ? `, КПП ${order.company.kpp}` : ""}
+            {invoice && order.status !== "new" && (
+              <>
+                {" · "}
+                <Link href={`/order/${encodeURIComponent(token)}/invoice`} className="underline underline-offset-2">
+                  счёт {order.number}
+                </Link>
+              </>
+            )}
+          </p>
+        )}
         {order.comment && <p>Комментарий: {order.comment}</p>}
         <p style={{ color: "var(--muted)" }}>
           Сохраните ссылку на эту страницу — по ней видно, что с заказом. Вопросы — по телефону или в Telegram студии.

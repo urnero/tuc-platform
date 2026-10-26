@@ -201,6 +201,9 @@ def start_payment(db: Session, order: Order) -> Payment:
     last = latest_payment(db, order)
     if last is not None and last.status == "succeeded":
         raise HTTPException(status_code=409, detail="Заказ уже оплачен.")
+    if order.payment_method == "invoice":
+        # Юрлицо (B33) платит по счёту безналом; «оплачен» ставит владелец вручную.
+        raise HTTPException(status_code=409, detail="Этот заказ оплачивается по счёту.")
     if order.status not in PAYABLE_STATUSES:
         raise HTTPException(status_code=409, detail="Этот заказ сейчас нельзя оплатить онлайн.")
     if last is not None and last.status == "pending":

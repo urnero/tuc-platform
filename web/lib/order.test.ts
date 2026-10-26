@@ -3,9 +3,12 @@ import {
   EMPTY_FORM,
   formatDate,
   formatPhone,
+  innKind,
   isValidEmail,
+  isValidKpp,
   isValidPhone,
   needsAddress,
+  paysByInvoice,
   prefillForm,
   quoteLoadError,
   STATUS_LABELS,
@@ -66,7 +69,7 @@ describe("validateForm", () => {
 describe("toRequest", () => {
   it("обрезает пробелы, пустые поля → null", () => {
     const body = toRequest(
-      { name: " Иван ", phone: " 8 999 1234567 ", email: " ", address: "", comment: " срочно ", consent: true },
+      { ...EMPTY_FORM, name: " Иван ", phone: " 8 999 1234567 ", email: " ", address: "", comment: " срочно ", consent: true },
       "q-1",
     );
     expect(body).toEqual({
@@ -77,7 +80,50 @@ describe("toRequest", () => {
       address: null,
       comment: "срочно",
       consent: true,
+      company: null,
     });
+  });
+  it("заказ от организации (B33): блок company, ИНН без пробелов, КПП только у организаций", () => {
+    const org = { ...EMPTY_FORM, b2b: true, companyName: " ООО «Ромашка» ", inn: "77 070 83893", kpp: " 770101001 ", companyAddress: "" };
+    expect(toRequest(org, "q-1").company).toEqual({ name: "ООО «Ромашка»", inn: "7707083893", kpp: "770101001", address: null });
+    const ip = { ...org, companyName: "ИП Иванов", inn: "500100732259" };
+    expect(toRequest(ip, "q-1").company).toEqual({ name: "ИП Иванов", inn: "500100732259", kpp: null, address: null });
+    expect(toRequest({ ...org, b2b: false }, "q-1").company).toBeNull();
+  });
+});
+
+describe("B2B (B33)", () => {
+  const good = { ...EMPTY_FORM, name: "Иван", phone: "+79991234567", consent: true, email: "buh@romashka.ru" };
+
+  it("innKind: контрольные цифры как у ФНС", () => {
+    expect(innKind("7707083893")).toBe("org");
+    expect(innKind("77 070 83893")).toBe("org");
+    expect(innKind("500100732259")).toBe("ip");
+    expect(innKind("7707083894")).toBeNull();
+    expect(innKind("500100732258")).toBeNull();
+    expect(innKind("123")).toBeNull();
+    expect(innKind("77070838931")).toBeNull();
+    expect(innKind("")).toBeNull();
+  });
+  it("isValidKpp", () => {
+    expect(isValidKpp("770101001")).toBe(true);
+    expect(isValidKpp("7701AB001")).toBe(true);
+    expect(isValidKpp("77010100")).toBe(false);
+  });
+  it("галочка «от организации» требует наименование, ИНН и e-mail", () => {
+    const e = validateForm({ ...good, b2b: true, email: "" }, "pickup");
+    expect(Object.keys(e).sort()).toEqual(["companyName", "email", "inn"]);
+  });
+  it("правильные реквизиты организации проходят, плохой КПП — нет, у ИП КПП не проверяется", () => {
+    const org = { ...good, b2b: true, companyName: "ООО «Ромашка»", inn: "7707083893" };
+    expect(validateForm(org, "pickup")).toEqual({});
+    expect(validateForm({ ...org, kpp: "12" }, "pickup")).toEqual({ kpp: "КПП — 9 знаков, например 770101001." });
+    expect(validateForm({ ...org, inn: "500100732259", kpp: "12" }, "pickup")).toEqual({});
+  });
+  it("paysByInvoice: у старых ответов API поля нет → онлайн", () => {
+    expect(paysByInvoice({ payment_method: "invoice" })).toBe(true);
+    expect(paysByInvoice({ payment_method: "online" })).toBe(false);
+    expect(paysByInvoice({})).toBe(false);
   });
 });
 

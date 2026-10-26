@@ -37,6 +37,12 @@
       <dt>Доставка</dt><dd>{{ DELIVERY_LABELS.get(o.delivery, o.delivery) }}</dd>
       {% if o.address %}<dt>Адрес</dt><dd>{{ o.address }}</dd>{% endif %}
       {% if o.comment %}<dt>Комментарий</dt><dd>{{ o.comment }}</dd>{% endif %}
+      {% if o.company_name %}
+      {# Заказ от организации (B33): платит по счёту, «оплачен» ставим руками, когда деньги пришли #}
+      <dt>Организация</dt><dd>{{ o.company_name }}<br><span class="muted">ИНН {{ o.company_inn }}{% if o.company_kpp %}, КПП {{ o.company_kpp }}{% endif %}</span>
+        {% if o.company_address %}<br><span class="muted">{{ o.company_address }}</span>{% endif %}</dd>
+      <dt>Оплата</dt><dd>по счёту (безнал) · <a href="/order/{{ o.token }}/invoice" target="_blank" rel="noopener">счёт ↗</a></dd>
+      {% endif %}
       <dt>Страница клиента</dt><dd><a href="/order/{{ o.token }}" target="_blank" rel="noopener">{{ site_url() }}/order/{{ o.token }}</a></dd>
     </dl>
   </section>

@@ -1,5 +1,5 @@
-"""Таблицы БД: `orders` (B06), `payments` (B08), `events` (B12),
-`login_codes` и `client_sessions` (кабинет клиента, B32).
+"""Таблицы БД: `orders` (B06, реквизиты юрлица и способ оплаты — B33), `payments` (B08),
+`events` (B12), `login_codes` и `client_sessions` (кабинет клиента, B32).
 Изменил таблицу → добавь миграцию в alembic/versions/.
 
 Загрузки, расчёты печати и цены по-прежнему лежат файлами в DATA_DIR (см. DECISIONS.md):
@@ -16,6 +16,10 @@ from app.db import Base
 
 # Статусы заказа по порядку. Меняет их владелец (бот B07, админка B09), оплата (B08) ставит paid.
 ORDER_STATUSES = ("new", "paid", "printing", "ready", "done", "cancelled")
+
+# Как клиент платит (B33): online — картой через ЮKassa (B08); invoice — по счёту безналом,
+# так платят организации и ИП; «оплачен» тогда ставит владелец, когда деньги пришли на счёт.
+PAYMENT_METHODS = ("online", "invoice")
 
 # Статусы платежа — те же слова, что у ЮKassa: создан → (ждёт подтверждения) → успех | отменён.
 PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
@@ -66,6 +70,14 @@ class Order(Base):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)  # адрес, если курьер
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Юрлицо или ИП (B33): заполнены, если клиент заказывает от организации. Остальным — NULL.
+    company_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    company_inn: Mapped[str | None] = mapped_column(String(12), nullable=True)  # 10 или 12 цифр
+    company_kpp: Mapped[str | None] = mapped_column(String(9), nullable=True)  # у организаций
+    company_address: Mapped[str | None] = mapped_column(Text, nullable=True)  # юридический адрес
+    # online | invoice (PAYMENT_METHODS). У заказов до B33 — online.
+    payment_method: Mapped[str] = mapped_column(String(16), nullable=False, default="online")
+
     # Что печатаем: ссылки на файлы в DATA_DIR и ключевые поля расчёта (удобно для SQL)
     upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     quote_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -93,6 +105,8 @@ class Order(Base):
             "delivery": self.delivery,
             "address": self.address,
             "comment": self.comment,
+            "company": self.company_dict(),
+            "payment_method": self.payment_method,
             "upload_id": self.upload_id,
             "quote_id": self.quote_id,
             "original_name": self.original_name,
@@ -103,6 +117,17 @@ class Order(Base):
             "total": self.total,
             "currency": self.currency,
             "quote": self.quote,
+        }
+
+    def company_dict(self) -> dict | None:
+        """Реквизиты покупателя-юрлица для счёта (B33); None — заказ от частного лица."""
+        if not self.company_name:
+            return None
+        return {
+            "name": self.company_name,
+            "inn": self.company_inn,
+            "kpp": self.company_kpp,
+            "address": self.company_address,
         }
 
 

@@ -7,6 +7,8 @@
  * Доставку клиент выбрал на шаге расчёта — здесь она только показывается.
  * Если клиент вошёл в кабинет (B32), имя, телефон, e-mail и адрес подставляются
  * из последнего заказа (GET /api/v1/account) — поля остаются редактируемыми.
+ * Галочка «Заказ от организации или ИП» (B33) открывает реквизиты покупателя: такой заказ
+ * оплачивается по счёту безналом, счёт появится на странице заказа.
  */
 
 import Link from "next/link";
@@ -16,6 +18,7 @@ import type { Account } from "@/lib/account";
 import { formatPrice } from "@/lib/format";
 import {
   EMPTY_FORM,
+  innKind,
   needsAddress,
   type Order,
   type OrderForm,
@@ -152,6 +155,11 @@ function NewOrder() {
         <p className="text-sm" style={{ color: "var(--muted)" }}>
           Цена предварительная: менеджер подтвердит её перед печатью. Оплата — после подтверждения.
         </p>
+        {quote.k_batch < 1 && (
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            В цене учтена скидка за тираж −{Math.round((1 - quote.k_batch) * 100)} %.
+          </p>
+        )}
       </section>
 
       <form onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
@@ -181,7 +189,7 @@ function NewOrder() {
               style={fieldStyle}
             />
           </Field>
-          <Field label="E-mail (необязательно)" error={errors.email}>
+          <Field label={form.b2b ? "E-mail (для счёта)" : "E-mail (необязательно)"} error={errors.email}>
             <input
               name="email"
               type="email"
@@ -206,6 +214,73 @@ function NewOrder() {
               style={fieldStyle}
             />
           </Field>
+        )}
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            name="b2b"
+            type="checkbox"
+            checked={form.b2b}
+            onChange={(e) => set("b2b", e.target.checked)}
+            className="mt-1"
+            data-testid="b2b"
+          />
+          <span>
+            Заказ от организации или ИП — оплата по счёту (безнал).
+            <span style={{ color: "var(--muted)" }}> Счёт появится на странице заказа сразу после оформления.</span>
+          </span>
+        </label>
+
+        {form.b2b && (
+          <div className="flex flex-col gap-4 rounded-md border p-4" style={{ borderColor: "var(--muted)" }} data-testid="company">
+            <Field label="Наименование" error={errors.companyName}>
+              <input
+                name="companyName"
+                autoComplete="organization"
+                placeholder="ООО «Ромашка» или ИП Иванов И. И."
+                value={form.companyName}
+                onChange={(e) => set("companyName", e.target.value)}
+                className="w-full rounded-md border px-3 py-2"
+                style={fieldStyle}
+              />
+            </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="ИНН" error={errors.inn}>
+                <input
+                  name="inn"
+                  inputMode="numeric"
+                  placeholder="10 цифр у организации, 12 — у ИП"
+                  value={form.inn}
+                  onChange={(e) => set("inn", e.target.value)}
+                  className="w-full rounded-md border px-3 py-2"
+                  style={fieldStyle}
+                />
+              </Field>
+              {innKind(form.inn) !== "ip" && (
+                <Field label="КПП (у организаций)" error={errors.kpp}>
+                  <input
+                    name="kpp"
+                    inputMode="numeric"
+                    placeholder="770101001"
+                    value={form.kpp}
+                    onChange={(e) => set("kpp", e.target.value)}
+                    className="w-full rounded-md border px-3 py-2"
+                    style={fieldStyle}
+                  />
+                </Field>
+              )}
+            </div>
+            <Field label="Юридический адрес (необязательно)">
+              <input
+                name="companyAddress"
+                placeholder="как в документах организации"
+                value={form.companyAddress}
+                onChange={(e) => set("companyAddress", e.target.value)}
+                className="w-full rounded-md border px-3 py-2"
+                style={fieldStyle}
+              />
+            </Field>
+          </div>
         )}
 
         <Field label="Комментарий (необязательно)">
@@ -255,7 +330,7 @@ function NewOrder() {
           className="self-start rounded-md px-5 py-2 font-medium disabled:opacity-50"
           style={{ background: "var(--accent)", color: "var(--bg)" }}
         >
-          {sending ? "Отправляем…" : `Заказать за ${formatPrice(quote.total)}`}
+          {sending ? "Отправляем…" : form.b2b ? `Заказать и получить счёт на ${formatPrice(quote.total)}` : `Заказать за ${formatPrice(quote.total)}`}
         </button>
       </form>
     </main>

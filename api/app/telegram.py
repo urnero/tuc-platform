@@ -94,6 +94,14 @@ def order_card(order: dict, header: str | None = None) -> str:
         f"Доставка: {DELIVERY_LABELS.get(order['delivery'], order['delivery'])}"
         + (f" — {esc(order['address'])}" if order.get("address") else ""),
     ]
+    company = order.get("company")
+    if company:
+        # Заказ от организации (B33): кто покупатель и что платит по счёту, а не картой.
+        lines.append(
+            f"Юрлицо: {esc(company['name'])}, ИНН {esc(company['inn'])}"
+            + (f", КПП {esc(company['kpp'])}" if company.get("kpp") else "")
+            + " · оплата по счёту"
+        )
     quote = order.get("quote") or {}
     if quote.get("print_time_s") or quote.get("material_g"):
         hours = (quote.get("print_time_s") or 0) / 3600 * order["qty"]

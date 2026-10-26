@@ -1,8 +1,11 @@
 """Заказы (B06).
 
 POST /api/v1/orders            — оформить заказ по расчёту цены: {quote_id, name, phone,
-                                  email?, address?, comment?, consent}. Доставка берётся из
-                                  расчёта; если курьер — адрес обязателен. Ответ: заказ с token.
+                                  email?, address?, comment?, consent, company?}. Доставка —
+                                  из расчёта; если курьер — адрес обязателен. Ответ: заказ с token.
+                                  `company` {name, inn, kpp?, address?} — заказ от организации
+                                  или ИП (B33, `app/b2b.py`): e-mail обязателен (туда уйдут
+                                  документы), `payment_method = invoice` — оплата по счёту.
 GET  /api/v1/orders/{token}    — заказ для страницы статуса /order/<token>. Ссылку знает
                                   только клиент (token случайный), вход не нужен.
 Кабинет клиента (B32, `app/account.py`) находит заказы по `email`: если клиент вошёл в кабинет
@@ -29,6 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.b2b import Company
 from app.config import settings
 from app.db import get_db
 from app.events import track
@@ -71,6 +75,7 @@ class OrderCreate(BaseModel):
     address: str | None = Field(default=None, max_length=1000)
     comment: str | None = Field(default=None, max_length=2000)
     consent: bool = False  # согласие на обработку персональных данных
+    company: Company | None = None  # заказ от юрлица или ИП (B33) → оплата по счёту
 
     @field_validator("email", "address", "comment", mode="before")
     @classmethod
@@ -136,12 +141,17 @@ def create_order(
         )
     if quote["delivery"] != "pickup" and not body.address:
         raise HTTPException(status_code=422, detail="Для доставки курьером нужен адрес.")
+    email = body.email or logged_in_email
+    if body.company is not None and not email:
+        raise HTTPException(
+            status_code=422, detail="Для заказа от организации нужен e-mail — на него уйдёт счёт."
+        )
 
     order = Order(
         token=secrets.token_hex(16),
         customer_name=body.name,
         phone=body.phone,
-        email=body.email or logged_in_email,
+        email=email,
         delivery=quote["delivery"],
         address=body.address if quote["delivery"] != "pickup" else None,
         comment=body.comment,
@@ -155,6 +165,9 @@ def create_order(
         total=int(round(quote["total"])),
         currency=quote.get("currency", "RUB"),
         quote=quote,
+        # Организации платят по счёту (B33), частные лица — онлайн (B08).
+        payment_method="invoice" if body.company is not None else "online",
+        **(body.company.to_columns() if body.company is not None else {}),
     )
     db.add(order)
     db.flush()  # чтобы появился order.id
@@ -165,7 +178,13 @@ def create_order(
         upload_id=order.upload_id,
         quote_id=order.quote_id,
         order_id=order.id,
-        props={"total": order.total, "delivery": order.delivery, "qty": order.qty},
+        props={
+            "total": order.total,
+            "delivery": order.delivery,
+            "qty": order.qty,
+            "payment_method": order.payment_method,
+            "b2b": order.company_name is not None,
+        },
     )
     db.commit()
     db.refresh(order)
@@ -186,8 +205,10 @@ def latest_payment(db: Session, order: Order) -> Payment | None:
 
 
 def payment_summary(db: Session, order: Order) -> dict:
-    """Блок `payment` в ответе заказа: включена ли онлайн-оплата и в каком состоянии платёж."""
+    """Блок `payment` в ответе заказа: включена ли онлайн-оплата и в каком состоянии платёж.
+    Заказ по счёту (B33) онлайн не платится — для него `enabled = false`."""
     enabled = bool(settings.yookassa_shop_id and settings.yookassa_secret_key)
+    enabled = enabled and order.payment_method != "invoice"
     p = latest_payment(db, order)
     return {
         "enabled": enabled,
