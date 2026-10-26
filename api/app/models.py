@@ -1,4 +1,5 @@
-"""Таблицы БД: `orders` (B06), `payments` (B08), `events` (B12).
+"""Таблицы БД: `orders` (B06), `payments` (B08), `events` (B12),
+`login_codes` и `client_sessions` (кабинет клиента, B32).
 Изменил таблицу → добавь миграцию в alembic/versions/.
 
 Загрузки, расчёты печати и цены по-прежнему лежат файлами в DATA_DIR (см. DECISIONS.md):
@@ -24,6 +25,7 @@ PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 # payment_started — нажал «Оплатить» (создан платёж в ЮKassa); paid — оплата прошла.
 # editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
 # emboss_build / paint_build — тоже не шаги: клиент запустил тиснение (B30) / раскраску (B31).
+# account_login — клиент вошёл в кабинет по коду из письма (B32); не шаг воронки.
 EVENT_NAMES = (
     "upload",
     "quote",
@@ -33,6 +35,7 @@ EVENT_NAMES = (
     "editor_build",
     "emboss_build",
     "paint_build",
+    "account_login",
 )
 
 
@@ -179,6 +182,38 @@ class Event(Base):
             "order_id": self.order_id,
             "props": self.props,
         }
+
+
+class LoginCode(Base):
+    """Код для входа в кабинет (B32): одна строка на письмо. Хранится не сам код, а его
+    sha256 — утечка БД не даёт войти. Код живёт LOGIN_CODE_TTL_MIN минут, 5 попыток, один раз."""
+
+    __tablename__ = "login_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)  # строчными
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ClientSession(Base):
+    """Вход клиента в кабинет (B32): token лежит в cookie `tuc_session` (HttpOnly).
+    Выход — строка удаляется. Срок — SESSION_DAYS дней от входа."""
+
+    __tablename__ = "client_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)  # строчными
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 def _iso(dt: datetime) -> str:

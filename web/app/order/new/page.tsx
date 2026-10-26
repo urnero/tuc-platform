@@ -5,17 +5,21 @@
  * Слева — что заказываем (из GET /api/v1/quotes/{id}), справа — контакты, адрес (если курьер),
  * комментарий, согласие на обработку данных → POST /api/v1/orders → страница статуса /order/<token>.
  * Доставку клиент выбрал на шаге расчёта — здесь она только показывается.
+ * Если клиент вошёл в кабинет (B32), имя, телефон, e-mail и адрес подставляются
+ * из последнего заказа (GET /api/v1/account) — поля остаются редактируемыми.
  */
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import type { Account } from "@/lib/account";
 import { formatPrice } from "@/lib/format";
 import {
   EMPTY_FORM,
   needsAddress,
   type Order,
   type OrderForm,
+  prefillForm,
   quoteLoadError,
   toRequest,
   uploadIdFromQuote,
@@ -56,6 +60,14 @@ function NewOrder() {
       })
       .catch((e: Error) => setLoadError(e.message));
   }, [quoteId]);
+
+  // Клиент в кабинете — заполняем контакты из прошлого заказа (пустые поля, пока ничего не ввели).
+  useEffect(() => {
+    fetch("/api/v1/account")
+      .then(async (r) => (r.ok ? ((await r.json()) as Account) : null))
+      .then((a) => a && setForm((f) => prefillForm(f, a)))
+      .catch(() => {});
+  }, []);
 
   function set<K extends keyof OrderForm>(key: K, value: OrderForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));

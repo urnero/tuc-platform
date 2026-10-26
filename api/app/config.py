@@ -73,6 +73,21 @@ class Settings(BaseSettings):
     admin_user: str = "admin"
     admin_password: str = ""
 
+    # Письма (app/mailer.py): код для входа в кабинет (B32). Пустой SMTP_HOST = письма не
+    # отправляются, вход в кабинет отвечает 503. SMTP_HOST=log — письмо пишется в лог api
+    # (для разработки без почты). SMTP_SSL: true — порт 465 (TLS сразу), false — 587 (STARTTLS).
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # адрес отправителя; пусто = SMTP_USER
+    smtp_ssl: bool = True
+
+    # Кабинет клиента (B32): вход по коду из письма.
+    login_code_ttl_min: int = 15  # сколько минут действует код
+    session_days: int = 30  # сколько дней держим вход (cookie tuc_session)
+    rate_limit_login_per_min: int = 5  # запросов кода и попыток входа в минуту с одного IP
+
     @field_validator("google_sa_json_path", mode="before")
     @classmethod
     def _empty_path_is_none(cls, v):

@@ -39,6 +39,7 @@ def no_limits(monkeypatch):
 
     monkeypatch.setattr(settings, "rate_limit_uploads_per_min", 0)
     monkeypatch.setattr(settings, "rate_limit_orders_per_min", 0)
+    monkeypatch.setattr(settings, "rate_limit_login_per_min", 0)
     monkeypatch.setattr(settings, "min_free_disk_gb", 0)
     limiter.reset()
     yield

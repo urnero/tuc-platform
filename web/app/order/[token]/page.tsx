@@ -198,6 +198,16 @@ function OrderStatus() {
         {order.comment && <p>Комментарий: {order.comment}</p>}
         <p style={{ color: "var(--muted)" }}>
           Сохраните ссылку на эту страницу — по ней видно, что с заказом. Вопросы — по телефону или в Telegram студии.
+          {order.email && (
+            <>
+              {" "}
+              Все заказы на {order.email} — в{" "}
+              <Link href="/account" className="underline underline-offset-2">
+                кабинете
+              </Link>
+              .
+            </>
+          )}
         </p>
       </section>
 

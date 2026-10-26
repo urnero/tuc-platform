@@ -6,6 +6,8 @@
  * блок «Надпись или логотип на модели» (B30, components/EmbossPanel.tsx),
  * блок «Раскраска по частям» (B31, components/PaintPanel.tsx),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx).
+ * Повтор заказа из кабинета (B32): параметры прошлого заказа приходят в адресе
+ * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
  */
 
 import dynamic from "next/dynamic";
@@ -15,6 +17,7 @@ import { useEffect, useState } from "react";
 import EmbossPanel from "@/components/EmbossPanel";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
+import { parsePreset, type Preset } from "@/lib/account";
 import {
   formatBytes,
   formatDims,
@@ -43,8 +46,10 @@ export default function ModelPage() {
   const [error, setError] = useState<string | null>(null);
   const [showUnits, setShowUnits] = useState<Units>("mm"); // в чём показывать габариты
   const [saving, setSaving] = useState(false);
+  const [preset, setPreset] = useState<Preset | null>(null); // повтор заказа (B32)
 
   useEffect(() => {
+    setPreset(parsePreset(window.location.search));
     fetch(`/api/v1/uploads/${id}`)
       .then(async (r) => {
         if (!r.ok)
@@ -267,6 +272,7 @@ export default function ModelPage() {
                 (fromPaint && upload.paint!.material) ||
                 "PLA"
         }
+        preset={preset}
       />
     </main>
   );

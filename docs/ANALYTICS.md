@@ -13,6 +13,7 @@
 | `editor_build` | клиент нажал «Построить модель» в редакторе (B21) — ещё до загрузки, поэтому не шаг воронки и в сводке админки не показывается | — (`props.build_id`) | `editor_slug`, `build_id`, `params`, `cached` (true — такие параметры уже строили, OpenSCAD не запускался) |
 | `emboss_build` | клиент нажал «Нанести» на странице модели (B30) — тиснение надписи/логотипа; как и `editor_build`, не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `params` (kind, text, font, bold, size_mm, depth_mm, style, face, dx, dy, angle) |
 | `paint_build` | клиент нажал «Собрать модель в цветах» на странице модели (B31) — раскраска по частям; не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `parts` (сколько деталей), `colors` (сколько разных цветов) |
+| `account_login` | клиент вошёл в кабинет по коду из письма (B32); не шаг воронки, ключей нет — считаем только факт и время (кто вошёл — в `client_sessions`) | — | — |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty` |
 | `payment_started` | клиент нажал «Оплатить», платёж в ЮKassa создан | `upload_id`, `order_id` | `amount`, `yookassa_id` |
@@ -216,4 +217,30 @@ select quote->>'decor' as decor, count(*) as orders
 from orders
 where quote->>'decor' is not null
 group by 1 order by 2 desc;
+```
+
+## Кабинет клиента (B32)
+
+```sql
+-- Сколько клиентов заходили в кабинет за 30 дней и сколько заказов они потом оформили.
+-- Входы — события account_login (без ключей); «после входа» — заказы с e-mail, у которого
+-- есть живая или истёкшая сессия, созданная раньше заказа.
+select count(*) filter (where name = 'account_login') as logins
+from events
+where created_at > now() - interval '30 days';
+
+select o.id, o.email, o.total, o.created_at at time zone 'Europe/Moscow' as created_msk
+from orders o
+where exists (select 1 from client_sessions s
+              where s.email = lower(o.email) and s.created_at < o.created_at)
+  and o.created_at > now() - interval '30 days'
+order by o.id desc;
+
+-- Повторные клиенты: адреса, с которых оформлено больше одного заказа (кабинет ищет заказы так же — по e-mail).
+select lower(email) as email, count(*) as orders, sum(total) as total_rub
+from orders
+where email is not null
+group by lower(email)
+having count(*) > 1
+order by orders desc;
 ```

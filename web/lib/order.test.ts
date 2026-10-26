@@ -6,6 +6,7 @@ import {
   isValidEmail,
   isValidPhone,
   needsAddress,
+  prefillForm,
   quoteLoadError,
   STATUS_LABELS,
   STATUS_STEPS,
@@ -121,5 +122,31 @@ describe("quoteLoadError", () => {
     expect(quoteLoadError(404)).toContain("не найден");
     expect(quoteLoadError(410)).toContain("устарел");
     expect(quoteLoadError(500)).toBe("Ошибка 500.");
+  });
+});
+
+describe("prefillForm", () => {
+  const account = {
+    email: "ivan@example.ru",
+    contacts: { name: "Иван", phone: "+79991234567", address: "Москва, Тверская 1" },
+  };
+  it("заполняет пустые поля из кабинета", () => {
+    expect(prefillForm(EMPTY_FORM, account)).toEqual({
+      ...EMPTY_FORM,
+      name: "Иван",
+      phone: "+79991234567",
+      email: "ivan@example.ru",
+      address: "Москва, Тверская 1",
+    });
+  });
+  it("не трогает то, что клиент уже ввёл", () => {
+    const typed = { ...EMPTY_FORM, name: "Пётр", email: "p@example.ru" };
+    const out = prefillForm(typed, account);
+    expect(out.name).toBe("Пётр");
+    expect(out.email).toBe("p@example.ru");
+    expect(out.phone).toBe("+79991234567");
+  });
+  it("без прошлых заказов — только e-mail", () => {
+    expect(prefillForm(EMPTY_FORM, { email: "new@example.ru", contacts: null })).toEqual({ ...EMPTY_FORM, email: "new@example.ru" });
   });
 });

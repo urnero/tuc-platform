@@ -91,6 +91,7 @@ describe("robots", () => {
     expect(rule.disallow).toContain("/admin");
     expect(rule.disallow).toContain("/order/");
     expect(rule.disallow).toContain("/upload/");
+    expect(rule.disallow).toContain("/account");
     // сама страница загрузки открыта — закрыты только личные /upload/<id>
     expect(rule.disallow).not.toContain("/upload");
   });

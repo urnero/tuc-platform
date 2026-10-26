@@ -4,7 +4,9 @@ POST /api/v1/orders            — оформить заказ по расчёт
                                   email?, address?, comment?, consent}. Доставка берётся из
                                   расчёта; если курьер — адрес обязателен. Ответ: заказ с token.
 GET  /api/v1/orders/{token}    — заказ для страницы статуса /order/<token>. Ссылку знает
-                                  только клиент (token случайный), логина пока нет.
+                                  только клиент (token случайный), вход не нужен.
+Кабинет клиента (B32, `app/account.py`) находит заказы по `email`: если клиент вошёл в кабинет
+и не заполнил e-mail в форме, подставляем адрес из его сессии — заказ не потеряется из истории.
 
 Заказ — строка в таблице `orders` (app/models.py). Цена фиксируется снимком расчёта.
 Расчёт годится один раз и не дольше QUOTE_TTL_HOURS (24 ч): по просроченному — 410,
@@ -22,7 +24,7 @@ import re
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -103,8 +105,20 @@ class OrderCreate(BaseModel):
         return v
 
 
+def session_email(request: Request, db: Db) -> str | None:
+    """E-mail клиента, вошедшего в кабинет (cookie), или None."""
+    from app.account import current_email  # account.py импортирует orders — без кольца
+
+    return current_email(request, db)
+
+
 @router.post("", status_code=201, dependencies=[Depends(orders_guard)])
-def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict:
+def create_order(
+    body: OrderCreate,
+    db: Db,
+    background: BackgroundTasks,
+    logged_in_email: Annotated[str | None, Depends(session_email)] = None,
+) -> dict:
     if not body.consent:
         raise HTTPException(status_code=422, detail="Нужно согласие на обработку данных.")
     quote = load_quote(body.quote_id)
@@ -127,7 +141,7 @@ def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict
         token=secrets.token_hex(16),
         customer_name=body.name,
         phone=body.phone,
-        email=body.email,
+        email=body.email or logged_in_email,
         delivery=quote["delivery"],
         address=body.address if quote["delivery"] != "pickup" else None,
         comment=body.comment,

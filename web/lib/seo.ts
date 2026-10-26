@@ -114,7 +114,7 @@ export function sitemapEntries(
 }
 
 /** Что закрыто от роботов: админка, API, страницы заказов и загрузок по личным ссылкам. */
-export const PRIVATE_PATHS = ["/admin", "/api/", "/order/", "/upload/"];
+export const PRIVATE_PATHS = ["/admin", "/api/", "/order/", "/upload/", "/account"];
 
 /** robots.txt: на проде — всё открыто кроме личного, на staging/localhost — закрыто целиком. */
 export function robotsRules(base: string = siteUrl()): MetadataRoute.Robots {

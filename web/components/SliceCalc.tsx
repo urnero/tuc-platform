@@ -10,10 +10,13 @@
  *    Тираж/постобработку/доставку можно менять — цена пересчитывается без нового слайсинга.
  *    Смена материала или поддержек — заново «Рассчитать».
  * Кнопка «Оформить заказ» ведёт на форму заказа (B06): /order/new?quote=<id расчёта>.
+ * Повтор заказа из кабинета (B32): `preset` — параметры прошлого заказа; с ним расчёт печати
+ * запускается сам, клиенту остаётся проверить цену и нажать «Оформить заказ».
  */
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { Preset } from "@/lib/account";
 import { formatPrice } from "@/lib/format";
 import {
   batchHint,
@@ -40,16 +43,18 @@ type Props = {
   uploadId: string;
   /** Материал, выбранный заранее (модель из каталога, B20). По умолчанию PLA. */
   defaultMaterial?: string;
+  /** Параметры прошлого заказа (повтор из кабинета, B32): подставляются и расчёт стартует сам. */
+  preset?: Preset | null;
 };
 
-export default function SliceCalc({ uploadId, defaultMaterial = "PLA" }: Props) {
+export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = null }: Props) {
   const [materials, setMaterials] = useState<string[]>(["PLA", "PETG", "ABS"]);
   const [pricing, setPricing] = useState<Pricing | null>(null);
-  const [material, setMaterial] = useState(defaultMaterial);
-  const [supports, setSupports] = useState(false);
-  const [qty, setQty] = useState(1);
-  const [postprocess, setPostprocess] = useState("none");
-  const [delivery, setDelivery] = useState("pickup");
+  const [material, setMaterial] = useState(preset?.material ?? defaultMaterial);
+  const [supports, setSupports] = useState(preset?.supports ?? false);
+  const [qty, setQty] = useState(preset?.qty ?? 1);
+  const [postprocess, setPostprocess] = useState(preset?.postprocess ?? "none");
+  const [delivery, setDelivery] = useState(preset?.delivery ?? "pickup");
   const [record, setRecord] = useState<SliceRecord | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,6 +71,15 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA" }: Props) 
       .then((d: Pricing | null) => d && setPricing(d))
       .catch(() => {});
   }, []);
+
+  // Повтор заказа: считаем печать сразу, не дожидаясь нажатия «Рассчитать».
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!preset || autoStarted.current) return;
+    autoStarted.current = true;
+    void calculate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- один раз при открытии
+  }, [preset]);
 
   // Пока сервер считает печать — опрашиваем результат.
   useEffect(() => {

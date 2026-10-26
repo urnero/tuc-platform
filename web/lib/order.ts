@@ -73,6 +73,21 @@ export const EMPTY_FORM: OrderForm = {
   consent: false,
 };
 
+/** Подставить в пустые поля формы контакты клиента из кабинета (B32): что он уже ввёл — не трогаем. */
+export function prefillForm(
+  form: OrderForm,
+  account: { email: string; contacts: { name: string; phone: string; address: string } | null },
+): OrderForm {
+  const c = account.contacts;
+  return {
+    ...form,
+    name: form.name || c?.name || "",
+    phone: form.phone || c?.phone || "",
+    email: form.email || account.email,
+    address: form.address || c?.address || "",
+  };
+}
+
 export function needsAddress(delivery: string): boolean {
   return delivery !== "pickup";
 }
