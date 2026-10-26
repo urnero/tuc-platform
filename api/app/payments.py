@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -48,6 +48,9 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["payments"])
 Db = Annotated[Session, Depends(get_db)]
+# Тело вебхука ЮKassa как есть (словарь): проверяем поля сами, а не схемой —
+# ЮKassa может добавлять новые поля, и падать на них не нужно.
+WebhookBody = Annotated[dict, Body()]
 
 # Тесты подменяют транспорт httpx, чтобы вместо настоящей ЮKassa отвечал поддельный сервер.
 TRANSPORT: httpx.BaseTransport | None = None
@@ -282,17 +285,18 @@ def check_payment(token: str, db: Db, background: BackgroundTasks) -> dict:
 
 
 @router.post("/payments/yookassa/webhook")
-async def yookassa_webhook(request: Request, db: Db, background: BackgroundTasks) -> dict:
+def yookassa_webhook(body: WebhookBody, db: Db, background: BackgroundTasks) -> dict:
     """ЮKassa шлёт {type: notification, event: payment.succeeded, object: {id, …}}.
 
     Всегда отвечаем 200, чтобы ЮKassa не повторяла уведомление: неизвестный платёж
     (например, от другого окружения с тем же магазином) просто пропускаем.
+
+    Обработчик — обычный `def`, не `async`: внутри синхронный запрос в ЮKassa (до 20 с)
+    и работа с БД. Синхронную функцию FastAPI выполняет в отдельном потоке, и остальные
+    запросы (например, /health или загрузка модели) не ждут ответа ЮKassa. Тело разбирает
+    сам FastAPI (`Body`): не JSON или не объект → 422.
     """
     _require_enabled()
-    try:
-        body = await request.json()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Ожидался JSON.") from None
     event = str(body.get("event", ""))
     obj = body.get("object") or {}
     if not event.startswith("payment.") or not obj.get("id"):
