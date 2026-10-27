@@ -1,6 +1,7 @@
 # Worker: тот же код, что в api/, плюс PrusaSlicer CLI и OpenSCAD CLI. Запускает фоновые задачи arq.
 # Сборка идёт из корня репо: docker build -f worker/Dockerfile .
-FROM python:3.12-slim
+# bookworm закреплён: в trixie нет libwebkit2gtk-4.0 (нужен AppImage PrusaSlicer 2.8).
+FROM python:3.12-slim-bookworm
 
 ARG PRUSA_SLICER_URL=https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.8.1/PrusaSlicer-2.8.1+linux-x64-GTK3-202409181354.AppImage
 
