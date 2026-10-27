@@ -1,0 +1,270 @@
+<title>Подключение BroPrint</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column of numbered step-cards, a sticky progress rail on wide screens. */
+:root{
+  --bg:#f6f4ef; --paper:#ffffff; --fg:#1c1d21; --muted:#6b6a66; --line:#e2ddd3;
+  --accent:#e4541f; --accent-ink:#ffffff; --code-bg:#1c1d21; --code-fg:#f1ede4;
+  --ok:#2e7d4f; --warn:#b8600e; --warn-bg:#fff2e3;
+  --sans:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#151618; --paper:#1e2023; --fg:#ecebe6; --muted:#a09e97; --line:#33363b;
+  --accent:#ff7a45; --accent-ink:#1a0d06; --code-bg:#0e0f11; --code-fg:#e8e4da;
+  --ok:#5fc48a; --warn:#f0a35a; --warn-bg:#2b1f12; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#151618; --paper:#1e2023; --fg:#ecebe6; --muted:#a09e97; --line:#33363b;
+  --accent:#ff7a45; --accent-ink:#1a0d06; --code-bg:#0e0f11; --code-fg:#e8e4da;
+  --ok:#5fc48a; --warn:#f0a35a; --warn-bg:#2b1f12; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.55;
+  padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px}
+@media (max-width:820px){.wrap{grid-template-columns:minmax(0,1fr)}.rail{position:static}}
+h1,h2,h3{text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-.01em}
+h2{font-size:22px;font-weight:800}
+h3{font-size:16px;font-weight:700;margin-top:4px}
+p{margin:0}
+.lead{color:var(--muted);max-width:60ch}
+.rail{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;display:flex;flex-direction:column;gap:6px;font-size:14px}
+.rail a{color:var(--fg);text-decoration:none;padding:6px 10px;border-radius:6px;display:flex;gap:10px;align-items:baseline}
+.rail a:hover{background:var(--paper)}
+.rail .n{font-family:var(--mono);color:var(--accent);font-size:12px}
+.rail .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+main{display:flex;flex-direction:column;gap:28px;min-width:0}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:22px 24px;display:flex;flex-direction:column;gap:16px;min-width:0;scroll-margin-top:16px}
+.head{display:flex;gap:14px;align-items:baseline}
+.head .n{font-family:var(--mono);font-weight:600;color:var(--accent);font-size:14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px;font-size:13px;color:var(--muted)}
+.meta span{border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:10px}
+ol.steps li{padding-left:4px}
+ol.steps li::marker{font-family:var(--mono);color:var(--muted);font-size:13px}
+pre{background:var(--code-bg);color:var(--code-fg);font-family:var(--mono);font-size:13.5px;line-height:1.5;border-radius:8px;padding:12px 14px;margin:0;overflow-x:auto;position:relative}
+pre code{white-space:pre}
+code.i{font-family:var(--mono);font-size:.9em;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.cmd{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
+.cmd button{font:600 12px var(--sans);background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 10px;cursor:pointer;white-space:nowrap}
+.cmd button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.note{border-left:3px solid var(--accent);padding:8px 14px;color:var(--fg);background:var(--bg);border-radius:0 6px 6px 0}
+.warn{border-left:3px solid var(--warn);background:var(--warn-bg);padding:8px 14px;border-radius:0 6px 6px 0}
+.check{display:flex;gap:10px;align-items:flex-start}
+.check .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);margin-top:7px;flex:none}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+td code{font-family:var(--mono);font-size:13px}
+.tbl{overflow-x:auto}
+.flow{font-family:var(--mono);font-size:12.5px;line-height:1.45;color:var(--fg);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;white-space:pre}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){.cmd button{transition:transform .08s}.cmd button:active{transform:scale(.97)}}
+</style>
+
+<div class="wrap">
+  <nav class="rail" aria-label="Разделы">
+    <div class="eyebrow">Разделы</div>
+    <a href="#how"><span class="n">00</span>Как всё связано</a>
+    <a href="#env"><span class="n">01</span>Файл .env на сервере</a>
+    <a href="#tg"><span class="n">02</span>Telegram-бот</a>
+    <a href="#google"><span class="n">03</span>Google Drive и таблица</a>
+    <a href="#yk"><span class="n">04</span>ЮKassa</a>
+    <a href="#smtp"><span class="n">05</span>Почта для писем</a>
+    <a href="#me"><span class="n">06</span>Что прислать Claude</a>
+    <a href="#check"><span class="n">07</span>Проверка</a>
+  </nav>
+
+  <main>
+    <header style="display:flex;flex-direction:column;gap:10px">
+      <h1>Подключение сервисов к сайту BroPrint</h1>
+      <p class="lead">Сайт broprint3d.ru уже работает. Чтобы заказы приходили в Telegram, файлы ложились в Google Drive, а оплата проходила онлайн, нужны ключи от этих сервисов. Ключи создаёте вы. Кладёте их в один файл на сервере. Это одна-две сессии по 20 минут.</p>
+    </header>
+
+    <section class="card" id="how">
+      <div class="head"><span class="n">00</span><h2>Как всё связано</h2></div>
+      <div class="flow">клиент ──► сайт broprint3d.ru ──► заказ в базе
+                                   │
+            ┌──────────────────────┼──────────────────────┐
+            ▼                      ▼                      ▼
+     Telegram-бот           Google Drive            Google-таблица
+     карточка заказа        папка с файлами         строка в листе
+     кнопки статусов        «Заказы сайта/…»        «Заказы (сайт)»
+            │
+            ▼
+     клиент получает статус (письмо или Telegram)
+
+     оплата: сайт ──► ЮKassa ──► вебхук ──► заказ «оплачен»</div>
+      <p>Каждый сервис включается своей переменной в файле <code class="i">.env</code>. Пока переменная пустая, сервис выключен, сайт работает без него.</p>
+    </section>
+
+    <section class="card" id="env">
+      <div class="head"><span class="n">01</span><h2>Файл .env на сервере</h2></div>
+      <div class="meta"><span>5 минут</span><span>нужно: PowerShell</span></div>
+      <p>Все ключи живут в одном файле на сервере: <code class="i">/srv/tuc/prod/.env</code>. У тестового стенда свой файл: <code class="i">/srv/tuc/staging/.env</code>. В чат ключи не присылайте.</p>
+      <ol class="steps">
+        <li>Зайдите на сервер.
+          <div class="cmd"><pre><code>ssh root@141.133.201.70</code></pre><button type="button" data-copy="ssh root@141.133.201.70">Копировать</button></div></li>
+        <li>Откройте файл в редакторе.
+          <div class="cmd"><pre><code>nano /srv/tuc/prod/.env</code></pre><button type="button" data-copy="nano /srv/tuc/prod/.env">Копировать</button></div></li>
+        <li>Стрелками найдите нужную строку. Впишите значение после знака <code class="i">=</code>. Без пробелов и кавычек.</li>
+        <li>Сохраните: <code class="i">Ctrl+O</code>, Enter. Выйдите: <code class="i">Ctrl+X</code>.</li>
+        <li>Перезапустите сайт, чтобы он прочитал новые значения.
+          <div class="cmd"><pre><code>cd /srv/tuc/prod &amp;&amp; docker compose up -d</code></pre><button type="button" data-copy="cd /srv/tuc/prod &amp;&amp; docker compose up -d">Копировать</button></div></li>
+      </ol>
+      <div class="note">Эти пять шагов повторяются в каждом разделе ниже. Дальше написано только, какие строки менять.</div>
+    </section>
+
+    <section class="card" id="tg">
+      <div class="head"><span class="n">02</span><h2>Telegram-бот</h2></div>
+      <div class="meta"><span>10 минут</span><span>нужно: телефон с Telegram</span><span>даёт: заказы в Telegram, статусы клиентам</span></div>
+      <h3>Что делает бот</h3>
+      <p>Новый заказ приходит вам карточкой: номер, клиент, материал, граммы, часы, сумма, ссылки на файлы и админку. Под карточкой кнопки статусов: «печатается», «готов», «выдан». Нажали кнопку — клиент получил письмо или сообщение. Тот же бот клиент может подключить со страницы заказа, чтобы получать статусы в Telegram.</p>
+      <h3>Шаги</h3>
+      <ol class="steps">
+        <li>В Telegram откройте <a href="https://t.me/BotFather">@BotFather</a>. Отправьте <code class="i">/newbot</code>.</li>
+        <li>Имя бота: <code class="i">BroPrint</code>. Username: <code class="i">broprint3d_bot</code> (если занят, добавьте цифру).</li>
+        <li>BotFather пришлёт токен вида <code class="i">1234567890:AAH…</code>. Скопируйте его.</li>
+        <li>Откройте <a href="https://t.me/userinfobot">@userinfobot</a>, нажмите Start. Он покажет ваш <code class="i">Id</code>: число из 9–10 цифр. Скопируйте.</li>
+        <li>На сервере (раздел 01) впишите в <code class="i">.env</code>:
+          <pre><code>TELEGRAM_BOT_TOKEN=1234567890:AAH…
+TELEGRAM_OWNER_CHAT_ID=123456789</code></pre></li>
+        <li>Перезапустите сайт (шаг 5 раздела 01). Откройте своего бота в Telegram и нажмите Start.</li>
+      </ol>
+      <h3>Проверка</h3>
+      <div class="cmd"><pre><code>cd /srv/tuc/prod &amp;&amp; docker compose logs --tail 20 bot</code></pre><button type="button" data-copy="cd /srv/tuc/prod &amp;&amp; docker compose logs --tail 20 bot">Копировать</button></div>
+      <p>В логе должна быть строка про запуск бота без слова <code class="i">error</code>. Затем оформите тестовый заказ на сайте. Карточка придёт в Telegram в течение 10 секунд.</p>
+      <div class="warn">Бот слушает только ваш chat_id. Брату или сотруднику нужен второй id — пока сайт поддерживает одного получателя. Напишите Claude, если нужны двое.</div>
+    </section>
+
+    <section class="card" id="google">
+      <div class="head"><span class="n">03</span><h2>Google Drive и таблица учёта</h2></div>
+      <div class="meta"><span>20 минут</span><span>нужно: аккаунт Google, PowerShell</span><span>даёт: файлы заказов в Drive, строка заказа в таблице</span></div>
+      <h3>Как это работает</h3>
+      <p>Сайт заходит в Google не под вашим паролем, а под отдельным «сервисным аккаунтом». Это технический пользователь с длинным e-mail. Вы даёте ему доступ к одной папке и одной таблице, как обычному коллеге. Пароль сервисного аккаунта — это JSON-файл. Он лежит на сервере.</p>
+      <h3>А. Создать сервисный аккаунт</h3>
+      <ol class="steps">
+        <li>Откройте <a href="https://console.cloud.google.com/projectcreate">console.cloud.google.com/projectcreate</a>. Название проекта: <code class="i">broprint</code>. Нажмите Create. Подождите минуту.</li>
+        <li>Включите два API. Откройте <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com">Google Sheets API</a> → Enable. Затем <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com">Google Drive API</a> → Enable. Вверху должен быть выбран проект <code class="i">broprint</code>.</li>
+        <li>Откройте <a href="https://console.cloud.google.com/iam-admin/serviceaccounts">Service Accounts</a> → Create service account. Имя: <code class="i">broprint-site</code>. Нажмите Create and continue, затем Done. Роли не нужны.</li>
+        <li>В списке появится аккаунт с e-mail вида <code class="i">broprint-site@broprint-….iam.gserviceaccount.com</code>. Скопируйте этот e-mail. Он нужен в шагах Б и В.</li>
+        <li>Нажмите на аккаунт → вкладка Keys → Add key → Create new key → JSON → Create. Браузер скачает файл. Переименуйте его в <code class="i">google-sa.json</code>.</li>
+      </ol>
+      <h3>Б. Дать доступ к таблице</h3>
+      <ol class="steps">
+        <li>Откройте таблицу <a href="https://docs.google.com/spreadsheets/d/1PmaR0g5iRZx4_p4e1-m0i5ztYChY0BUjfqr_PtL7XbE/edit">«Учет 3D-печати ТУЦ»</a>.</li>
+        <li>Кнопка «Настройки доступа» → вставьте e-mail сервисного аккаунта → роль «Редактор» → снимите галочку «Уведомить» → Отправить.</li>
+        <li>Сайт сам создаст лист «Заказы (сайт)». Ваши листы он не трогает.</li>
+      </ol>
+      <h3>В. Папка для файлов заказов</h3>
+      <ol class="steps">
+        <li>В Google Drive создайте папку <code class="i">Заказы сайта</code>.</li>
+        <li>Правый клик → «Настройки доступа» → e-mail сервисного аккаунта → «Редактор» → Отправить.</li>
+        <li>Откройте папку. В адресной строке после <code class="i">folders/</code> стоит id вида <code class="i">1AbC…</code>. Скопируйте его.</li>
+      </ol>
+      <h3>Г. Положить ключ на сервер</h3>
+      <ol class="steps">
+        <li>На компьютере откройте PowerShell в папке, где лежит <code class="i">google-sa.json</code> (обычно «Загрузки»).
+          <div class="cmd"><pre><code>cd $HOME\Downloads</code></pre><button type="button" data-copy="cd $HOME\Downloads">Копировать</button></div></li>
+        <li>Скопируйте файл на сервер. Спросит пароль root.
+          <div class="cmd"><pre><code>scp google-sa.json root@141.133.201.70:/srv/tuc/prod/secrets/google-sa.json</code></pre><button type="button" data-copy="scp google-sa.json root@141.133.201.70:/srv/tuc/prod/secrets/google-sa.json">Копировать</button></div></li>
+        <li>Если команда ответила, что папки <code class="i">secrets</code> нет, сначала создайте её на сервере:
+          <div class="cmd"><pre><code>ssh root@141.133.201.70 "mkdir -p /srv/tuc/prod/secrets &amp;&amp; chown deploy:deploy /srv/tuc/prod/secrets"</code></pre><button type="button" data-copy="ssh root@141.133.201.70 &quot;mkdir -p /srv/tuc/prod/secrets &amp;&amp; chown deploy:deploy /srv/tuc/prod/secrets&quot;">Копировать</button></div>
+          Затем повторите шаг 2.</li>
+        <li>На сервере сделайте файл читаемым только для сайта:
+          <div class="cmd"><pre><code>chown deploy:deploy /srv/tuc/prod/secrets/google-sa.json &amp;&amp; chmod 600 /srv/tuc/prod/secrets/google-sa.json</code></pre><button type="button" data-copy="chown deploy:deploy /srv/tuc/prod/secrets/google-sa.json &amp;&amp; chmod 600 /srv/tuc/prod/secrets/google-sa.json">Копировать</button></div></li>
+        <li>Удалите файл с компьютера из «Загрузок». Он нужен только на сервере.</li>
+      </ol>
+      <h3>Д. Включить в .env</h3>
+      <pre><code>GOOGLE_SA_JSON_PATH=/srv/secrets/google-sa.json
+GOOGLE_SHEET_ID=1PmaR0g5iRZx4_p4e1-m0i5ztYChY0BUjfqr_PtL7XbE
+GOOGLE_SHEET_TAB=Заказы (сайт)
+GOOGLE_DRIVE_FOLDER_ID=&lt;id папки из шага В.3&gt;</code></pre>
+      <p>Путь <code class="i">/srv/secrets/google-sa.json</code> именно такой: это адрес файла внутри контейнера, а не на сервере. Перезапустите сайт (раздел 01, шаг 5).</p>
+      <div class="note">Строка <code class="i">GOOGLE_DRIVE_FOLDER_ID</code> появится в <code class="i">.env.example</code> после задачи B46. Если её ещё нет в вашем <code class="i">.env</code>, просто допишите строку в конец файла.</div>
+      <h3>Проверка</h3>
+      <div class="cmd"><pre><code>cd /srv/tuc/prod &amp;&amp; docker compose exec api python -m app.sheets</code></pre><button type="button" data-copy="cd /srv/tuc/prod &amp;&amp; docker compose exec api python -m app.sheets">Копировать</button></div>
+      <p>Команда переписывает лист «Заказы (сайт)». Откройте таблицу: лист появился, в нём заголовки и ваши тестовые заказы. Если ошибка «403» или «permission» — e-mail сервисного аккаунта не добавлен в доступ (шаг Б.2).</p>
+    </section>
+
+    <section class="card" id="yk">
+      <div class="head"><span class="n">04</span><h2>ЮKassa: оплата картой</h2></div>
+      <div class="meta"><span>15 минут + модерация 1–3 дня</span><span>нужно: ИП или самозанятость</span><span>даёт: кнопка «Оплатить» на сайте</span></div>
+      <ol class="steps">
+        <li>Зарегистрируйтесь на <a href="https://yookassa.ru">yookassa.ru</a>. Подключите магазин: сайт <code class="i">https://broprint3d.ru</code>, деятельность «3D-печать на заказ».</li>
+        <li>Пока магазин на модерации, доступен <strong>тестовый</strong> магазин. Начните с него: платежи не настоящие, можно проверить весь путь.</li>
+        <li>В кабинете: Интеграция → Ключи API. Скопируйте <code class="i">shopId</code> и создайте секретный ключ. Тестовый начинается с <code class="i">test_</code>, боевой с <code class="i">live_</code>.</li>
+        <li>Там же: Интеграция → HTTP-уведомления. URL:
+          <div class="cmd"><pre><code>https://broprint3d.ru/api/v1/payments/yookassa/webhook</code></pre><button type="button" data-copy="https://broprint3d.ru/api/v1/payments/yookassa/webhook">Копировать</button></div>
+          События: <code class="i">payment.succeeded</code> и <code class="i">payment.canceled</code>.</li>
+        <li>В <code class="i">.env</code>:
+          <pre><code>YOOKASSA_SHOP_ID=123456
+YOOKASSA_SECRET_KEY=test_…
+YOOKASSA_VAT_CODE=1</code></pre>
+          <code class="i">YOOKASSA_VAT_CODE=1</code> означает «без НДС». Если чеки 54-ФЗ не подключены, оставьте строку пустой.</li>
+        <li>Перезапустите сайт. Оформите заказ, нажмите «Оплатить». Тестовая карта: <code class="i">5555 5555 5555 4477</code>, любой срок, любой CVC. Заказ должен стать «оплачен», карточка в Telegram обновится.</li>
+        <li>После модерации замените ключ на <code class="i">live_…</code> и перезапустите сайт.</li>
+      </ol>
+    </section>
+
+    <section class="card" id="smtp">
+      <div class="head"><span class="n">05</span><h2>Почта для писем клиентам</h2></div>
+      <div class="meta"><span>10 минут</span><span>даёт: вход в кабинет по коду, письма о статусе</span></div>
+      <p>Подойдёт любой почтовый ящик с SMTP. Проще всего Яндекс: ящик <code class="i">orders@broprint3d.ru</code> через Яндекс 360 для бизнеса или обычный <code class="i">…@yandex.ru</code>.</p>
+      <ol class="steps">
+        <li>В настройках Яндекс Почты включите «Почтовые программы → по протоколу IMAP/SMTP».</li>
+        <li>Создайте пароль приложения: <a href="https://id.yandex.ru/security/app-passwords">id.yandex.ru/security/app-passwords</a> → «Почта». Это не пароль от аккаунта.</li>
+        <li>В <code class="i">.env</code>:
+          <pre><code>SMTP_HOST=smtp.yandex.ru
+SMTP_PORT=465
+SMTP_SSL=true
+SMTP_USER=orders@broprint3d.ru
+SMTP_PASSWORD=&lt;пароль приложения&gt;
+SMTP_FROM=orders@broprint3d.ru</code></pre></li>
+        <li>Перезапустите сайт. Откройте <a href="https://broprint3d.ru/account">broprint3d.ru/account</a>, введите свой e-mail. Код должен прийти за минуту.</li>
+      </ol>
+    </section>
+
+    <section class="card" id="me">
+      <div class="head"><span class="n">06</span><h2>Что прислать Claude в чат</h2></div>
+      <p>Эти вещи не секретные. Их Claude впишет в код сам.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Что</th><th>Зачем</th><th>Куда попадёт</th></tr></thead>
+        <tbody>
+          <tr><td>Наименование ИП/самозанятого, ИНН, ОГРНИП, адрес, телефон, e-mail</td><td>Подвал сайта, оферта, счёт для юрлиц</td><td><code>web/lib/company.ts</code></td></tr>
+          <tr><td>Банк, БИК, расчётный и корр. счёт</td><td>Счёт на оплату для организаций</td><td><code>web/lib/company.ts</code></td></tr>
+          <tr><td>Ваши цены: ₽/г по материалам, ставка часа, минимальный заказ, скидки за тираж</td><td>Расчёт цены на сайте. Пока там оценка Claude по рынку (задача B45)</td><td><code>config/pricing.yaml</code></td></tr>
+          <tr><td>Принтеры студии: модель и рабочая область, мм</td><td>Предупреждение «не влезает», список материалов</td><td><code>config/materials.yaml</code></td></tr>
+          <tr><td>3–6 фото готовых работ (JPG, до 300 КБ)</td><td>Главная страница, доверие клиента</td><td><code>web/public/works/</code></td></tr>
+          <tr><td>Адрес самовывоза и часы</td><td>Контакты, карта</td><td><code>web/lib/company.ts</code></td></tr>
+          <tr><td>Номер счётчика Яндекс.Метрики</td><td>Воронка: сколько загрузили, посчитали, заказали</td><td><code>NEXT_PUBLIC_YM_ID</code> в .env</td></tr>
+          <tr><td>Брендбук, если появится: цвета и логотип</td><td>Замена палитры в одном файле</td><td><code>web/app/globals.css</code></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="card" id="check">
+      <div class="head"><span class="n">07</span><h2>Проверка: всё подключено</h2></div>
+      <div class="check"><span class="dot"></span><p>Тестовый заказ на сайте пришёл карточкой в Telegram.</p></div>
+      <div class="check"><span class="dot"></span><p>Кнопка «готов» в боте изменила статус на странице заказа.</p></div>
+      <div class="check"><span class="dot"></span><p>В Drive в папке «Заказы сайта» появилась папка заказа с файлом модели.</p></div>
+      <div class="check"><span class="dot"></span><p>В таблице на листе «Заказы (сайт)» появилась строка заказа.</p></div>
+      <div class="check"><span class="dot"></span><p>Тестовая оплата прошла, заказ стал «оплачен».</p></div>
+      <div class="check"><span class="dot"></span><p>Код для входа в кабинет пришёл на почту.</p></div>
+      <h3>Если что-то не так</h3>
+      <div class="cmd"><pre><code>cd /srv/tuc/prod &amp;&amp; docker compose logs --tail 50 api worker bot</code></pre><button type="button" data-copy="cd /srv/tuc/prod &amp;&amp; docker compose logs --tail 50 api worker bot">Копировать</button></div>
+      <p>Пришлите в чат строки с ошибкой. Ключи и пароли из <code class="i">.env</code> не присылайте.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+document.querySelectorAll('button[data-copy]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var t=b.getAttribute('data-copy');
+    var done=function(){b.textContent='Скопировано';setTimeout(function(){b.textContent='Копировать'},1500)};
+    try{navigator.clipboard.writeText(t).then(done).catch(function(){sel()})}catch(e){sel()}
+    function sel(){var pre=b.parentElement.querySelector('pre');var r=document.createRange();r.selectNodeContents(pre);var s=window.getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Выделено'}
+  });
+});
+</script>
