@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.events import funnel
+from app.events import funnel, funnel_percents
 from app.export import COLUMNS, MSK, fmt_dt, order_rows, paid_at_by_order
 from app.models import ORDER_STATUSES, Order, Payment
 from app.orders import StatusError, change_status
@@ -249,7 +249,8 @@ def orders_page(
             "total": total,
             "counts": counts,
             "active_count": sum(counts.get(s, 0) for s in ACTIVE_STATUSES),
-            "funnel": funnel(db, days=FUNNEL_DAYS),
+            "funnel": (fn := funnel(db, days=FUNNEL_DAYS)),
+            "funnel_pct": funnel_percents(fn),
             "funnel_days": FUNNEL_DAYS,
             "params": list_params(status, q),
             "prev_url": page_url(status, q, page - 1) if page > 1 else None,

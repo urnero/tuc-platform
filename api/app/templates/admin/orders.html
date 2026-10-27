@@ -7,10 +7,10 @@
 <p class="muted" title="Сколько моделей за {{ funnel_days }} дней дошло до каждого шага. Оплаты — только онлайн через ЮKassa. Таблица events, SQL — docs/ANALYTICS.md">
   Воронка за {{ funnel_days }} дней:
   загрузок <b>{{ funnel.upload }}</b> →
-  расчётов <b>{{ funnel.quote }}</b> →
-  заказов <b>{{ funnel.order }}</b> →
-  нажали «Оплатить» <b>{{ funnel.payment_started }}</b> →
-  онлайн-оплат <b>{{ funnel.paid }}</b>
+  расчётов <b>{{ funnel.quote }}</b>{% if funnel_pct.quote is not none %} <small>({{ funnel_pct.quote }}%)</small>{% endif %} →
+  заказов <b>{{ funnel.order }}</b>{% if funnel_pct.order is not none %} <small>({{ funnel_pct.order }}%)</small>{% endif %} →
+  нажали «Оплатить» <b>{{ funnel.payment_started }}</b>{% if funnel_pct.payment_started is not none %} <small>({{ funnel_pct.payment_started }}%)</small>{% endif %} →
+  онлайн-оплат <b>{{ funnel.paid }}</b>{% if funnel_pct.paid is not none %} <small>({{ funnel_pct.paid }}%)</small>{% endif %}
 </p>
 
 <form class="filters" method="get" action="/admin/orders">

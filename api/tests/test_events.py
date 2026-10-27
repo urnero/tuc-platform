@@ -13,7 +13,7 @@ from test_payments import FakeYooKassa, _basic
 from app import payments, telegram
 from app.config import settings
 from app.db import reset_engine
-from app.events import FUNNEL_KEY, funnel, track
+from app.events import FUNNEL_KEY, funnel, funnel_percents, track
 from app.models import Event
 from app.pricing import reload_pricing
 
@@ -232,3 +232,12 @@ def test_admin_shows_funnel(client, pricing_file, fake_slicer, db, monkeypatch):
     assert "расчётов <b>1</b>" in html
     assert "заказов <b>1</b>" in html
     assert "оплат <b>0</b>" in html
+    assert "<small>(50%)</small>" in html  # расчёт от 2 загрузок
+
+
+def test_funnel_percents():
+    pct = funnel_percents({"upload": 8, "quote": 4, "order": 1, "payment_started": 0, "paid": 0})
+    assert pct == {"upload": None, "quote": 50, "order": 25, "payment_started": 0, "paid": None}
+    assert funnel_percents({})["quote"] is None
+    assert funnel_percents({"upload": 3, "quote": 1})["quote"] == 33
+    assert funnel_percents({"upload": 2, "quote": 1})["quote"] == 50

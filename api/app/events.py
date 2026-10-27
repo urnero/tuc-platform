@@ -91,3 +91,20 @@ def funnel(db: Session, days: int = 30) -> dict[str, int]:
     ).all()
     counts.update(dict(rows))
     return counts
+
+
+FUNNEL_ORDER = ("upload", "quote", "order", "payment_started", "paid")
+
+
+def funnel_percents(counts: dict[str, int]) -> dict[str, int | None]:
+    """Конверсия каждого шага от предыдущего, целые проценты (половина вверх).
+
+    Первый шаг и шаг после нулевого — None (делить не на что).
+    """
+    result: dict[str, int | None] = {}
+    prev: int | None = None
+    for name in FUNNEL_ORDER:
+        cur = counts.get(name, 0)
+        result[name] = None if not prev else int(cur * 100 / prev + 0.5)
+        prev = cur
+    return result
