@@ -8,6 +8,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { NETWORK_ERROR, responseErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
 import { MAX_UPLOAD_MB, type Upload, validateFile } from "@/lib/mesh";
 
@@ -34,15 +35,14 @@ export default function UploadDropzone({ idleText }: { idleText?: string }) {
     try {
       const r = await fetch("/api/v1/uploads", { method: "POST", body: form });
       if (!r.ok) {
-        const detail = (await r.json().catch(() => null))?.detail;
-        setState({ kind: "error", message: detail ?? `Ошибка сервера (${r.status}).` });
+        setState({ kind: "error", message: await responseErrorText(r) });
         return;
       }
       const upload = (await r.json()) as Upload;
       reachGoal("upload");
       router.push(`/upload/${upload.id}`);
     } catch {
-      setState({ kind: "error", message: "Не удалось связаться с сервером. Попробуйте ещё раз." });
+      setState({ kind: "error", message: NETWORK_ERROR });
     }
   }
 

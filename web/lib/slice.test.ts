@@ -30,3 +30,35 @@ describe("formatGrams", () => {
     expect(formatGrams(123.4)).toBe("123 г");
   });
 });
+
+import { formatElapsed, MATERIAL_HINTS, sliceSteps } from "./slice";
+
+describe("sliceSteps", () => {
+  const states = (s: ReturnType<typeof sliceSteps>) => s.map((x) => x.state).join(",");
+  it("в очереди", () => {
+    expect(states(sliceSteps("queued", false))).toBe("done,active,todo,todo");
+  });
+  it("нарезка", () => {
+    expect(states(sliceSteps("running", false))).toBe("done,done,active,todo");
+  });
+  it("печать посчитана, цены ещё нет", () => {
+    expect(states(sliceSteps("done", false))).toBe("done,done,done,active");
+  });
+  it("всё готово", () => {
+    expect(states(sliceSteps("done", true))).toBe("done,done,done,done");
+  });
+  it("ошибка — остановились на нарезке", () => {
+    expect(states(sliceSteps("error", false))).toBe("done,done,active,todo");
+  });
+});
+
+describe("formatElapsed / MATERIAL_HINTS", () => {
+  it("секунды и минуты", () => {
+    expect(formatElapsed(7.9)).toBe("7 с");
+    expect(formatElapsed(65)).toBe("1 мин 5 с");
+    expect(formatElapsed(120)).toBe("2 мин");
+  });
+  it("подсказки есть для материалов прайса", () => {
+    for (const m of ["PLA", "PETG", "ABS"]) expect(MATERIAL_HINTS[m]).toBeTruthy();
+  });
+});

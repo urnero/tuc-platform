@@ -12,11 +12,14 @@
  * Кнопка «Оформить заказ» ведёт на форму заказа (B06): /order/new?quote=<id расчёта>.
  * Повтор заказа из кабинета (B32): `preset` — параметры прошлого заказа; с ним расчёт печати
  * запускается сам, клиенту остаётся проверить цену и нажать «Оформить заказ».
+ * UX (B42): индикатор шагов расчёта с таймером, подсказка «когда какой материал», ошибки
+ * человеческим языком (lib/errors.ts), на телефоне — липкая панель «цена + Оформить» внизу экрана.
  */
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Preset } from "@/lib/account";
+import { caughtErrorText, responseErrorText, sliceErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
 import {
@@ -30,10 +33,12 @@ import {
 } from "@/lib/pricing";
 import {
   formatDuration,
+  formatElapsed,
   formatGrams,
+  MATERIAL_HINTS,
   MATERIAL_LABELS,
-  STATUS_TEXT,
   type SliceRecord,
+  sliceSteps,
 } from "@/lib/slice";
 
 const POLL_MS = 2000;
@@ -61,6 +66,8 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const quoteSeq = useRef(0); // чтобы поздний ответ не перекрыл свежий
+  const [startedAt, setStartedAt] = useState<number | null>(null); // для «идёт 12 с»
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     fetch("/api/v1/materials")
@@ -87,10 +94,13 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
     if (!record || (record.status !== "queued" && record.status !== "running")) return;
     const url = `/api/v1/uploads/${uploadId}/slice?material=${record.material}&supports=${record.supports}`;
     const timer = setTimeout(async () => {
-      const r = await fetch(url);
-      if (r.ok) setRecord((await r.json()) as SliceRecord);
+      // Сеть моргнула — не страшно: следующий опрос будет через 2 с (меняем record, чтобы эффект перезапустился).
+      const r = await fetch(url).catch(() => null);
+      if (!r) setRecord((rec) => (rec ? { ...rec } : rec));
+      else if (r.ok) setRecord((await r.json()) as SliceRecord);
       // 404 — расчёта больше нет (например, поменяли единицы модели): возвращаем кнопку.
       else if (r.status === 404) setRecord(null);
+      else setRecord((rec) => (rec ? { ...rec } : rec));
     }, POLL_MS);
     return () => clearTimeout(timer);
   }, [record, uploadId]);
@@ -106,10 +116,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
       body: JSON.stringify(body),
     })
       .then(async (r) => {
-        if (!r.ok) {
-          const err = (await r.json().catch(() => ({}))) as { detail?: string };
-          throw new Error(err.detail ?? `Ошибка ${r.status}.`);
-        }
+        if (!r.ok) throw new Error(await responseErrorText(r));
         return (await r.json()) as Quote;
       })
       .then((q) => {
@@ -118,8 +125,8 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
           reachGoal("quote", uploadId);
         }
       })
-      .catch((e: Error) => {
-        if (seq === quoteSeq.current) setError(e.message);
+      .catch((e: unknown) => {
+        if (seq === quoteSeq.current) setError(caughtErrorText(e));
       });
   }, [record, qty, postprocess, delivery, uploadId]);
 
@@ -127,19 +134,17 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
     setBusy(true);
     setError(null);
     setQuote(null);
+    setStartedAt(Date.now());
     try {
       const r = await fetch(`/api/v1/uploads/${uploadId}/slice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ material, supports }),
       });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => ({}))) as { detail?: string };
-        throw new Error(body.detail ?? `Ошибка ${r.status}.`);
-      }
+      if (!r.ok) throw new Error(await responseErrorText(r));
       setRecord((await r.json()) as SliceRecord);
     } catch (e) {
-      setError((e as Error).message);
+      setError(caughtErrorText(e));
     } finally {
       setBusy(false);
     }
@@ -150,6 +155,17 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
   // Материал или поддержки поменяли после расчёта — цена уже не про них.
   const stale = !!res && (res.material !== material || res.supports !== supports);
   const hint = pricing ? batchHint(pricing.batch) : "";
+  // Цена есть и актуальна — можно оформлять (кнопка в блоке и липкая панель на телефоне).
+  const canOrder = !!res && !!quote && !stale;
+  const orderHref = quote ? `/order/new?quote=${encodeURIComponent(quote.id)}` : "";
+  const showProgress = !!record && (inProgress || record.status === "error" || (record.status === "done" && !quote && !error));
+
+  // Пока идёт расчёт — тикаем раз в секунду для строки «идёт 12 с».
+  useEffect(() => {
+    if (!showProgress) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [showProgress]);
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
@@ -171,6 +187,11 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
               </option>
             ))}
           </select>
+          {MATERIAL_HINTS[material] && (
+            <span className="text-xs leading-snug" style={{ color: "var(--ink-muted)" }} data-testid="material-hint">
+              {MATERIAL_HINTS[material]}
+            </span>
+          )}
         </label>
 
         <label className="flex min-w-0 max-w-full flex-col gap-1">
@@ -236,15 +257,20 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
         {stale && <span style={{ color: "var(--ink-muted)" }}>Материал изменился — нажмите «Пересчитать».</span>}
       </div>
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" style={{ color: "var(--danger)" }}>
+          {error}
+        </p>
+      )}
 
       {record && (
         <div className="flex flex-col gap-4 text-sm" aria-live="polite">
-          {record.status !== "done" && (
-            <p>
-              {STATUS_TEXT[record.status]}
-              {record.status === "error" && record.error ? ` — ${record.error}` : ""}
-            </p>
+          {showProgress && (
+            <SliceProgress
+              record={record}
+              hasQuote={!!quote}
+              elapsed={startedAt ? (now - startedAt) / 1000 : null}
+            />
           )}
           {res && (
             <dl className="grid grid-cols-2 gap-x-6 gap-y-2">
@@ -265,7 +291,6 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
               )}
             </dl>
           )}
-          {res && !quote && !error && <p>Считаем цену…</p>}
           {res && quote && (
             <div
               className="flex flex-col gap-3 rounded-md border p-4"
@@ -294,11 +319,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
                   Пересчитайте цену, чтобы оформить заказ.
                 </span>
               ) : (
-                <Link
-                  href={`/order/new?quote=${encodeURIComponent(quote.id)}`}
-                  className="self-start rounded-md px-4 py-2 font-medium"
-                  style={{ background: "var(--filament)", color: "var(--on-filament)" }}
-                >
+                <Link href={orderHref} className="btn btn-primary self-start">
                   Оформить заказ
                 </Link>
               )}
@@ -306,6 +327,78 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
           )}
         </div>
       )}
+
+      {canOrder && quote && (
+        <>
+          {/* Место под липкую панель, чтобы она не закрывала низ страницы на телефоне. */}
+          <div className="h-16 sm:hidden" aria-hidden />
+          <div
+            className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t px-4 py-3 sm:hidden"
+            style={{
+              background: "var(--surface-raised)",
+              borderColor: "var(--line)",
+              paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))",
+            }}
+            data-testid="sticky-order"
+          >
+            <div className="min-w-0 leading-tight">
+              <p className="text-lg font-bold">{formatPrice(quote.total)}</p>
+              <p className="truncate text-xs" style={{ color: "var(--ink-muted)" }}>
+                {quote.material}, {quote.qty} шт
+              </p>
+            </div>
+            <Link href={orderHref} className="btn btn-primary shrink-0">
+              Оформить
+            </Link>
+          </div>
+        </>
+      )}
     </section>
+  );
+}
+
+/** Индикатор шагов расчёта (B42): что сейчас делает сервер и сколько уже ждём. */
+function SliceProgress({ record, hasQuote, elapsed }: { record: SliceRecord; hasQuote: boolean; elapsed: number | null }) {
+  const failed = record.status === "error";
+  const steps = sliceSteps(record.status, hasQuote);
+  return (
+    <div className="flex flex-col gap-3" data-testid="slice-progress">
+      <ol className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
+        {steps.map((step, i) => {
+          const color =
+            step.state === "done" ? "var(--ink)" : step.state === "active" ? (failed ? "var(--danger)" : "var(--filament-text)") : "var(--ink-muted)";
+          return (
+            <li key={step.label} className="flex items-center gap-2" style={{ color }} aria-current={step.state === "active" ? "step" : undefined}>
+              <span
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold"
+                style={{
+                  borderColor: step.state === "todo" ? "var(--line)" : color,
+                  background: step.state === "done" ? "var(--ink)" : "transparent",
+                  color: step.state === "done" ? "var(--surface-raised)" : color,
+                }}
+                aria-hidden
+              >
+                {step.state === "done" ? "✓" : failed && step.state === "active" ? "!" : i + 1}
+              </span>
+              <span className={step.state === "active" && !failed ? "font-semibold" : undefined}>{step.label}</span>
+              {step.state === "active" && !failed && <span className="inline-block h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--filament)" }} aria-hidden />}
+            </li>
+          );
+        })}
+      </ol>
+      {failed ? (
+        <p role="alert" style={{ color: "var(--danger)" }}>
+          {sliceErrorText(record.error)}{" "}
+          <Link href="/contacts" className="underline underline-offset-2">
+            Связаться с нами
+          </Link>
+        </p>
+      ) : (
+        <p style={{ color: "var(--ink-muted)" }}>
+          Обычно расчёт занимает 10–60 секунд: сервер нарезает модель на слои так же, как перед настоящей печатью.
+          {elapsed != null && elapsed >= 1 ? ` Идёт ${formatElapsed(elapsed)}.` : ""}
+        </p>
+      )}
+    </div>
   );
 }

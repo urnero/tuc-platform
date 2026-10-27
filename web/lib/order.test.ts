@@ -228,3 +228,47 @@ describe("prefillForm", () => {
     expect(prefillForm(EMPTY_FORM, { email: "new@example.ru", contacts: null })).toEqual({ ...EMPTY_FORM, email: "new@example.ru" });
   });
 });
+
+import { EMPTY_FORM as EMPTY, liveFieldError, maskPhone } from "./order";
+
+describe("maskPhone", () => {
+  it("собирает российский номер по мере ввода", () => {
+    expect(maskPhone("8")).toBe("+7");
+    expect(maskPhone("89")).toBe("+7 9");
+    expect(maskPhone("8999")).toBe("+7 999");
+    expect(maskPhone("89991")).toBe("+7 999 1");
+    expect(maskPhone("8999123456")).toBe("+7 999 123-45-6");
+    expect(maskPhone("89991234567")).toBe("+7 999 123-45-67");
+  });
+  it("номер с 9 и вставка с скобками", () => {
+    expect(maskPhone("9991234567")).toBe("+7 999 123-45-67");
+    expect(maskPhone("8 (999) 123-45-67")).toBe("+7 999 123-45-67");
+    expect(maskPhone("+7 999 123-45-67")).toBe("+7 999 123-45-67");
+  });
+  it("лишние цифры отрезаются", () => {
+    expect(maskPhone("+7 999 123-45-678")).toBe("+7 999 123-45-67");
+  });
+  it("иностранный и пустой не трогаем", () => {
+    expect(maskPhone("+375 29 123 45 67")).toBe("+375 29 123 45 67");
+    expect(maskPhone("")).toBe("");
+    expect(maskPhone("+")).toBe("+");
+  });
+  it("стёрли дефис в конце — разделитель не возвращается", () => {
+    expect(maskPhone("+7 999 123-")).toBe("+7 999 123");
+  });
+});
+
+describe("liveFieldError", () => {
+  it("пустое поле при уходе не ругаем", () => {
+    expect(liveFieldError(EMPTY, "pickup", "phone")).toBeUndefined();
+  });
+  it("неполный телефон — ошибка", () => {
+    expect(liveFieldError({ ...EMPTY, phone: "+7 999 12" }, "pickup", "phone")).toBeTruthy();
+  });
+  it("force — ругаем и пустое", () => {
+    expect(liveFieldError(EMPTY, "pickup", "name", true)).toBeTruthy();
+  });
+  it("исправили — ошибки нет", () => {
+    expect(liveFieldError({ ...EMPTY, phone: "+7 999 123-45-67" }, "pickup", "phone", true)).toBeUndefined();
+  });
+});

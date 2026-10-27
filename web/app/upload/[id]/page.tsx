@@ -18,6 +18,7 @@ import EmbossPanel from "@/components/EmbossPanel";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
 import { parsePreset, type Preset } from "@/lib/account";
+import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
   formatBytes,
   formatDims,
@@ -54,11 +55,11 @@ export default function ModelPage() {
       .then(async (r) => {
         if (!r.ok)
           throw new Error(
-            r.status === 404 ? "Загрузка не найдена." : `Ошибка ${r.status}.`,
+            r.status === 404 ? "Модель не найдена: ссылка устарела или файл уже удалён. Загрузите модель заново." : apiErrorText(r.status),
           );
         setUpload((await r.json()) as Upload);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: unknown) => setError(caughtErrorText(e)));
   }, [id]);
 
   async function setFileUnits(units: Units) {
