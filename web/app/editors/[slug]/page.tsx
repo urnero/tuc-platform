@@ -18,7 +18,7 @@ import { checkText, editorJsonLd, metaDescription, pageMetadata, paramDefaultTex
 
 type Params = { params: Promise<{ slug: string }> };
 
-const BORDER = { borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" };
+const BORDER = { borderColor: "var(--line)" };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
@@ -41,7 +41,7 @@ function ParamsTable({ editor }: { editor: Editor }) {
       <h2 id="params-heading" className="text-lg font-semibold">
         Что можно задать
       </h2>
-      <div className="overflow-x-auto rounded-lg border" style={BORDER}>
+      <div className="card overflow-x-auto !p-0">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left" style={{ color: "var(--ink-muted)" }}>
@@ -78,7 +78,7 @@ function ParamsTable({ editor }: { editor: Editor }) {
 }
 
 const HOW_TO: { title: string; text: string }[] = [
-  { title: "Впишите размеры", text: "Модель строится на сервере за несколько секунд и показывается в 3D — проверьте её со всех сторон." },
+  { title: "Впишите размеры", text: "Превью обновляется само через секунду после правки — покрутите модель в 3D и проверьте со всех сторон." },
   { title: "Нажмите «Заказать»", text: "Готовая модель станет вашей загрузкой: выберите материал, тираж и доставку — цена считается сразу." },
   { title: "Оплатите онлайн", text: "После оплаты заказ уходит в печать, статус — по ссылке: принят → оплачен → печатается → готов." },
 ];
@@ -89,7 +89,7 @@ export default async function EditorPage({ params }: Params) {
   if (!editor) notFound();
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-16">
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 pb-20 pt-8">
       <nav aria-label="Хлебные крошки" className="text-sm" style={{ color: "var(--filament-text)" }}>
         <Link href="/editors">← Все редакторы</Link>
       </nav>
@@ -111,7 +111,7 @@ export default async function EditorPage({ params }: Params) {
         </h2>
         <ol className="grid gap-4 sm:grid-cols-3">
           {HOW_TO.map((step, i) => (
-            <li key={step.title} className="rounded-lg border p-4" style={BORDER}>
+            <li key={step.title} className="card">
               <p className="font-medium">
                 {i + 1}. {step.title}
               </p>
