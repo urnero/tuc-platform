@@ -3,7 +3,7 @@
 # bookworm закреплён: в trixie нет libwebkit2gtk-4.0 (нужен AppImage PrusaSlicer 2.8).
 FROM python:3.12-slim-bookworm
 
-ARG PRUSA_SLICER_URL=https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.8.1/PrusaSlicer-2.8.1+linux-x64-GTK3-202409181354.AppImage
+ARG PRUSA_SLICER_URL=https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.8.1/PrusaSlicer-2.8.1+linux-x64-older-distros-GTK3-202409181354.AppImage
 
 WORKDIR /srv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
