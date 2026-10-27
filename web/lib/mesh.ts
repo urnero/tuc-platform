@@ -23,9 +23,48 @@ export type Upload = {
   /** В каких единицах координаты файла. Числа в mesh всегда в мм. */
   units: Units;
   mesh: MeshInfo;
-  /** «catalog» — копия модели из каталога (B20), сделанная кнопкой «Заказать». */
-  source?: "catalog";
+  /** «catalog» — копия модели из каталога (B20); «editor» — модель, построенная в редакторе (B21);
+   *  «emboss» — копия другой загрузки с надписью или логотипом (B30);
+   *  «paint» — копия другой загрузки, детали покрашены в свои цвета, 3MF (B31). */
+  source?: "catalog" | "editor" | "emboss" | "paint";
   catalog?: { slug: string; title: string; material: string };
+  editor?: {
+    slug: string;
+    title: string;
+    material: string;
+    build_id: string;
+    params: Record<string, number | boolean | string>;
+    /** Параметры словами (считает API): «Внешний диаметр 20 мм, Форма: Круглая». */
+    summary: string;
+  };
+  /** SVG-логотип, загруженный к модели для тиснения (B30). */
+  logo?: { name: string; size_bytes: number };
+  emboss?: {
+    /** Исходная загрузка, на которую нанесли тиснение, и её имя файла. */
+    parent_id: string;
+    parent_name: string;
+    job_id: string;
+    params: Record<string, number | boolean | string>;
+    /** Что нанесли, словами: «Надпись «ТУЦ» (без засечек, жирный) 10 мм, выпуклая 1 мм, спереди». */
+    summary: string;
+    warnings: string[];
+    /** Материал исходной модели из каталога/редактора, если был. */
+    material?: string | null;
+  };
+  paint?: {
+    /** Исходная загрузка, которую раскрасили, и её имя файла. */
+    parent_id: string;
+    parent_name: string;
+    job_id: string;
+    /** Детали по порядку с выбранным цветом. */
+    parts: { name: string; color: string; color_name: string; hex: string }[];
+    /** Разные цвета, которые использованы. */
+    colors: { key: string; name: string; hex: string }[];
+    /** Словами: «Деталь 1 — красный, Деталь 2 — синий» или «вся модель — красный». */
+    summary: string;
+    /** Материал исходной модели из каталога/редактора/тиснения, если был. */
+    material?: string | null;
+  };
 };
 
 /** Во сколько раз умножить координаты файла, чтобы получить мм. */

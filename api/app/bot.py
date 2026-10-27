@@ -13,6 +13,11 @@
 Уведомление о новом заказе шлёт не бот, а API (`app/telegram.py::notify_owner_new_order`),
 но кнопки под ним те же — нажатия обрабатывает этот бот.
 Тексты и кнопки — в `app/telegram.py`, здесь только связка с aiogram и БД.
+
+Клиенты (B34): на странице заказа кнопка «Получать статусы в Telegram» открывает бота
+со ссылкой `t.me/<бот>?start=<token заказа>` — Telegram шлёт `/start <token>`, бот записывает
+chat_id клиента в заказ (`orders.link_telegram`), дальше статусы приходят ему сообщениями
+(`app/notify.py`). `/stop` — отписаться. Остальное для клиентов недоступно.
 """
 
 import asyncio
@@ -27,10 +32,18 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from sqlalchemy.orm import Session
 
+from app import notify
 from app import telegram as tg
 from app.config import settings
 from app.db import session_factory
-from app.orders import StatusError, change_status, get_order_by_id, list_orders
+from app.orders import (
+    StatusError,
+    change_status,
+    get_order_by_id,
+    link_telegram,
+    list_orders,
+    unlink_telegram,
+)
 
 log = logging.getLogger(__name__)
 
@@ -39,9 +52,14 @@ HELP = (
     "/orders — активные заказы\n"
     "/orders all — последние 20 заказов\n"
     "/order 12 — карточка заказа ТУЦ-12\n"
+    "/stop — не получать сюда статусы заказов (для клиентов)\n"
     "Кнопки под карточкой меняют статус заказа."
 )
-NOT_OWNER = "Этот бот — только для владельца студии ТУЦ."
+NOT_OWNER = (
+    "Этот бот присылает статусы заказов студии ТУЦ. Чтобы подключить уведомления, нажмите "
+    "«Получать статусы в Telegram» на странице вашего заказа. Отписаться — /stop."
+)
+NOT_LINKED = "Такого заказа нет. Откройте страницу заказа на сайте и нажмите кнопку там ещё раз."
 
 
 def owner_id() -> int | None:
@@ -105,11 +123,51 @@ def status_reply(db: Session, order_id: int, status: str) -> tuple[str, dict, st
     return tg.order_card(data), tg.order_keyboard(data), toast
 
 
+def link_reply(db: Session, token: str, chat_id: int) -> str:
+    """Клиент пришёл по ссылке `/start <token>`: привязать Telegram к заказу, сказать статус."""
+    order = link_telegram(db, token, chat_id)
+    if order is None:
+        return NOT_LINKED
+    data = order.to_dict()
+    status = tg.STATUS_LABELS.get(data["status"], data["status"])
+    return (
+        f"Подключили: статусы заказа <b>{data['number']}</b> будут приходить сюда.\n"
+        f"Сейчас заказ в статусе «{status}». Страница заказа: {notify.order_url(data)}\n"
+        "Отписаться — /stop."
+    )
+
+
+def stop_reply(db: Session, chat_id: int) -> str:
+    n = unlink_telegram(db, chat_id)
+    return "Отписали: статусы заказов сюда больше не придут." if n else "Подписок и так не было."
+
+
 # --- хендлеры aiogram (подключаются в build_dispatcher) -------------------------
 
 
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, command: CommandObject) -> None:
+    """/start — подсказка владельцу; /start <token> — клиент подключает статусы заказа (B34)."""
+    token = (command.args or "").strip()
+    if token and message.from_user is not None:
+        chat_id = message.chat.id
+        await message.answer(await in_db(lambda db: link_reply(db, token, chat_id)))
+        return
     await message.answer(HELP)
+
+
+async def client_start(message: Message, command: CommandObject) -> None:
+    """Чужой /start: с токеном — подключаем статусы, без — объясняем, что это за бот."""
+    token = (command.args or "").strip()
+    if not token:
+        await message.answer(NOT_OWNER)
+        return
+    chat_id = message.chat.id
+    await message.answer(await in_db(lambda db: link_reply(db, token, chat_id)))
+
+
+async def cmd_stop(message: Message) -> None:
+    chat_id = message.chat.id
+    await message.answer(await in_db(lambda db: stop_reply(db, chat_id)))
 
 
 async def cmd_orders(message: Message, command: CommandObject) -> None:
@@ -172,9 +230,13 @@ def build_dispatcher() -> Dispatcher:
     owner.message.register(cmd_start, Command("help"))
     owner.message.register(cmd_orders, Command("orders"))
     owner.message.register(cmd_order, Command("order"))
+    owner.message.register(cmd_stop, Command("stop"))
     owner.callback_query.register(on_button)
 
+    # Клиенты (B34): только подключение и отключение статусов, остальное — вежливый отказ.
     others = Router(name="others")
+    others.message.register(client_start, CommandStart())
+    others.message.register(cmd_stop, Command("stop"))
     others.message.register(not_owner)
     others.callback_query.register(not_owner_button)
 

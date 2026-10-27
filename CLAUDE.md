@@ -18,8 +18,13 @@
 
 - `api/` — Python 3.12, FastAPI, SQLAlchemy 2 + Alembic (таблицы `app/models.py`, миграции `alembic/versions/`), PostgreSQL 16, Redis + arq.
 - `web/` — Next.js 15 (App Router), TypeScript, Tailwind, Three.js (@react-three/fiber).
-- `worker/` — Dockerfile: код `api/` + PrusaSlicer CLI; задачи arq в `api/app/worker.py`. Профили слайсера — `profiles/`. OpenSCAD CLI (редакторы) добавится в B21.
+- `worker/` — Dockerfile: код `api/` + PrusaSlicer CLI + OpenSCAD CLI; задачи arq в `api/app/worker.py`. Профили слайсера — `profiles/`.
+- Параметрические редакторы (B21) — `editors/<slug>/editor.yaml` (схема параметров) + `model.scad`; движок `api/app/editors.py` (схема, проверка, сборки) и `api/app/openscad.py` (запуск CLI). Новый редактор = новая папка по образцу `editors/spacer/`, кода не нужно.
 - Каталог готовых моделей — `catalog/catalog.yaml` + `catalog/models/` (B20), читает `api/app/catalog.py`; превью рисует `api/app/render.py`.
+- Тиснение на загруженной модели (B30) — `api/app/emboss.py`: OpenSCAD строит надпись/SVG из `api/app/scad/emboss.scad`, соединяет с моделью trimesh + `manifold3d`; результат — новая загрузка `source = "emboss"`.
+- Раскраска по частям (B31) — `api/app/paint.py`: детали = связные куски сетки (`trimesh.split`), палитра `config/colors.yaml`, результат — 3MF с цветами в `basematerials` (свой писатель `write_3mf`), новая загрузка `source = "paint"`. Сайт — `web/components/PaintPanel.tsx`, `web/lib/paint.ts`.
+- B2B (B33) — заказ от организации/ИП: проверка ИНН/КПП `api/app/b2b.py`, колонки `orders.company_*` и `payment_method` (`invoice` — по счёту, ЮKassa выключена); счёт рисует сайт — `web/lib/invoice.ts` + страница `web/app/order/[token]/invoice/`, реквизиты студии (включая банк) — `web/lib/company.ts`.
+- Статусы клиенту (B34) — `api/app/notify.py`: `orders.change_status` → письмо (SMTP из B32) и/или Telegram (клиент подключает бота со страницы заказа: `t.me/<бот>?start=<token>`, chat_id в `orders.telegram_chat_id`). Тексты — словари `SUBJECTS`/`BODIES` там же.
 - Бот — не отдельный пакет: aiogram 3 в `api/app/bot.py` (запуск `python -m app.bot`, сервис `bot` в compose из образа api). Тексты/кнопки и отправка из API — `api/app/telegram.py`.
 - Инфра: `docker-compose.yml` (caddy, web, api, worker, bot, postgres, redis) — локальный запуск. Сервер — `deploy/`: один VPS, стенды `/srv/tuc/prod` (main) и `/srv/tuc/staging` (dev), `compose.server.yml` поверх основного compose, общий Caddy с HTTPS в `deploy/edge`. Деплой — `.github/workflows/deploy.yml` после зелёного CI, по SSH запускает `deploy/deploy.sh`. Инструкция владельцу — `docs/DEPLOY.md`.
 - Ветки: `dev` — рабочая, ночные сборки пушат сюда. `main` — прод, сливает владелец через PR.

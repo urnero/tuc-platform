@@ -77,7 +77,7 @@ def funnel(db: Session, days: int = 30) -> dict[str, int]:
     Пример ответа: {"upload": 40, "quote": 25, "order": 6, "payment_started": 5, "paid": 4}.
     """
     since = datetime.now(UTC) - timedelta(days=days)
-    counts = {name: 0 for name in EVENT_NAMES}
+    counts = {name: 0 for name in FUNNEL_KEY}  # только шаги воронки, без editor_build
     rows = db.execute(
         select(Event.name, func.count(func.distinct(FUNNEL_KEY["upload"])))
         .where(Event.created_at >= since, Event.name.in_(("upload", "quote", "order")))

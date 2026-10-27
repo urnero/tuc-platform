@@ -3,14 +3,21 @@
 /**
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
+ * блок «Надпись или логотип на модели» (B30, components/EmbossPanel.tsx),
+ * блок «Раскраска по частям» (B31, components/PaintPanel.tsx),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx).
+ * Повтор заказа из кабинета (B32): параметры прошлого заказа приходят в адресе
+ * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
  */
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import EmbossPanel from "@/components/EmbossPanel";
+import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
+import { parsePreset, type Preset } from "@/lib/account";
 import {
   formatBytes,
   formatDims,
@@ -39,8 +46,10 @@ export default function ModelPage() {
   const [error, setError] = useState<string | null>(null);
   const [showUnits, setShowUnits] = useState<Units>("mm"); // в чём показывать габариты
   const [saving, setSaving] = useState(false);
+  const [preset, setPreset] = useState<Preset | null>(null); // повтор заказа (B32)
 
   useEffect(() => {
+    setPreset(parsePreset(window.location.search));
     fetch(`/api/v1/uploads/${id}`)
       .then(async (r) => {
         if (!r.ok)
@@ -83,8 +92,13 @@ export default function ModelPage() {
 
   const m = upload.mesh;
   const fileUrl = `/api/v1/uploads/${upload.id}/file`;
-  // Модель из каталога (B20): назад — в каталог, единицы известны (мм), материал подставлен.
+  // Модель из каталога (B20) или редактора (B21): назад — туда, откуда пришли, единицы
+  // известны (мм), материал подставлен.
   const fromCatalog = upload.source === "catalog" && upload.catalog;
+  const fromEditor = upload.source === "editor" && upload.editor;
+  const fromEmboss = upload.source === "emboss" && upload.emboss;
+  const fromPaint = upload.source === "paint" && upload.paint;
+  const knownUnits = fromCatalog || fromEditor || fromEmboss || fromPaint;
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -96,6 +110,30 @@ export default function ModelPage() {
         >
           ← Назад к модели в каталоге
         </Link>
+      ) : fromEditor ? (
+        <Link
+          href={`/editors/${upload.editor!.slug}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад в редактор
+        </Link>
+      ) : fromEmboss ? (
+        <Link
+          href={`/upload/${upload.emboss!.parent_id}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад к модели без тиснения
+        </Link>
+      ) : fromPaint ? (
+        <Link
+          href={`/upload/${upload.paint!.parent_id}`}
+          className="text-sm"
+          style={{ color: "var(--accent)" }}
+        >
+          ← Назад к модели без раскраски
+        </Link>
       ) : (
         <Link
           href="/upload"
@@ -106,13 +144,43 @@ export default function ModelPage() {
         </Link>
       )}
       <h1 className="text-2xl font-bold leading-tight">
-        {fromCatalog ? upload.catalog!.title : upload.original_name}
+        {fromCatalog ? upload.catalog!.title : fromEditor ? upload.editor!.title : upload.original_name}
       </h1>
+      {fromEditor && upload.editor!.summary && (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Параметры: {upload.editor!.summary}
+        </p>
+      )}
+      {fromEmboss && (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
+        </p>
+      )}
+      {fromPaint && (
+        <div className="flex flex-col gap-2 text-sm" style={{ color: "var(--muted)" }}>
+          <p>
+            Это копия модели «{upload.paint!.parent_name}» в цветах: {upload.paint!.summary}.
+          </p>
+          <ul className="flex flex-wrap gap-3">
+            {upload.paint!.colors.map((c) => (
+              <li key={c.key} className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  className="inline-block h-4 w-4 rounded-full border"
+                  style={{ background: c.hex, borderColor: "var(--muted)" }}
+                />
+                {c.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ModelViewer
         url={fileUrl}
         ext={upload.ext}
         scale={UNIT_SCALE[upload.units]}
+        keepMaterials={Boolean(fromPaint)}
       />
 
       <section
@@ -144,7 +212,7 @@ export default function ModelPage() {
           </dd>
         </dl>
 
-        {!fromCatalog && (
+        {!knownUnits && (
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span style={{ color: "var(--muted)" }}>Единицы в файле:</span>
             <Toggle
@@ -172,9 +240,39 @@ export default function ModelPage() {
         </p>
       </section>
 
+      {/* Раскрашенную модель (3MF с цветами) не тисним и не красим заново: тиснение склеило бы
+          детали в одну и потеряло цвета. Хотите иначе — вернитесь к исходной модели. */}
+      {fromPaint ? (
+        <p className="text-sm" style={{ color: "var(--muted)" }}>
+          Изменить цвета или добавить надпись можно на{" "}
+          <Link href={`/upload/${upload.paint!.parent_id}`} style={{ color: "var(--accent)" }}>
+            исходной модели
+          </Link>
+          .
+        </p>
+      ) : (
+        <>
+          <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
+          {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
+          <PaintPanel key={upload.units} uploadId={upload.id} />
+        </>
+      )}
+
+      {/* key: после смены «мм → дюймы» сервер удаляет старые расчёты печати и цены —
+          перерисовываем калькулятор с нуля, чтобы не показывать цену для старых единиц. */}
       <SliceCalc
+        key={upload.units}
         uploadId={upload.id}
-        defaultMaterial={fromCatalog ? upload.catalog!.material : "PLA"}
+        defaultMaterial={
+          fromCatalog
+            ? upload.catalog!.material
+            : fromEditor
+              ? upload.editor!.material
+              : (fromEmboss && upload.emboss!.material) ||
+                (fromPaint && upload.paint!.material) ||
+                "PLA"
+        }
+        preset={preset}
       />
     </main>
   );

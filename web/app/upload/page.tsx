@@ -10,6 +10,7 @@ import { MAX_UPLOAD_MB } from "@/lib/mesh";
 export const metadata: Metadata = {
   title: "Загрузить модель — ТУЦ",
   description: "Загрузите STL или 3MF — проверим сетку, покажем габариты и посчитаем цену печати.",
+  alternates: { canonical: "/upload" },
 };
 
 export default function UploadPage() {

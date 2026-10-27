@@ -13,6 +13,7 @@ import { type CatalogModel, dimsText, groupByCategory, loadCatalog } from "@/lib
 export const metadata: Metadata = {
   title: "Каталог готовых моделей — ТУЦ",
   description: "Готовые модели для 3D-печати: выберите, укажите материал и количество — цена сразу.",
+  alternates: { canonical: "/catalog" },
 };
 
 const CARD_BORDER = { borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" };

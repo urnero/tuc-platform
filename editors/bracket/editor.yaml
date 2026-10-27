@@ -1,0 +1,103 @@
+# Редактор «Кронштейн / уголок» (B22). Формат файла описан в editors/spacer/editor.yaml.
+#
+# Г-образный уголок: две полки под прямым углом, в каждой — ряд отверстий под винты,
+# по бокам косынки (рёбра жёсткости). Полка A лежит на столе, полка B стоит вертикально,
+# наружный угол — в начале координат.
+
+title: Кронштейн / уголок
+text: >
+  Г-образный уголок для полки, подвеса, крепления профиля или датчика. Задайте длину полок,
+  ширину, толщину и отверстия под винты — косынки по бокам добавят жёсткости.
+  Модель строится сразу, дальше расчёт и заказ.
+material: PETG
+order: 20
+
+params:
+  - name: length_a
+    label: Длина полки A
+    type: number
+    unit: мм
+    min: 15
+    max: 200
+    step: 1
+    default: 50
+    hint: Горизонтальная полка — та, что лежит на столе при печати.
+  - name: length_b
+    label: Длина полки B
+    type: number
+    unit: мм
+    min: 15
+    max: 200
+    step: 1
+    default: 50
+    hint: Вертикальная полка.
+  - name: width
+    label: Ширина
+    type: number
+    unit: мм
+    min: 8
+    max: 100
+    step: 1
+    default: 25
+  - name: thickness
+    label: Толщина полок
+    type: number
+    unit: мм
+    min: 2
+    max: 15
+    step: 0.5
+    default: 4
+    hint: Для нагрузки на полку — от 4 мм, для лёгких креплений хватит 3 мм.
+  - name: hole_d
+    label: Диаметр отверстий
+    type: number
+    unit: мм
+    min: 2
+    max: 12
+    step: 0.5
+    default: 4.5
+    hint: Под винт М4 — 4,5 мм, М5 — 5,5 мм, М6 — 6,5 мм.
+  - name: holes_a
+    label: Отверстий в полке A
+    type: number
+    unit: шт
+    min: 0
+    max: 4
+    step: 1
+    integer: true
+    default: 2
+    hint: Ставятся в ряд по середине полки. Если по длине не помещаются — лишние пропускаются.
+  - name: holes_b
+    label: Отверстий в полке B
+    type: number
+    unit: шт
+    min: 0
+    max: 4
+    step: 1
+    integer: true
+    default: 2
+  - name: hole_type
+    label: Тип отверстий
+    type: choice
+    options:
+      - { value: plain, label: Обычные }
+      - { value: countersunk, label: Под потайной винт }
+    default: plain
+    hint: Потай — конус под винт с плоской головкой, с внутренней стороны уголка.
+  - name: rib
+    label: Косынки по бокам
+    type: bool
+    default: true
+    hint: Два треугольных ребра в углу, по краям ширины. Если между ними не остаётся места для отверстий — не ставятся.
+  - name: rounded
+    label: Скруглить концы полок
+    type: bool
+    default: true
+
+checks:
+  - rule: hole_d < width
+    message: Отверстие должно быть уже полки — оставьте стенки хотя бы по 2 мм.
+  - rule: thickness < length_a
+    message: Толщина должна быть меньше длины полки.
+  - rule: thickness < length_b
+    message: Толщина должна быть меньше длины полки.

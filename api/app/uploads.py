@@ -3,7 +3,9 @@
 POST /api/v1/uploads          — принять STL/3MF (≤ MAX_UPLOAD_MB), проверить сетку, сохранить.
 GET  /api/v1/uploads/{id}     — данные загрузки (габариты, объём, предупреждения).
 GET  /api/v1/uploads/{id}/file — сам файл (нужен 3D-просмотру в браузере, B03).
-PATCH /api/v1/uploads/{id}    — клиент говорит, в каких единицах файл (mm | inch); пересчитываем.
+PATCH /api/v1/uploads/{id}    — клиент говорит, в каких единицах файл (mm | inch); пересчитываем
+                                габариты и удаляем старые расчёты печати и цены (slices/, quotes/)
+                                и разборку на детали для раскраски (paint/).
 
 Хранение: DATA_DIR/uploads/<id>/model.<ext> + meta.json.
 БД появится в B06 вместе с заказами — тогда meta.json переедет в таблицу models.
@@ -11,17 +13,19 @@ PATCH /api/v1/uploads/{id}    — клиент говорит, в каких е�
 
 import json
 import re
+import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config import settings
 from app.events import track
+from app.limits import uploads_guard
 from app.meshcheck import ALLOWED_EXT, UNITS, MeshError, inspect_file, inspect_mesh
 
 router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
@@ -76,7 +80,7 @@ async def _read_limited(file: UploadFile, limit_bytes: int) -> bytes:
     return b"".join(chunks)
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(uploads_guard)])
 async def create_upload(file: UploadFile) -> dict:
     original_name = _safe_name(file.filename)
     ext = _ext_of(original_name)
@@ -154,6 +158,12 @@ async def patch_upload(upload_id: str, patch: UploadPatch) -> dict:
     meta["units"] = patch.units
     meta["mesh"] = info.to_dict()
     _save_meta(upload_dir(upload_id), meta)
+    # Расчёты печати (граммы, часы, G-code) и цены сделаны для старых единиц —
+    # в дюймах модель в 25,4³ ≈ 16 000 раз больше. Удаляем, клиент посчитает заново.
+    # Заказы не страдают: у заказа свой снимок расчёта в БД (колонка orders.quote).
+    # Разборка на детали для раскраски (B31) тоже сделана в старых единицах.
+    for sub in ("slices", "quotes", "paint"):
+        shutil.rmtree(upload_dir(upload_id) / sub, ignore_errors=True)
     return meta
 
 

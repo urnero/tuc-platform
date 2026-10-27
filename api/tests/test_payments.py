@@ -5,9 +5,11 @@ import json
 import httpx
 import pytest
 from conftest import REPO_ROOT, box_stl
+from fastapi.testclient import TestClient
 
 from app import payments, telegram
 from app.config import settings
+from app.main import app
 from app.models import Order, Payment
 from app.pricing import reload_pricing
 
@@ -299,7 +301,7 @@ def test_webhook_ignores_unknown_and_other_events(client, pricing_file, fake_sli
     assert client.post(
         "/api/v1/payments/yookassa/webhook", content=b"not json",
         headers={"content-type": "application/json"},
-    ).status_code == 400  # fmt: skip
+    ).status_code == 422  # не JSON — FastAPI сам отвечает 422  # fmt: skip
 
 
 def test_canceled_payment_allows_retry(client, pricing_file, fake_slicer, yookassa, tg_sent):
@@ -362,3 +364,48 @@ def test_notify_owner_paid_warns_if_status_changed(tg_sent):
     assert telegram.notify_owner_paid(order) is True
     text, _ = tg_sent[-1]
     assert "💰 Оплачен заказ ТУЦ-5" in text and "⚠️" in text and "отменён" in text
+
+
+def test_webhook_does_not_block_api_while_yookassa_is_slow(
+    client, pricing_file, fake_slicer, yookassa
+):
+    """Пока ЮKassa долго отвечает на перечитывание платежа, остальные запросы (GET /health)
+    должны обслуживаться. Раньше обработчик был `async def` и синхронно ждал ЮKassa —
+    весь API замирал на время её ответа (один event loop).
+
+    Поддельная ЮKassa «зависает»: в ответ на GET платежа ждёт события `release`. Вебхук
+    уходит в отдельном потоке; дождавшись, что ЮKassa начала «думать», зовём /health.
+    Если event loop свободен — ответ приходит сразу, до `release`. Если занят — /health
+    висит, и его отпустит только страховочный таймер через 5 с (тогда тест падает).
+    """
+    import threading
+
+    order = _order(client)
+    yk_id = client.post(f"/api/v1/orders/{order['token']}/payment").json()["payment"]["yookassa_id"]
+    started, release = threading.Event(), threading.Event()
+    fast_handler = yookassa.handler
+
+    def slow_handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            started.set()
+            release.wait(timeout=10)
+        return fast_handler(request)
+
+    payments.TRANSPORT = httpx.MockTransport(slow_handler)
+    safety = threading.Timer(5, release.set)
+    with TestClient(app) as shared_loop_client:  # внутри `with` все запросы — на одном event loop
+        hook = threading.Thread(
+            target=shared_loop_client.post,
+            args=("/api/v1/payments/yookassa/webhook",),
+            kwargs={"json": yookassa.webhook_body(yk_id)},
+        )
+        hook.start()
+        assert started.wait(timeout=10), "вебхук так и не дошёл до ЮKassa"
+        safety.start()
+        health = shared_loop_client.get("/health")
+        loop_was_free = not release.is_set()
+        release.set()
+        hook.join(timeout=10)
+    safety.cancel()
+    assert health.status_code == 200
+    assert loop_was_free, "GET /health ждал ответа ЮKassa вебхуку — event loop был заблокирован"

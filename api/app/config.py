@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     site_url: str = "http://localhost:8080"
     data_dir: Path = Path("./data")
     pricing_path: Path = Path("config/pricing.yaml")
+    # Цвета пластика для раскраски по частям (B31): key, name, hex. После правки перезапустить api.
+    colors_path: Path = Path("config/colors.yaml")
     # Каталог готовых моделей (B20): catalog.yaml + models/. В docker монтируется как /srv/catalog.
     catalog_dir: Path = Path("catalog")
 
@@ -20,6 +22,15 @@ class Settings(BaseSettings):
     max_upload_mb: int = 100
     # Рабочая область принтера, мм: X×Y×Z. Модель больше этого — предупреждение.
     print_bed_mm: str = "250x210x220"
+    # Защита от цикла запросов (app/limits.py): сколько раз в минуту с одного IP можно
+    # создавать загрузки (файл, каталог, редактор, тиснение) и заказы. 0 = без ограничений.
+    rate_limit_uploads_per_min: int = 10
+    rate_limit_orders_per_min: int = 5
+    # Если на диске с DATA_DIR свободно меньше, новые загрузки получают 503. 0 = не проверять.
+    min_free_disk_gb: float = 2
+    # Сколько часов действует расчёт цены (quote). Старше — заказ по нему не оформить (410):
+    # цены в pricing.yaml могли измениться. 0 = без срока.
+    quote_ttl_hours: int = 24
 
     # Слайсинг (B04)
     profiles_dir: Path = Path("profiles")  # ini-профили PrusaSlicer: printer, print, filament/*
@@ -28,6 +39,12 @@ class Settings(BaseSettings):
     slice_timeout_s: int = 600  # сколько ждём слайсер на одну модель
     # Пустой REDIS_URL = очереди нет, слайсим прямо в API (разработка и тесты).
     redis_url: str = "redis://localhost:6379/0"
+
+    # Параметрические редакторы (B21): editors/<slug>/editor.yaml + model.scad.
+    # В docker монтируется как /srv/editors. OpenSCAD стоит только в контейнере worker.
+    editors_dir: Path = Path("editors")
+    openscad_bin: str = "openscad"
+    openscad_timeout_s: int = 120  # сколько ждём OpenSCAD на одну модель
 
     database_url: str = "postgresql+psycopg://tuc:change_me@localhost:5432/tuc"
 
@@ -51,10 +68,28 @@ class Settings(BaseSettings):
     # Загрузки без заказа — через 30 дней, файлы закрытых заказов — через год. 0 = не удалять.
     cleanup_uploads_days: int = 30
     cleanup_order_files_days: int = 365
+    # Обезличивание заказов (B35): через 5 лет после закрытия заказа стираем данные клиента
+    # (имя, телефон, e-mail, адрес…), суммы и материалы остаются. 0 = не обезличивать.
+    anonymize_orders_days: int = 5 * 365 + 1
 
     # Админка (B09): /admin за basic auth. Пустой логин или пароль = админка выключена (503).
     admin_user: str = "admin"
     admin_password: str = ""
+
+    # Письма (app/mailer.py): код для входа в кабинет (B32). Пустой SMTP_HOST = письма не
+    # отправляются, вход в кабинет отвечает 503. SMTP_HOST=log — письмо пишется в лог api
+    # (для разработки без почты). SMTP_SSL: true — порт 465 (TLS сразу), false — 587 (STARTTLS).
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # адрес отправителя; пусто = SMTP_USER
+    smtp_ssl: bool = True
+
+    # Кабинет клиента (B32): вход по коду из письма.
+    login_code_ttl_min: int = 15  # сколько минут действует код
+    session_days: int = 30  # сколько дней держим вход (cookie tuc_session)
+    rate_limit_login_per_min: int = 5  # запросов кода и попыток входа в минуту с одного IP
 
     @field_validator("google_sa_json_path", mode="before")
     @classmethod

@@ -1,9 +1,31 @@
-/** Заказ (B06): типы ответа API /orders, статусы, проверка формы на клиенте. */
+/** Заказ (B06): типы ответа API /orders, статусы, проверка формы на клиенте.
+ *  B33: заказ от организации или ИП — блок `company`, оплата по счёту (`payment_method = invoice`).
+ *  B34: блок `notifications` — куда клиенту приходят статусы (e-mail, Telegram-бот). */
 
 import type { PaymentInfo } from "./payment";
 import type { Quote } from "./pricing";
 
 export type OrderStatus = "new" | "paid" | "printing" | "ready" | "done" | "cancelled";
+
+/** online — картой через ЮKassa; invoice — по счёту безналом (организации и ИП, B33). */
+export type PaymentMethod = "online" | "invoice";
+
+/** Покупатель-юрлицо в заказе (B33). КПП есть только у организаций, у ИП — null. */
+export type Company = {
+  name: string;
+  inn: string;
+  kpp: string | null;
+  address: string | null;
+};
+
+/** Уведомления о статусе (B34): e-mail, на который они приходят (null — писем не будет:
+ *  e-mail не указан или почта на сервере не настроена), подключён ли Telegram и ссылка на бота
+ *  `https://t.me/<бот>?start=<token>` — её нет, если бот не настроен или уже подключён. */
+export type Notifications = {
+  email: string | null;
+  telegram_linked: boolean;
+  telegram_link: string | null;
+};
 
 /** GET /api/v1/orders/{token} и ответ POST /api/v1/orders. */
 export type Order = {
@@ -19,6 +41,8 @@ export type Order = {
   delivery: string;
   address: string | null;
   comment: string | null;
+  company?: Company | null; // B33: null — заказ от частного лица
+  payment_method?: PaymentMethod; // B33: у старых ответов API поля нет → online
   upload_id: string;
   quote_id: string;
   original_name: string | null;
@@ -30,6 +54,8 @@ export type Order = {
   currency: string;
   quote: Quote;
   payment?: PaymentInfo; // оплата (B08): есть в ответах API начиная с B08
+  notifications?: Notifications; // статусы клиенту (B34)
+  anonymized_at?: string | null; // B35: данные клиента стёрты (заказу больше 5 лет)
 };
 
 /** Что видит клиент на странице статуса. */
@@ -62,6 +88,12 @@ export type OrderForm = {
   address: string;
   comment: string;
   consent: boolean;
+  // B33: заказ от организации или ИП → оплата по счёту
+  b2b: boolean;
+  companyName: string;
+  inn: string;
+  kpp: string;
+  companyAddress: string;
 };
 
 export const EMPTY_FORM: OrderForm = {
@@ -71,7 +103,79 @@ export const EMPTY_FORM: OrderForm = {
   address: "",
   comment: "",
   consent: false,
+  b2b: false,
+  companyName: "",
+  inn: "",
+  kpp: "",
+  companyAddress: "",
 };
+
+/** Блок «Уведомления» на странице заказа (B34): одна фраза о том, куда приходят статусы,
+ *  и ссылка на бота, если Telegram ещё можно подключить. Для отменённых и выданных заказов —
+ *  ничего: статусов больше не будет. */
+export function notificationsBlock(
+  order: Pick<Order, "status" | "notifications">,
+): { text: string; telegramLink: string | null } | null {
+  const n = order.notifications;
+  if (!n || order.status === "done" || order.status === "cancelled") return null;
+  const channels: string[] = [];
+  if (n.email) channels.push(`на e-mail ${n.email}`);
+  if (n.telegram_linked) channels.push("в Telegram");
+  const text = channels.length
+    ? `Когда статус изменится, напишем ${channels.join(" и ")}.`
+    : n.telegram_link
+      ? "Чтобы узнавать о готовности без захода на сайт, подключите Telegram."
+      : "Следите за статусом на этой странице — она обновляется при каждом открытии.";
+  return { text, telegramLink: n.telegram_link };
+}
+
+/** Заказ оплачивается по счёту (B33)? У ответов API до B33 поля нет — считаем «онлайн». */
+export function paysByInvoice(order: Pick<Order, "payment_method">): boolean {
+  return order.payment_method === "invoice";
+}
+
+// Контрольные суммы ИНН (ФНС) — та же проверка, что на сервере (api/app/b2b.py).
+const W10 = [2, 4, 10, 3, 5, 9, 4, 6, 8];
+const W11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+const W12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+
+function checkDigit(digits: string, weights: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < weights.length; i++) sum += Number(digits[i]) * weights[i];
+  return (sum % 11) % 10;
+}
+
+/** «7707083893» → "org" (организация), «500100732259» → "ip" (ИП), иначе null — не ИНН. */
+export function innKind(raw: string): "org" | "ip" | null {
+  const inn = raw.replace(/\s/g, "");
+  if (!/^\d+$/.test(inn)) return null;
+  if (inn.length === 10) return checkDigit(inn, W10) === Number(inn[9]) ? "org" : null;
+  if (inn.length === 12) {
+    const ok = checkDigit(inn, W11) === Number(inn[10]) && checkDigit(inn, W12) === Number(inn[11]);
+    return ok ? "ip" : null;
+  }
+  return null;
+}
+
+/** КПП — 9 знаков: 4 цифры, 2 цифры или заглавные латинские буквы, 3 цифры. */
+export function isValidKpp(raw: string): boolean {
+  return /^\d{4}[\dA-Z]{2}\d{3}$/.test(raw.trim());
+}
+
+/** Подставить в пустые поля формы контакты клиента из кабинета (B32): что он уже ввёл — не трогаем. */
+export function prefillForm(
+  form: OrderForm,
+  account: { email: string; contacts: { name: string; phone: string; address: string } | null },
+): OrderForm {
+  const c = account.contacts;
+  return {
+    ...form,
+    name: form.name || c?.name || "",
+    phone: form.phone || c?.phone || "",
+    email: form.email || account.email,
+    address: form.address || c?.address || "",
+  };
+}
 
 export function needsAddress(delivery: string): boolean {
   return delivery !== "pickup";
@@ -96,6 +200,15 @@ export function validateForm(form: OrderForm, delivery: string): Partial<Record<
   if (!isValidPhone(form.phone)) errors.phone = "Телефон в формате +7 999 123-45-67.";
   if (form.email.trim() && !isValidEmail(form.email)) errors.email = "Проверьте e-mail.";
   if (needsAddress(delivery) && !form.address.trim()) errors.address = "Куда доставить?";
+  if (form.b2b) {
+    // Организации (B33): счёт уходит на e-mail, ИНН проверяем по контрольным цифрам.
+    if (!form.email.trim()) errors.email = "Для счёта нужен e-mail.";
+    if (!form.companyName.trim()) errors.companyName = "Укажите наименование организации или ИП.";
+    if (!innKind(form.inn)) errors.inn = "ИНН: 10 цифр у организации, 12 — у ИП.";
+    if (innKind(form.inn) === "org" && form.kpp.trim() && !isValidKpp(form.kpp)) {
+      errors.kpp = "КПП — 9 знаков, например 770101001.";
+    }
+  }
   if (!form.consent) errors.consent = "Без согласия мы не можем принять заказ.";
   return errors;
 }
@@ -110,6 +223,15 @@ export function toRequest(form: OrderForm, quoteId: string) {
     address: form.address.trim() || null,
     comment: form.comment.trim() || null,
     consent: form.consent,
+    company: form.b2b
+      ? {
+          name: form.companyName.trim(),
+          inn: form.inn.replace(/\s/g, ""),
+          // У ИП КПП нет — не отправляем, даже если поле заполнили.
+          kpp: innKind(form.inn) === "org" ? form.kpp.trim() || null : null,
+          address: form.companyAddress.trim() || null,
+        }
+      : null,
   };
 }
 
@@ -131,4 +253,17 @@ export function formatDate(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Из id расчёта (`<upload_id>-<хвост>`) — id загрузки, чтобы вернуть клиента на страницу модели. */
+export function uploadIdFromQuote(quoteId: string): string | null {
+  const m = /^([0-9a-f]{32})-[0-9a-f]{6}$/.exec(quoteId);
+  return m ? m[1] : null;
+}
+
+/** Текст ошибки для страницы заказа, если расчёт не загрузился (GET /api/v1/quotes/{id}). */
+export function quoteLoadError(status: number): string {
+  if (status === 404) return "Расчёт не найден. Рассчитайте цену заново.";
+  if (status === 410) return "Расчёт устарел — он действует 24 часа, цены могли измениться. Рассчитайте цену заново.";
+  return `Ошибка ${status}.`;
 }

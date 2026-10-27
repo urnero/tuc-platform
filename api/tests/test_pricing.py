@@ -123,6 +123,15 @@ def test_calc_rounds_to_ruble(simple):
     assert isinstance(q.total, int)
 
 
+def test_calc_rounds_half_up(simple):
+    """QA 2026-10-22: 35,1 г × 10 ₽ × 1,5 = 526,5 → 527, а не 526 (round() к чётному)."""
+    q = calc_price(simple, material="PLA", material_g=35.1, print_time_s=0)
+    assert q.print_subtotal == 526.5
+    assert q.total == 527
+    q = calc_price(simple, material="PLA", material_g=35.1, print_time_s=0, qty=3)
+    assert q.print_subtotal == 1579.5 and q.total == 1580
+
+
 @pytest.mark.parametrize(
     "kwargs, text",
     [
@@ -261,3 +270,24 @@ def test_api_quote_not_found(client, pricing_file):
     assert client.get("/api/v1/quotes/../../etc/passwd").status_code in (404, 422)
     assert client.get("/api/v1/quotes/" + "0" * 32 + "-abcdef").status_code == 404
     assert client.post("/api/v1/uploads/" + "0" * 32 + "/quote", json={}).status_code == 404
+
+
+def test_api_quote_units_change_invalidates(client, pricing_file, fake_slicer):
+    """[ДЕНЬГИ] после «мм → дюймы» старый расчёт цены удалён (заказ по нему невозможен),
+    а новый расчёт цены требует расчёта печати для новых единиц."""
+    upload_id = _upload(client)
+    client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"})
+    q = client.post(f"/api/v1/uploads/{upload_id}/quote", json={"material": "PLA"}).json()
+    assert q["units"] == "mm"
+
+    assert client.patch(f"/api/v1/uploads/{upload_id}", json={"units": "inch"}).status_code == 200
+    assert client.get(f"/api/v1/quotes/{q['id']}").status_code == 404
+    r = client.post(f"/api/v1/uploads/{upload_id}/quote", json={"material": "PLA"})
+    assert r.status_code == 409  # расчёт печати для дюймов ещё не делали
+    assert "Статус расчёта: none" in r.json()["detail"]
+
+    client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"})
+    q2 = client.post(f"/api/v1/uploads/{upload_id}/quote", json={"material": "PLA"}).json()
+    assert q2["units"] == "inch"
+    assert q2["material_g"] > q["material_g"]
+    assert q2["total"] >= q["total"]

@@ -6,13 +6,26 @@
  * Статус меняет владелец (бот B07, админка B09).
  * Оплата (B08): кнопка «Оплатить» → POST /api/v1/orders/{token}/payment → форма ЮKassa.
  * Вернувшись с формы (?payment=check), страница зовёт /payment/check и показывает итог.
+ * Заказ от организации (B33) платится по счёту: вместо «Оплатить» — ссылка на счёт
+ * /order/<token>/invoice и подсказка про безнал.
+ * Уведомления (B34): блок «Когда статус изменится, напишем …» и кнопка «Получать статусы
+ * в Telegram» — ссылка на бота с token заказа, бот сам привяжет чат к заказу.
  */
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
-import { formatDate, formatPhone, type Order, STATUS_HINTS, STATUS_LABELS, STATUS_STEPS } from "@/lib/order";
+import {
+  formatDate,
+  formatPhone,
+  notificationsBlock,
+  type Order,
+  paysByInvoice,
+  STATUS_HINTS,
+  STATUS_LABELS,
+  STATUS_STEPS,
+} from "@/lib/order";
 import { canPay, checkResultText, type PaymentCheck, type PaymentStart, paymentHint } from "@/lib/payment";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS } from "@/lib/pricing";
 
@@ -90,6 +103,8 @@ function OrderStatus() {
 
   const stepIndex = STATUS_STEPS.indexOf(order.status);
   const cancelled = order.status === "cancelled";
+  const invoice = paysByInvoice(order);
+  const notifications = notificationsBlock(order);
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
@@ -127,12 +142,26 @@ function OrderStatus() {
             {payResult}
           </p>
         )}
-        {paymentHint(order.status, order.payment) && (
+        {invoice && order.status === "new" && (
+          <div className="flex flex-col gap-2" data-testid="invoice">
+            <p className="text-sm" style={{ color: "var(--muted)" }}>
+              Заказ от организации: оплата безналом по счёту. Когда деньги поступят, заказ станет «Оплачен» и уйдёт в печать.
+            </p>
+            <Link
+              href={`/order/${encodeURIComponent(token)}/invoice`}
+              className="self-start rounded-lg px-5 py-3 text-base font-semibold"
+              style={{ background: "var(--accent)", color: "var(--bg)" }}
+            >
+              Счёт на оплату {order.number}
+            </Link>
+          </div>
+        )}
+        {!invoice && paymentHint(order.status, order.payment) && (
           <p className="text-sm" style={{ color: "var(--muted)" }}>
             {paymentHint(order.status, order.payment)}
           </p>
         )}
-        {canPay(order.status, order.payment) && (
+        {!invoice && canPay(order.status, order.payment) && (
           <div className="flex flex-col gap-2">
             <button
               type="button"
@@ -148,6 +177,22 @@ function OrderStatus() {
               <p className="text-sm" role="alert">
                 {payError}
               </p>
+            )}
+          </div>
+        )}
+        {notifications && (
+          <div className="flex flex-wrap items-center gap-3 text-sm" data-testid="notifications">
+            <span style={{ color: "var(--muted)" }}>{notifications.text}</span>
+            {notifications.telegramLink && (
+              <a
+                href={notifications.telegramLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border px-4 py-2 font-semibold"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+              >
+                Получать статусы в Telegram
+              </a>
             )}
           </div>
         )}
@@ -183,6 +228,12 @@ function OrderStatus() {
 
       <section className="flex flex-col gap-3 rounded-lg border p-6 text-sm" style={{ borderColor: "var(--muted)" }}>
         <h2 className="text-lg font-semibold">Контакты</h2>
+        {order.anonymized_at && (
+          <p style={{ color: "var(--muted)" }}>
+            С выполнения заказа прошло больше 5 лет — имя, телефон, e-mail и адрес из него удалены (политика обработки
+            персональных данных, раздел 6).
+          </p>
+        )}
         <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1">
           <dt style={{ color: "var(--muted)" }}>Имя</dt>
           <dd className="text-right">{order.customer_name}</dd>
@@ -195,9 +246,33 @@ function OrderStatus() {
             </>
           )}
         </dl>
+        {order.company && (
+          <p>
+            Покупатель: {order.company.name}, ИНН {order.company.inn}
+            {order.company.kpp ? `, КПП ${order.company.kpp}` : ""}
+            {invoice && order.status !== "new" && (
+              <>
+                {" · "}
+                <Link href={`/order/${encodeURIComponent(token)}/invoice`} className="underline underline-offset-2">
+                  счёт {order.number}
+                </Link>
+              </>
+            )}
+          </p>
+        )}
         {order.comment && <p>Комментарий: {order.comment}</p>}
         <p style={{ color: "var(--muted)" }}>
           Сохраните ссылку на эту страницу — по ней видно, что с заказом. Вопросы — по телефону или в Telegram студии.
+          {order.email && (
+            <>
+              {" "}
+              Все заказы на {order.email} — в{" "}
+              <Link href="/account" className="underline underline-offset-2">
+                кабинете
+              </Link>
+              .
+            </>
+          )}
         </p>
       </section>
 

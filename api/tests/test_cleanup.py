@@ -118,6 +118,9 @@ def test_several_orders_on_one_upload(data_dir, session):
     assert _exists(data_dir, upload_id)
 
     active.status = "done"
+    # onupdate поставил бы в updated_at реальное «сейчас», и тест зависел бы от даты запуска —
+    # закрываем заказ явно 10 дней назад от NOW.
+    active.updated_at = NOW - timedelta(days=10)
     session.commit()
     cleanup.run_cleanup(session, now=NOW)
     assert _exists(data_dir, upload_id)  # закрыт 10 дней назад — рано
@@ -168,6 +171,7 @@ def test_no_uploads_dir(data_dir, session):
     assert report.to_dict() == {
         "checked": 0,
         "deleted": 0,
+        "editor_builds": 0,
         "freed_mb": 0,
         "no_order": 0,
         "orders_closed": 0,
@@ -207,5 +211,6 @@ def test_cli_and_cron(data_dir, db, capsys):
     assert worker.cleanup_files in worker.WorkerSettings.functions
     assert [c.name for c in worker.WorkerSettings.cron_jobs] == [
         "cron:cleanup_files",
+        "cron:anonymize_orders",
         "cron:export_sheet",
     ]

@@ -10,17 +10,21 @@ import CatalogOrderButton from "@/components/CatalogOrderButton";
 import CatalogViewer from "@/components/CatalogViewer";
 import { dimsText, loadCatalogModel } from "@/lib/catalog";
 import { warningText } from "@/lib/mesh";
+import { metaDescription, pageMetadata } from "@/lib/seo";
 
 type Params = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const model = await loadCatalogModel(slug);
-  if (!model) return { title: "Модель не найдена — ТУЦ" };
-  return {
+  if (!model) return { title: "Модель не найдена — ТУЦ", robots: { index: false } };
+  // Канонический адрес и карточка с превью модели для мессенджеров (B25).
+  return pageMetadata({
+    path: `/catalog/${model.slug}`,
     title: `${model.title} — 3D-печать на заказ — ТУЦ`,
-    description: model.text || `Готовая модель «${model.title}»: выберите материал и количество — цена сразу.`,
-  };
+    description: metaDescription(model.text, `Готовая модель «${model.title}»: выберите материал и количество — цена сразу.`),
+    image: model.preview_url,
+  });
 }
 
 export default async function CatalogModelPage({ params }: Params) {

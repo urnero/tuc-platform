@@ -224,3 +224,56 @@ def test_slice_api_error_is_recorded(client, fake_slicer, monkeypatch):
     monkeypatch.setattr(settings, "prusa_slicer_bin", f"{sys.executable} {fake_slicer}")
     r = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "ABS"})
     assert r.json()["status"] == "done"
+
+
+def test_slice_api_units_change_resets_record(client, fake_slicer):
+    """[ДЕНЬГИ] «мм → дюймы» после готового расчёта: старые граммы и часы не годятся.
+
+    PATCH units удаляет папку slices/, а запись расчёта хранит units — повторный POST
+    считает заново для дюймов, GET старую запись не отдаёт.
+    """
+    upload_id = _upload(client)
+    mm = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"}).json()
+    assert mm["status"] == "done" and mm["units"] == "mm"
+    folder = settings.data_dir / "uploads" / upload_id
+    assert (folder / "slices" / "PLA.json").is_file()
+
+    r = client.patch(f"/api/v1/uploads/{upload_id}", json={"units": "inch"})
+    assert r.status_code == 200
+    assert not (folder / "slices").exists()  # старые расчёты и G-code удалены
+    assert client.get(f"/api/v1/uploads/{upload_id}/slice?material=PLA").status_code == 404
+
+    inch = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"}).json()
+    assert inch["status"] == "done" and inch["units"] == "inch"
+    assert inch["result"]["filament_g"] > mm["result"]["filament_g"]
+    assert inch["result"]["print_time_s"] > mm["result"]["print_time_s"]
+
+    # обратно в мм — расчёт для дюймов тоже устарел
+    client.patch(f"/api/v1/uploads/{upload_id}", json={"units": "mm"})
+    again = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"}).json()
+    assert again["units"] == "mm"
+    assert again["result"]["filament_g"] == mm["result"]["filament_g"]
+
+
+def test_slice_api_stale_record_for_other_units_is_ignored(client, fake_slicer):
+    """Запись для других единиц (например, дописал worker, начавший до смены единиц)
+    не отдаётся и не блокирует новый расчёт. Записи без поля units считаем за мм."""
+    from app.slice_jobs import load_record, save_record
+
+    upload_id = _upload(client)
+    rec = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"}).json()
+    # подменяем сохранённую запись: как будто она посчитана для дюймов
+    rec["units"] = "inch"
+    save_record(upload_id, rec)
+    assert load_record(upload_id, "PLA") is not None  # без units — читается как есть
+    assert load_record(upload_id, "PLA", units="inch") is not None
+    assert load_record(upload_id, "PLA", units="mm") is None
+    assert client.get(f"/api/v1/uploads/{upload_id}/slice?material=PLA").status_code == 404
+    fresh = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"}).json()
+    assert fresh["units"] == "mm" and fresh["status"] == "done"
+
+    # старая запись без поля units (сделана до этого исправления) — считается расчётом в мм
+    del fresh["units"]
+    save_record(upload_id, fresh)
+    assert load_record(upload_id, "PLA", units="mm") is not None
+    assert load_record(upload_id, "PLA", units="inch") is None

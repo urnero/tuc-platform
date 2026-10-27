@@ -121,8 +121,19 @@ cd /srv/tuc/prod && docker compose up -d
 - **Бэкап** БД прода: каждую ночь в 03:15 в `/srv/tuc/backups/prod-ГГГГ-ММ-ДД.sql.gz`, 14 дней.
   Восстановить: `zcat файл.sql.gz | docker compose exec -T postgres psql -U tuc -d tuc`.
   Папку с моделями `/srv/tuc/prod/data/` бэкап не трогает — при переезде копируйте её отдельно.
-- **Цены, профили и каталог** (`config/pricing.yaml`, `profiles/`, `catalog/`) правятся в репозитории и приезжают деплоем.
+- **Цены, профили, каталог и редакторы** (`config/pricing.yaml`, `config/colors.yaml`, `profiles/`, `catalog/`, `editors/`) правятся в репозитории и приезжают деплоем.
   На сервере файлы репозитория не править: `deploy.sh` делает `git reset --hard`, правки пропадут.
+- **Редакторы деталей** (B21): модели строит worker (в его образе есть OpenSCAD), поэтому страница редактора
+  без работающего worker покажет «В очереди…» и не дождётся — проверка: `docker compose logs worker | grep -i openscad`
+  и `docker compose exec worker openscad --version`. Сборки лежат в `data/editors/<редактор>/<id>/` и чистятся
+  ночной уборкой через `CLEANUP_UPLOADS_DAYS`. Новый редактор — папка `editors/<slug>/` с `editor.yaml` и `model.scad`
+  по образцу `editors/spacer/`; после деплоя появится на `/editors` сам (yaml перечитывается без перезапуска).
+- **Поиск (SEO, B25)**: `https://<домен>/sitemap.xml` перечисляет все страницы, редакторы и модели каталога,
+  `https://<домен>/robots.txt` закрывает админку, API и личные страницы заказов. Адреса в них берутся из `SITE_URL`
+  в `.env` стенда — он попадает в образ web при сборке, поэтому после смены домена нужен `deploy.sh` (пересборка).
+  На staging (`staging.<домен>`) robots.txt закрывает сайт целиком — он не должен попасть в поиск.
+  Чтобы Яндекс и Google начали индексировать: в Яндекс Вебмастере и Google Search Console добавить сайт
+  и указать адрес sitemap. Новый редактор или модель каталога попадают в sitemap сами (не позже чем через 10 минут).
 - **SQL к базе прода** с сервера: `docker compose exec postgres psql -U tuc -d tuc`.
 - **Google-таблица учёта** (B11): worker каждую ночь в 05:05 МСК переписывает лист «Заказы (сайт)».
   Ключ сервисного аккаунта положить в `/srv/tuc/prod/secrets/google-sa.json` (`chmod 600`, папка в
@@ -135,6 +146,12 @@ cd /srv/tuc/prod && docker compose up -d
   закрытых больше года назад (`CLEANUP_UPLOADS_DAYS`, `CLEANUP_ORDER_FILES_DAYS` в `.env`; 0 — не удалять).
   Записи заказов в БД остаются, у заказа в админке просто пропадает кнопка «Скачать файл». Посмотреть, что удалится:
   `docker compose exec api python -m app.cleanup --dry-run`; удалить сейчас — без `--dry-run`. Логи: `docker compose logs worker | grep Очистка`.
+- **Обезличивание заказов** (B35): worker каждую ночь в 04:50 МСК стирает данные клиента (имя, телефон, e-mail, адрес,
+  комментарий, реквизиты организации, Telegram) в заказах «выдан»/«отменён», закрытых больше 5 лет назад
+  (`ANONYMIZE_ORDERS_DAYS=1826` в `.env`; 0 — не обезличивать), и сырой ответ ЮKassa у их оплат. Суммы, материалы и
+  снимок расчёта остаются, в `orders.anonymized_at` — дата. Посмотреть, кого коснётся:
+  `docker compose exec api python -m app.anonymize --dry-run`; выполнить сейчас — без `--dry-run`.
+  Логи: `docker compose logs worker | grep Обезличивание`. Первые такие заказы появятся не раньше 2031 года.
 - **Superset / DBeaver / pandas к базе** (B11): один раз на стенде `bash /srv/tuc/prod/deploy/readonly-user.sh` —
   создаст пользователя `tuc_ro` (только SELECT, в том числе для будущих таблиц) и запишет пароль в `.env`
   (`POSTGRES_RO_PASSWORD`). Postgres снаружи виден только на `127.0.0.1` сервера (prod — порт 5433, staging — 5434),
@@ -142,6 +159,14 @@ cd /srv/tuc/prod && docker compose up -d
   `127.0.0.1:5433`, база `tuc`, пользователь `tuc_ro`. В Superset — «+ Database → PostgreSQL», тот же адрес
   (если Superset в Docker на ноутбуке — вместо `127.0.0.1` укажите `host.docker.internal`).
   Таблицы: `orders`, `payments`, `events` (воронка; готовые SQL — `docs/ANALYTICS.md`).
+- **Защита от цикла запросов и переполнения диска** (`api/app/limits.py`): с одного IP можно создать не больше
+  `RATE_LIMIT_UPLOADS_PER_MIN=10` загрузок (файл, «Заказать» из каталога и редактора, тиснение) и
+  `RATE_LIMIT_ORDERS_PER_MIN=5` заказов в минуту — дальше api отвечает 429 «Слишком много … подряд» и сайт показывает
+  это как ошибку. Если на диске с `data/` свободно меньше `MIN_FREE_DISK_GB=2`, новые загрузки получают 503
+  «На сервере закончилось место» — проверить `df -h /srv/tuc`, место освобождает ночная уборка (выше) или
+  `docker system prune` для старых образов. Лимиты правятся в `.env` стенда (0 = выключить), затем `docker compose up -d`.
+  Счётчик живёт в памяти api, перезапуск его обнуляет. Пачка 429 в `docker compose logs api` от одного адреса — чей-то скрипт,
+  а не клиент; при желании такой IP можно закрыть в Caddy (`deploy/edge/site.caddy.tmpl`, директива `@blocked remote_ip …` + `respond 403`).
 - **Добавить второй домен / сменить домен**: поправить `/srv/tuc/prod/deploy/edge/.env`
   и выполнить `bash /srv/tuc/prod/deploy/edge/render-sites.sh`.
 

@@ -1,35 +1,48 @@
 """Заказы (B06).
 
 POST /api/v1/orders            — оформить заказ по расчёту цены: {quote_id, name, phone,
-                                  email?, address?, comment?, consent}. Доставка берётся из
-                                  расчёта; если курьер — адрес обязателен. Ответ: заказ с token.
+                                  email?, address?, comment?, consent, company?}. Доставка —
+                                  из расчёта; если курьер — адрес обязателен. Ответ: заказ с token.
+                                  `company` {name, inn, kpp?, address?} — заказ от организации
+                                  или ИП (B33, `app/b2b.py`): e-mail обязателен (туда уйдут
+                                  документы), `payment_method = invoice` — оплата по счёту.
 GET  /api/v1/orders/{token}    — заказ для страницы статуса /order/<token>. Ссылку знает
-                                  только клиент (token случайный), логина пока нет.
+                                  только клиент (token случайный), вход не нужен.
+Кабинет клиента (B32, `app/account.py`) находит заказы по `email`: если клиент вошёл в кабинет
+и не заполнил e-mail в форме, подставляем адрес из его сессии — заказ не потеряется из истории.
 
 Заказ — строка в таблице `orders` (app/models.py). Цена фиксируется снимком расчёта.
+Расчёт годится один раз и не дольше QUOTE_TTL_HOURS (24 ч): по просроченному — 410,
+по уже заказанному — 409, в обоих случаях клиенту нужно пересчитать цену (цены могли измениться).
 После создания заказа владельцу уходит сообщение в Telegram (B07, `app/telegram.py`) —
 в фоне, после ответа клиенту, чтобы сбой Telegram не ломал оформление.
 Оплата (B08) — `app/payments.py`: в ответе заказа есть блок `payment`
 (включена ли онлайн-оплата, статус платежа, ссылка на форму ЮKassa).
 
 Смена статуса — `change_status()`: её зовёт бот (B07), ЮKassa (B08, ставит paid),
-админка (B09, `app/admin.py`).
+админка (B09, `app/admin.py`). После смены клиенту уходит письмо и/или сообщение в Telegram
+(B34, `app/notify.py`); при создании заказа — письмо «принят». В ответе заказа блок
+`notifications`: куда приходят статусы и ссылка на бота для подключения Telegram.
 """
 
 import re
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import notify
+from app import telegram as tg
+from app.b2b import Company
 from app.config import settings
 from app.db import get_db
 from app.events import track
+from app.limits import orders_guard
 from app.models import ORDER_STATUSES, Order, Payment
-from app.quotes import load_quote
+from app.quotes import load_quote, quote_expired_detail, quote_is_expired
 from app.telegram import ACTIVE_STATUSES, STATUS_LABELS, notify_owner_new_order
 
 router = APIRouter(prefix="/api/v1/orders", tags=["orders"])
@@ -66,6 +79,7 @@ class OrderCreate(BaseModel):
     address: str | None = Field(default=None, max_length=1000)
     comment: str | None = Field(default=None, max_length=2000)
     consent: bool = False  # согласие на обработку персональных данных
+    company: Company | None = None  # заказ от юрлица или ИП (B33) → оплата по счёту
 
     @field_validator("email", "address", "comment", mode="before")
     @classmethod
@@ -100,21 +114,48 @@ class OrderCreate(BaseModel):
         return v
 
 
-@router.post("", status_code=201)
-def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict:
+def session_email(request: Request, db: Db) -> str | None:
+    """E-mail клиента, вошедшего в кабинет (cookie), или None."""
+    from app.account import current_email  # account.py импортирует orders — без кольца
+
+    return current_email(request, db)
+
+
+@router.post("", status_code=201, dependencies=[Depends(orders_guard)])
+def create_order(
+    body: OrderCreate,
+    db: Db,
+    background: BackgroundTasks,
+    logged_in_email: Annotated[str | None, Depends(session_email)] = None,
+) -> dict:
     if not body.consent:
         raise HTTPException(status_code=422, detail="Нужно согласие на обработку данных.")
     quote = load_quote(body.quote_id)
     if quote is None:
         raise HTTPException(status_code=404, detail="Расчёт не найден. Рассчитайте цену заново.")
+    if quote_is_expired(quote):
+        raise HTTPException(status_code=410, detail=quote_expired_detail())
+    # Один расчёт — один заказ: иначе повторные отправки формы плодят дубли,
+    # а старый расчёт можно было бы заказывать бесконечно после смены цен.
+    if db.scalar(select(Order.id).where(Order.quote_id == quote["id"]).limit(1)) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="По этому расчёту заказ уже оформлен. "
+            "Для нового заказа рассчитайте цену заново.",
+        )
     if quote["delivery"] != "pickup" and not body.address:
         raise HTTPException(status_code=422, detail="Для доставки курьером нужен адрес.")
+    email = body.email or logged_in_email
+    if body.company is not None and not email:
+        raise HTTPException(
+            status_code=422, detail="Для заказа от организации нужен e-mail — на него уйдёт счёт."
+        )
 
     order = Order(
         token=secrets.token_hex(16),
         customer_name=body.name,
         phone=body.phone,
-        email=body.email,
+        email=email,
         delivery=quote["delivery"],
         address=body.address if quote["delivery"] != "pickup" else None,
         comment=body.comment,
@@ -128,6 +169,9 @@ def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict
         total=int(round(quote["total"])),
         currency=quote.get("currency", "RUB"),
         quote=quote,
+        # Организации платят по счёту (B33), частные лица — онлайн (B08).
+        payment_method="invoice" if body.company is not None else "online",
+        **(body.company.to_columns() if body.company is not None else {}),
     )
     db.add(order)
     db.flush()  # чтобы появился order.id
@@ -138,14 +182,42 @@ def create_order(body: OrderCreate, db: Db, background: BackgroundTasks) -> dict
         upload_id=order.upload_id,
         quote_id=order.quote_id,
         order_id=order.id,
-        props={"total": order.total, "delivery": order.delivery, "qty": order.qty},
+        props={
+            "total": order.total,
+            "delivery": order.delivery,
+            "qty": order.qty,
+            "payment_method": order.payment_method,
+            "b2b": order.company_name is not None,
+        },
     )
     db.commit()
     db.refresh(order)
     data = order.to_dict()
-    # Владельцу — в Telegram, уже после того, как клиент получил ответ.
+    # Владельцу — в Telegram, клиенту — письмо «принят» (B34); уже после ответа клиенту.
     background.add_task(notify_owner_new_order, data)
-    return data | {"payment": payment_summary(db, order)}
+    background.add_task(notify.order_created, data)
+    return order_response(db, order)
+
+
+def order_response(db: Session, order: Order) -> dict:
+    """Заказ для клиента: поля таблицы + блок оплаты (B08) + блок уведомлений (B34)."""
+    return order.to_dict() | {
+        "payment": payment_summary(db, order),
+        "notifications": notifications_summary(order),
+    }
+
+
+def notifications_summary(order: Order) -> dict:
+    """Блок `notifications` (B34): на какой e-mail приходят статусы, подключён ли Telegram
+    и ссылка на бота, по которой клиент его подключает (`/start <token заказа>`).
+    Ссылки нет, если бот не настроен (нет токена) или Telegram уже подключён."""
+    bot = tg.bot_username() if settings.telegram_bot_token else None
+    linked = bool(order.telegram_chat_id)
+    return {
+        "email": order.email if order.email and settings.smtp_host else None,
+        "telegram_linked": linked,
+        "telegram_link": f"https://t.me/{bot}?start={order.token}" if bot and not linked else None,
+    }
 
 
 # --- оплата (B08): что про платёж видит страница статуса -----------------------
@@ -159,8 +231,10 @@ def latest_payment(db: Session, order: Order) -> Payment | None:
 
 
 def payment_summary(db: Session, order: Order) -> dict:
-    """Блок `payment` в ответе заказа: включена ли онлайн-оплата и в каком состоянии платёж."""
+    """Блок `payment` в ответе заказа: включена ли онлайн-оплата и в каком состоянии платёж.
+    Заказ по счёту (B33) онлайн не платится — для него `enabled = false`."""
     enabled = bool(settings.yookassa_shop_id and settings.yookassa_secret_key)
+    enabled = enabled and order.payment_method != "invoice"
     p = latest_payment(db, order)
     return {
         "enabled": enabled,
@@ -189,9 +263,10 @@ def list_orders(db: Session, active_only: bool = True, limit: int = 20) -> list[
     return list(db.scalars(q.order_by(Order.id.desc()).limit(limit)))
 
 
-def change_status(db: Session, order_id: int, status: str) -> Order:
+def change_status(db: Session, order_id: int, status: str, notify_client: bool = True) -> Order:
     """Поставить заказу статус. Любой переход разрешён — владелец знает, что делает;
-    бот лишь предлагает кнопками логичные шаги (telegram.NEXT_STATUSES)."""
+    бот лишь предлагает кнопками логичные шаги (telegram.NEXT_STATUSES).
+    После записи клиенту уходит уведомление (B34, в фоне); `notify_client=False` — без него."""
     if status not in ORDER_STATUSES:
         raise StatusError(f"Неизвестный статус «{status}».")
     order = get_order_by_id(db, order_id)
@@ -202,7 +277,32 @@ def change_status(db: Session, order_id: int, status: str) -> Order:
     order.status = status
     db.commit()
     db.refresh(order)
+    if notify_client:
+        notify.status_changed(order.to_dict())
     return order
+
+
+def link_telegram(db: Session, token: str, chat_id: int | str) -> Order | None:
+    """Клиент написал боту `/start <token>` (B34): запомнить его chat_id у заказа.
+    None — такого заказа нет (ссылка не из нашего сайта)."""
+    if not TOKEN_RE.match(token or ""):
+        return None
+    order = db.scalar(select(Order).where(Order.token == token))
+    if order is None:
+        return None
+    order.telegram_chat_id = str(chat_id)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def unlink_telegram(db: Session, chat_id: int | str) -> int:
+    """Клиент написал боту /stop: больше не слать ему статусы. → сколько заказов отвязали."""
+    orders = list(db.scalars(select(Order).where(Order.telegram_chat_id == str(chat_id))))
+    for order in orders:
+        order.telegram_chat_id = None
+    db.commit()
+    return len(orders)
 
 
 def get_order_by_token(db: Session, token: str) -> Order:
@@ -217,4 +317,4 @@ def get_order_by_token(db: Session, token: str) -> Order:
 @router.get("/{token}")
 def get_order(token: str, db: Db) -> dict:
     order = get_order_by_token(db, token)
-    return order.to_dict() | {"payment": payment_summary(db, order)}
+    return order_response(db, order)

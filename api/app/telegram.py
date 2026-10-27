@@ -12,6 +12,7 @@
 
 import html
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -94,6 +95,14 @@ def order_card(order: dict, header: str | None = None) -> str:
         f"Доставка: {DELIVERY_LABELS.get(order['delivery'], order['delivery'])}"
         + (f" — {esc(order['address'])}" if order.get("address") else ""),
     ]
+    company = order.get("company")
+    if company:
+        # Заказ от организации (B33): кто покупатель и что платит по счёту, а не картой.
+        lines.append(
+            f"Юрлицо: {esc(company['name'])}, ИНН {esc(company['inn'])}"
+            + (f", КПП {esc(company['kpp'])}" if company.get("kpp") else "")
+            + " · оплата по счёту"
+        )
     quote = order.get("quote") or {}
     if quote.get("print_time_s") or quote.get("material_g"):
         hours = (quote.get("print_time_s") or 0) / 3600 * order["qty"]
@@ -101,8 +110,14 @@ def order_card(order: dict, header: str | None = None) -> str:
         lines.append(f"Печать: ~{hours:.1f} ч, {grams:.0f} г на весь тираж")
     if order.get("original_name"):
         lines.append(f"Файл: {esc(order['original_name'])}")
+    if quote.get("decor"):
+        # Раскраска по частям (B31) или тиснение (B30): «Деталь 1 — красный, Деталь 2 — синий».
+        lines.append(f"Оформление: {esc(quote['decor'])}")
     if order.get("comment"):
         lines.append(f"Комментарий: {esc(order['comment'])}")
+    if order.get("telegram_chat_id"):
+        # Клиент подключил бота (B34): смена статуса кнопкой уйдёт ему и в Telegram.
+        lines.append("Статусы клиенту: Telegram" + (" и e-mail" if order.get("email") else ""))
     created = fmt_msk(order.get("created_at"))
     if created:
         lines.append(f"Создан: {created} МСК")
@@ -185,6 +200,42 @@ def send_message(chat_id: str | int, text: str, reply_markup: dict | None = None
     except httpx.HTTPError as e:
         log.warning("telegram sendMessage failed: %s", e)
         return False
+
+
+# Имя бота (@username) для ссылки «Получать статусы в Telegram» (B34): спрашиваем у Telegram
+# один раз (getMe) и помним. Если Telegram не ответил — пробуем снова не раньше чем через 5 минут.
+# `checked_at` — время последней попытки (time.monotonic) или None, если ещё не спрашивали.
+# Именно None, а не 0: monotonic считает от загрузки системы, и на свежей машине (CI) она
+# меньше 5 минут — с нулём кэш думал бы, что «только что спрашивали», и не ходил в Telegram.
+_bot_username: dict = {"name": None, "checked_at": None}
+BOT_USERNAME_RETRY_S = 300
+
+
+def bot_username() -> str | None:
+    """@username бота без «@» или None (нет токена / Telegram не ответил)."""
+    if not settings.telegram_bot_token:
+        return None
+    cache = _bot_username
+    if cache["name"]:
+        return cache["name"]
+    asked_at = cache["checked_at"]
+    if asked_at is not None and time.monotonic() - asked_at < BOT_USERNAME_RETRY_S:
+        return None  # недавно не ответил — не дёргаем Telegram снова
+    cache["checked_at"] = time.monotonic()
+    try:
+        r = httpx.get(f"{TG_API}/bot{settings.telegram_bot_token}/getMe", timeout=10)
+        if r.status_code == 200:
+            cache["name"] = (r.json().get("result") or {}).get("username") or None
+        else:
+            log.warning("telegram getMe %s: %s", r.status_code, r.text[:200])
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("telegram getMe failed: %s", e)
+    return cache["name"]
+
+
+def forget_bot_username() -> None:
+    """Сбросить кэш getMe (для тестов и смены токена)."""
+    _bot_username.update(name=None, checked_at=None)
 
 
 def notify_owner_new_order(order: dict) -> bool:

@@ -13,8 +13,8 @@ from test_payments import FakeYooKassa, _basic
 from app import payments, telegram
 from app.config import settings
 from app.db import reset_engine
-from app.events import funnel, track
-from app.models import EVENT_NAMES, Event
+from app.events import FUNNEL_KEY, funnel, track
+from app.models import Event
 from app.pricing import reload_pricing
 
 
@@ -81,7 +81,7 @@ def test_full_funnel_is_recorded(client, pricing_file, fake_slicer, yookassa, db
     assert client.post(f"/api/v1/orders/{token}/payment/check").json()["order_status"] == "paid"
 
     rows = _events(db)
-    assert [e.name for e in rows] == list(EVENT_NAMES)
+    assert [e.name for e in rows] == ["upload", "quote", "order", "payment_started", "paid"]
 
     upload, quote_ev, order_ev, started, paid = rows
     # все шаги склеиваются по upload_id, а шаги после заказа — ещё и по order_id
@@ -101,7 +101,13 @@ def test_full_funnel_is_recorded(client, pricing_file, fake_slicer, yookassa, db
         "delivery": "pickup",
         "total": quote["total"],
     }
-    assert order_ev.props == {"total": order["total"], "delivery": "pickup", "qty": 2}
+    assert order_ev.props == {
+        "total": order["total"],
+        "delivery": "pickup",
+        "qty": 2,
+        "payment_method": "online",  # B33: как платит (online | invoice) и от организации ли
+        "b2b": False,
+    }
     assert started.props["amount"] == order["total"] == paid.props["amount"]
     assert paid.props["yookassa_id"] == p["payment"]["yookassa_id"]
     assert all(e.created_at is not None for e in rows)
@@ -207,7 +213,7 @@ def test_funnel_counts_unique_uploads_and_orders(db):
             "paid": 1,
         }
         assert funnel(s, days=60)["upload"] == 3
-        assert funnel(s, days=0) == {name: 0 for name in EVENT_NAMES}
+        assert funnel(s, days=0) == {name: 0 for name in FUNNEL_KEY}
 
 
 def test_admin_shows_funnel(client, pricing_file, fake_slicer, db, monkeypatch):

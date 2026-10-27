@@ -16,6 +16,9 @@
 - все заказы закрыты (done / cancelled) → удаляем, когда последний из них закрыт
   дольше CLEANUP_ORDER_FILES_DAYS назад (по `orders.updated_at`).
 
+Заодно удаляются сборки параметрических редакторов (B21, DATA_DIR/editors/<slug>/<id>/) старше
+CLEANUP_UPLOADS_DAYS: это просмотры, а не заказы — у заказа своя копия STL в загрузках.
+
 Запуск: cron в worker каждую ночь (app/worker.py) и руками —
 `python -m app.cleanup` (посмотреть, что удалится: `python -m app.cleanup --dry-run`).
 Значение 0 у любого срока выключает это правило.
@@ -35,6 +38,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import session_factory
+from app.editors import cleanup_builds
 from app.models import Order
 
 log = logging.getLogger(__name__)
@@ -61,6 +65,8 @@ class CleanupReport:
     deleted: list[Candidate] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     dry_run: bool = False
+    # Сборки редакторов (B21): {"checked", "deleted", "freed_bytes"} из editors.cleanup_builds.
+    builds: dict = field(default_factory=lambda: {"checked": 0, "deleted": 0, "freed_bytes": 0})
 
     @property
     def freed_bytes(self) -> int:
@@ -73,6 +79,7 @@ class CleanupReport:
             "freed_mb": round(self.freed_bytes / (1024 * 1024), 1),
             "no_order": sum(1 for c in self.deleted if c.reason == "no_order"),
             "orders_closed": sum(1 for c in self.deleted if c.reason == "orders_closed"),
+            "editor_builds": self.builds["deleted"],
             "errors": self.errors,
             "dry_run": self.dry_run,
         }
@@ -182,11 +189,14 @@ def run_cleanup(db: Session, now: datetime | None = None, dry_run: bool = False)
             c.age_days,
             c.size_bytes / (1024 * 1024),
         )
+    report.builds = cleanup_builds(settings.cleanup_uploads_days, now=now, dry_run=dry_run)
     log.info(
-        "Очистка файлов: просмотрено %d, удалено %d, освобождено %.1f МБ%s",
+        "Очистка файлов: просмотрено %d, удалено %d, освобождено %.1f МБ; сборок редакторов "
+        "удалено %d%s",
         report.checked,
         len(report.deleted),
         report.freed_bytes / (1024 * 1024),
+        report.builds["deleted"],
         " (пробный прогон)" if dry_run else "",
     )
     return report
@@ -207,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Просмотрено папок: {result['checked']}, {verb}: {result['deleted']} "
         f"(без заказа — {result['no_order']}, по закрытым заказам — {result['orders_closed']}), "
-        f"{result['freed_mb']} МБ."
+        f"{result['freed_mb']} МБ; сборок редакторов — {result['editor_builds']}."
     )
     for err in result["errors"]:
         print(f"Ошибка: {err}", file=sys.stderr)

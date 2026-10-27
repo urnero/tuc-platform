@@ -4,11 +4,15 @@
  * обновляются раз в 10 минут (ISR), без API страница рендерится без цен.
  */
 
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import UploadDropzone from "@/components/UploadDropzone";
 import { BENEFITS, loadPricing, materialCards, minOrderText, STEPS } from "@/lib/landing";
 import { WORKS, workImageUrl, worksTitle } from "@/lib/works";
+
+// Заголовок и описание — в app/layout.tsx; здесь только канонический адрес главной (B25).
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 /** Заглушка вместо фото работы: контур куба в цвете акцента. */
 function CubePlaceholder() {
@@ -54,6 +58,9 @@ export default async function Home() {
             </a>
             <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
               Нет модели? Выберите в каталоге →
+            </Link>
+            <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+              Или задайте размеры в редакторе →
             </Link>
           </div>
         </div>

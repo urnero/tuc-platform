@@ -1,0 +1,138 @@
+# Редактор «Табличка / бирка с текстом» (B24). Формат файла описан в editors/spacer/editor.yaml.
+#
+# Плоская табличка со скруглёнными углами и надписью в одну или две строки: бирка на ключи,
+# табличка на дверь или полку, ярлык на коробку, бейдж. Текст — выпуклый (печатается сверху
+# тем же пластиком, после печати его можно закрасить) или углублённый (вырезан в основании).
+# Размер таблички считается по тексту сам, но его можно задать руками. По краю — рамка,
+# слева или по краям — отверстия под шнурок или винт.
+#
+# Шрифты — Liberation (стоят в worker), в них есть кириллица и латиница.
+
+title: Табличка / бирка с текстом
+text: >
+  Бирка на ключи или чемодан, табличка на дверь, полку или ящик, ярлык на коробку. Введите
+  надпись, выберите шрифт и способ нанесения — размер таблички подберётся по тексту, модель
+  построится сразу, дальше расчёт и заказ.
+material: PLA
+order: 40
+
+params:
+  - name: text
+    label: Надпись
+    type: text
+    maxlen: 30
+    default: ТУЦ
+    hint: Кириллица и латиница. До 30 символов в строке.
+  - name: text2
+    label: Вторая строка
+    type: text
+    maxlen: 30
+    default: ""
+    hint: Необязательно. Пусто — надпись в одну строку.
+  - name: font_size
+    label: Размер шрифта
+    type: number
+    unit: мм
+    min: 4
+    max: 40
+    step: 0.5
+    default: 10
+    hint: Заглавные буквы выходят примерно на четверть ниже этого числа. Меньше 6 мм печатается плохо.
+  - name: font
+    label: Шрифт
+    type: choice
+    options:
+      - { value: sans, label: Без засечек }
+      - { value: serif, label: С засечками }
+      - { value: mono, label: Моноширинный }
+    default: sans
+  - name: bold
+    label: Жирный
+    type: bool
+    default: true
+    hint: Жирные буквы прочнее и лучше читаются после печати.
+  - name: style
+    label: Как нанести текст
+    type: choice
+    options:
+      - { value: raised, label: Выпуклый (поверх таблички) }
+      - { value: engraved, label: Углублённый (вырезан в табличке) }
+    default: raised
+    hint: Выпуклый проще закрасить, углублённый не стирается.
+  - name: text_h
+    label: Высота / глубина букв
+    type: number
+    unit: мм
+    min: 0.4
+    max: 3
+    step: 0.2
+    default: 1
+    hint: Для углублённого текста — глубина, она должна быть меньше толщины таблички.
+  - name: thickness
+    label: Толщина таблички
+    type: number
+    unit: мм
+    min: 1
+    max: 6
+    step: 0.5
+    default: 2
+  - name: width
+    label: Ширина таблички
+    type: number
+    unit: мм
+    min: 0
+    max: 250
+    step: 1
+    default: 0
+    hint: 0 — по длине надписи. Если задать меньше, чем нужно тексту, буквы уменьшатся.
+  - name: height
+    label: Высота таблички
+    type: number
+    unit: мм
+    min: 0
+    max: 150
+    step: 1
+    default: 0
+    hint: 0 — по высоте надписи.
+  - name: margin
+    label: Поля вокруг текста
+    type: number
+    unit: мм
+    min: 2
+    max: 20
+    step: 0.5
+    default: 4
+  - name: corner_r
+    label: Скругление углов
+    type: number
+    unit: мм
+    min: 0
+    max: 20
+    step: 0.5
+    default: 3
+  - name: frame
+    label: Рамка по краю
+    type: bool
+    default: false
+    hint: Выпуклая полоска по периметру той же высоты, что буквы.
+  - name: hole
+    label: Отверстие
+    type: choice
+    options:
+      - { value: none, label: Без отверстия }
+      - { value: left, label: Одно слева }
+      - { value: both, label: Два, по краям }
+    default: none
+    hint: Под шнурок, кольцо для ключей или винт. Табличка станет шире на место под отверстие.
+  - name: hole_d
+    label: Диаметр отверстия
+    type: number
+    unit: мм
+    min: 2
+    max: 8
+    step: 0.5
+    default: 4
+
+checks:
+  - rule: text_h < thickness
+    message: Высота / глубина букв должна быть меньше толщины таблички (углублённый текст иначе прорежет её насквозь).

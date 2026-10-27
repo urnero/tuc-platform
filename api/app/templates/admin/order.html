@@ -30,13 +30,22 @@
 <div class="grid">
   <section>
     <h2>Клиент</h2>
+    {% if o.anonymized_at %}
+    <p class="muted">Данные клиента стёрты {{ o.anonymized_at.strftime("%d.%m.%Y") }} — с закрытия заказа прошло больше 5 лет (политика ПДн).</p>
+    {% endif %}
     <dl>
-      <dt>Имя</dt><dd>{{ o.customer_name }}</dd>
-      <dt>Телефон</dt><dd><a href="tel:{{ o.phone }}">{{ o.phone|phone }}</a></dd>
+      <dt>Имя</dt><dd>{{ o.customer_name or "—" }}</dd>
+      <dt>Телефон</dt><dd>{% if o.phone %}<a href="tel:{{ o.phone }}">{{ o.phone|phone }}</a>{% else %}—{% endif %}</dd>
       {% if o.email %}<dt>E-mail</dt><dd><a href="mailto:{{ o.email }}">{{ o.email }}</a></dd>{% endif %}
       <dt>Доставка</dt><dd>{{ DELIVERY_LABELS.get(o.delivery, o.delivery) }}</dd>
       {% if o.address %}<dt>Адрес</dt><dd>{{ o.address }}</dd>{% endif %}
       {% if o.comment %}<dt>Комментарий</dt><dd>{{ o.comment }}</dd>{% endif %}
+      {% if o.company_name %}
+      {# Заказ от организации (B33): платит по счёту, «оплачен» ставим руками, когда деньги пришли #}
+      <dt>Организация</dt><dd>{{ o.company_name }}<br><span class="muted">ИНН {{ o.company_inn }}{% if o.company_kpp %}, КПП {{ o.company_kpp }}{% endif %}</span>
+        {% if o.company_address %}<br><span class="muted">{{ o.company_address }}</span>{% endif %}</dd>
+      <dt>Оплата</dt><dd>по счёту (безнал) · <a href="/order/{{ o.token }}/invoice" target="_blank" rel="noopener">счёт ↗</a></dd>
+      {% endif %}
       <dt>Страница клиента</dt><dd><a href="/order/{{ o.token }}" target="_blank" rel="noopener">{{ site_url() }}/order/{{ o.token }}</a></dd>
     </dl>
   </section>

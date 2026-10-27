@@ -1,4 +1,5 @@
-"""Таблицы БД: `orders` (B06), `payments` (B08), `events` (B12).
+"""Таблицы БД: `orders` (B06; реквизиты юрлица и способ оплаты — B33; Telegram клиента — B34),
+`payments` (B08), `events` (B12), `login_codes` и `client_sessions` (кабинет клиента, B32).
 Изменил таблицу → добавь миграцию в alembic/versions/.
 
 Загрузки, расчёты печати и цены по-прежнему лежат файлами в DATA_DIR (см. DECISIONS.md):
@@ -16,13 +17,30 @@ from app.db import Base
 # Статусы заказа по порядку. Меняет их владелец (бот B07, админка B09), оплата (B08) ставит paid.
 ORDER_STATUSES = ("new", "paid", "printing", "ready", "done", "cancelled")
 
+# Как клиент платит (B33): online — картой через ЮKassa (B08); invoice — по счёту безналом,
+# так платят организации и ИП; «оплачен» тогда ставит владелец, когда деньги пришли на счёт.
+PAYMENT_METHODS = ("online", "invoice")
+
 # Статусы платежа — те же слова, что у ЮKassa: создан → (ждёт подтверждения) → успех | отменён.
 PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 
 # Шаги воронки (B12) по порядку. Пишутся в `events` сервером в момент, когда шаг случился:
 # upload — клиент загрузил модель; quote — посчитал цену; order — оформил заказ;
 # payment_started — нажал «Оплатить» (создан платёж в ЮKassa); paid — оплата прошла.
-EVENT_NAMES = ("upload", "quote", "order", "payment_started", "paid")
+# editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
+# emboss_build / paint_build — тоже не шаги: клиент запустил тиснение (B30) / раскраску (B31).
+# account_login — клиент вошёл в кабинет по коду из письма (B32); не шаг воронки.
+EVENT_NAMES = (
+    "upload",
+    "quote",
+    "order",
+    "payment_started",
+    "paid",
+    "editor_build",
+    "emboss_build",
+    "paint_build",
+    "account_login",
+)
 
 
 def utcnow() -> datetime:
@@ -52,6 +70,21 @@ class Order(Base):
     address: Mapped[str | None] = mapped_column(Text, nullable=True)  # адрес, если курьер
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Юрлицо или ИП (B33): заполнены, если клиент заказывает от организации. Остальным — NULL.
+    company_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    company_inn: Mapped[str | None] = mapped_column(String(12), nullable=True)  # 10 или 12 цифр
+    company_kpp: Mapped[str | None] = mapped_column(String(9), nullable=True)  # у организаций
+    company_address: Mapped[str | None] = mapped_column(Text, nullable=True)  # юридический адрес
+    # online | invoice (PAYMENT_METHODS). У заказов до B33 — online.
+    payment_method: Mapped[str] = mapped_column(String(16), nullable=False, default="online")
+    # Куда слать клиенту статусы в Telegram (B34): chat_id, если клиент нажал «Получать статусы
+    # в Telegram» на странице заказа и написал боту /start <token>. NULL — только e-mail.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Обезличивание (B35): через 5 лет после закрытия заказа ночной cron (app/anonymize.py)
+    # стирает имя, телефон, e-mail, адрес, комментарий, реквизиты и chat_id и ставит сюда дату.
+    # NULL — данные клиента на месте. Суммы, материал, снимок расчёта остаются для аналитики.
+    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Что печатаем: ссылки на файлы в DATA_DIR и ключевые поля расчёта (удобно для SQL)
     upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     quote_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -79,6 +112,10 @@ class Order(Base):
             "delivery": self.delivery,
             "address": self.address,
             "comment": self.comment,
+            "company": self.company_dict(),
+            "payment_method": self.payment_method,
+            "telegram_chat_id": self.telegram_chat_id,
+            "anonymized_at": _iso(self.anonymized_at) if self.anonymized_at else None,
             "upload_id": self.upload_id,
             "quote_id": self.quote_id,
             "original_name": self.original_name,
@@ -89,6 +126,17 @@ class Order(Base):
             "total": self.total,
             "currency": self.currency,
             "quote": self.quote,
+        }
+
+    def company_dict(self) -> dict | None:
+        """Реквизиты покупателя-юрлица для счёта (B33); None — заказ от частного лица."""
+        if not self.company_name:
+            return None
+        return {
+            "name": self.company_name,
+            "inn": self.company_inn,
+            "kpp": self.company_kpp,
+            "address": self.company_address,
         }
 
 
@@ -168,6 +216,38 @@ class Event(Base):
             "order_id": self.order_id,
             "props": self.props,
         }
+
+
+class LoginCode(Base):
+    """Код для входа в кабинет (B32): одна строка на письмо. Хранится не сам код, а его
+    sha256 — утечка БД не даёт войти. Код живёт LOGIN_CODE_TTL_MIN минут, 5 попыток, один раз."""
+
+    __tablename__ = "login_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)  # строчными
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ClientSession(Base):
+    """Вход клиента в кабинет (B32): token лежит в cookie `tuc_session` (HttpOnly).
+    Выход — строка удаляется. Срок — SESSION_DAYS дней от входа."""
+
+    __tablename__ = "client_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(200), nullable=False, index=True)  # строчными
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 def _iso(dt: datetime) -> str:

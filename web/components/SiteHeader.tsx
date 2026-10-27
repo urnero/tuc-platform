@@ -8,9 +8,11 @@ import { COMPANY } from "@/lib/company";
 
 const LINKS = [
   { href: "/catalog", label: "Каталог" },
+  { href: "/editors", label: "Редакторы" },
   { href: "/#how", label: "Как это работает" },
   { href: "/#materials", label: "Материалы" },
   { href: "/contacts", label: "Контакты" },
+  { href: "/account", label: "Кабинет" }, // история заказов (B32)
 ];
 
 export default function SiteHeader() {

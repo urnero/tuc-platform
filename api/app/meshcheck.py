@@ -12,6 +12,7 @@
 """
 
 import io
+import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -24,9 +25,43 @@ TINY_MM = 10.0
 # Самый большой размер, который вообще считаем осмысленным (1 м). Больше — явная ошибка единиц.
 HUGE_MM = 1000.0
 
+# 3MF — это zip-архив с XML внутри. Защита от zip-бомбы: сколько архив может занимать
+# в распакованном виде (сумма размеров всех файлов) и во сколько раз он может быть сжат.
+# Реальные модели сжимаются в 3–10 раз; 100 МБ архив честной модели не разворачивается в 500+ МБ.
+MAX_3MF_UNPACKED_MB = 500
+MAX_3MF_RATIO = 50
+MAX_3MF_ENTRIES = 10_000  # файлов внутри архива; в настоящем 3MF их единицы
+
 
 class MeshError(ValueError):
     """Файл не удалось прочитать как 3D-модель. Текст — для клиента."""
+
+
+def check_3mf_archive(data: bytes) -> None:
+    """Проверяет 3MF как zip ДО распаковки: размеры берём из оглавления архива, ничего не читаем.
+
+    Python при чтении обрезает содержимое записи по размеру, объявленному в оглавлении
+    (`ZipInfo.file_size`), поэтому заявленный размер — это и есть верхняя граница того,
+    что развернётся в памяти у trimesh. Бросает MeshError, если архив подозрительный.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            entries = zf.infolist()
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, ValueError) as e:
+        raise MeshError("Не удалось прочитать файл как 3D-модель.") from e
+
+    if len(entries) > MAX_3MF_ENTRIES:
+        raise MeshError("Файл 3MF повреждён или подозрителен: слишком много файлов внутри архива.")
+
+    unpacked = sum(e.file_size for e in entries)
+    compressed = max(sum(e.compress_size for e in entries), 1)
+    if unpacked > MAX_3MF_UNPACKED_MB * 1024 * 1024:
+        raise MeshError(
+            f"Файл 3MF слишком большой в распакованном виде (больше {MAX_3MF_UNPACKED_MB} МБ). "
+            "Сохраните модель как STL или упростите сетку."
+        )
+    if unpacked / compressed > MAX_3MF_RATIO:
+        raise MeshError("Файл 3MF повреждён или подозрителен: слишком сильное сжатие архива.")
 
 
 @dataclass
@@ -47,6 +82,8 @@ class MeshInfo:
 
 def _load_mesh(data: bytes, ext: str) -> trimesh.Trimesh:
     """Читает STL или 3MF в одну сетку. 3MF может содержать несколько объектов — склеиваем."""
+    if ext == "3mf":
+        check_3mf_archive(data)  # защита от zip-бомбы до того, как trimesh распакует архив
     try:
         loaded = trimesh.load(io.BytesIO(data), file_type=ext, force="mesh")
     except Exception as e:  # trimesh кидает разное: BadZipFile, StopIteration, ValueError...
