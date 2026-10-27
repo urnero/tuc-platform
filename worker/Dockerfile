@@ -8,6 +8,10 @@ ARG PRUSA_SLICER_URL=https://github.com/prusa3d/PrusaSlicer/releases/download/ve
 WORKDIR /srv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
+# Зеркало Debian: deb.debian.org (CDN Fastly) из России часто не отвечает — берём пакеты
+# с mirror.yandex.ru, он доступен и из России, и из GitHub Actions.
+RUN sed -i 's|deb.debian.org|mirror.yandex.ru|g' /etc/apt/sources.list.d/debian.sources
+
 # Библиотеки, которые нужны AppImage PrusaSlicer даже в режиме командной строки,
 # плюс OpenSCAD из репозитория Debian для параметрических редакторов (B21) и шрифты
 # для text() в будущих редакторах с надписями (B24).
