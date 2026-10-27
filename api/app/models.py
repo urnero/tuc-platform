@@ -99,9 +99,11 @@ class Order(Base):
     quote: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     def to_dict(self) -> dict:
+        from app.orders import order_number  # внутри: orders.py сам импортирует models
+
         return {
             "id": self.id,
-            "number": f"ТУЦ-{self.id}",
+            "number": order_number(self.id),
             "token": self.token,
             "status": self.status,
             "created_at": _iso(self.created_at),

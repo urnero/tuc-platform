@@ -39,7 +39,7 @@ from app.db import get_db
 from app.events import funnel, funnel_percents
 from app.export import COLUMNS, MSK, fmt_dt, order_rows, paid_at_by_order
 from app.models import ORDER_STATUSES, Order, Payment
-from app.orders import StatusError, change_status
+from app.orders import StatusError, change_status, order_number, parse_order_number
 from app.telegram import (
     ACTIVE_STATUSES,
     DELIVERY_LABELS,
@@ -121,6 +121,7 @@ def fmt_phone(phone: str) -> str:
 templates.env.filters["dt"] = fmt_dt
 templates.env.filters["money"] = fmt_money
 templates.env.filters["phone"] = fmt_phone
+templates.env.filters["number"] = order_number  # {{ o.id|number }} → «BP-12»
 templates.env.globals.update(
     STATUS_LABELS=STATUS_LABELS,
     STATUS_ICONS=STATUS_ICONS,
@@ -179,8 +180,9 @@ def orders_query(status: str, q: str):
     if q:
         digits = re.sub(r"\D", "", q)
         conds = []
-        if re.fullmatch(r"(туц|tuc)?[-\s№]*\d+", q.lower()) and digits:
-            conds.append(Order.id == int(digits))  # «12», «ТУЦ-12», «№12»
+        number = parse_order_number(q)
+        if number is not None:
+            conds.append(Order.id == number)  # «12», «BP-12», «№12», старый «ТУЦ-12»
         if len(digits) >= 4:
             conds.append(Order.phone.like(f"%{digits}%"))  # хвост телефона
         like = f"%{q.lower()}%"
@@ -354,7 +356,7 @@ def order_page(
 def set_status(_: Admin, db: Db, order_id: int, status: Annotated[str, Form()]) -> RedirectResponse:
     try:
         order = change_status(db, order_id, status)
-        msg = {"ok": f"ТУЦ-{order.id}: статус «{STATUS_LABELS[order.status]}»."}
+        msg = {"ok": f"{order_number(order.id)}: статус «{STATUS_LABELS[order.status]}»."}
     except StatusError as e:
         msg = {"err": str(e)}
     return RedirectResponse(f"/admin/orders/{order_id}?{urlencode(msg)}", status_code=303)

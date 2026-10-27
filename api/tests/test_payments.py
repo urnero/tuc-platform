@@ -169,7 +169,7 @@ def test_build_payment_request(monkeypatch):
         "type": "redirect",
         "return_url": "https://tuc.example/order/" + "a" * 32 + "?payment=check",
     }
-    assert "ТУЦ-7" in body["description"] and "PETG × 3" in body["description"]
+    assert "BP-7" in body["description"] and "PETG × 3" in body["description"]
     assert body["metadata"] == {"order_id": "7"}
     assert "receipt" not in body
 
@@ -234,7 +234,7 @@ def test_pay_via_return(client, pricing_file, fake_slicer, yookassa, tg_sent, db
     # владелец получил сообщение с кнопками следующих шагов
     assert len(tg_sent) == 2  # «новый заказ» + «оплачен»
     text, kb = tg_sent[1]
-    assert "💰 Оплачен заказ ТУЦ-1" in text and "⚠️" not in text
+    assert "💰 Оплачен заказ BP-1" in text and "⚠️" not in text
     datas = [b["callback_data"] for row in kb["inline_keyboard"] for b in row]
     assert "status:1:printing" in datas and "status:1:paid" not in datas
 
@@ -357,13 +357,13 @@ def test_yookassa_down_or_wrong_keys(client, pricing_file, fake_slicer, yookassa
 
 def test_notify_owner_paid_warns_if_status_changed(tg_sent):
     order = {
-        "id": 5, "number": "ТУЦ-5", "status": "cancelled", "total": 900, "token": "x" * 32,
+        "id": 5, "number": "BP-5", "status": "cancelled", "total": 900, "token": "x" * 32,
         "customer_name": "Иван", "phone": "+79991234567", "material": "PLA", "qty": 1,
         "supports": False, "postprocess": "none", "delivery": "pickup",
     }  # fmt: skip
     assert telegram.notify_owner_paid(order) is True
     text, _ = tg_sent[-1]
-    assert "💰 Оплачен заказ ТУЦ-5" in text and "⚠️" in text and "отменён" in text
+    assert "💰 Оплачен заказ BP-5" in text and "⚠️" in text and "отменён" in text
 
 
 def test_webhook_does_not_block_api_while_yookassa_is_slow(

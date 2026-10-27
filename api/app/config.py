@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     catalog_dir: Path = Path("catalog")
 
     # Загрузка моделей (B02)
+    # Префикс номера заказа: «BP-12». Старые заказы в таблице учёта остались с «ТУЦ-» (B40b).
+    order_number_prefix: str = "BP"
     max_upload_mb: int = 100
     # Рабочая область принтера, мм: X×Y×Z. Модель больше этого — предупреждение.
     print_bed_mm: str = "250x210x220"

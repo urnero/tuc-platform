@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
-{% block title %}ТУЦ-{{ o.id }}{% endblock %}
+{% block title %}{{ o.id|number }}{% endblock %}
 {% block content %}
 <p><a href="/admin/orders">← Заказы</a></p>
-<h1>Заказ ТУЦ-{{ o.id }}
+<h1>Заказ {{ o.id|number }}
   <span class="pill {{ o.status }}">{{ STATUS_ICONS[o.status] }} {{ STATUS_LABELS[o.status] }}</span>
   <span class="muted" style="font-weight:400">· {{ o.total|money }} · создан {{ o.created_at|dt }}</span>
 </h1>

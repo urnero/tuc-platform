@@ -41,7 +41,7 @@ from app.config import settings
 from app.db import get_db
 from app.events import track
 from app.models import PAYMENT_STATUSES, Order, Payment
-from app.orders import change_status, get_order_by_token, latest_payment
+from app.orders import change_status, get_order_by_token, latest_payment, order_number
 from app.telegram import notify_owner_paid
 
 log = logging.getLogger(__name__)
@@ -107,7 +107,9 @@ def build_payment_request(order: Order) -> dict:
             "type": "redirect",
             "return_url": f"{settings.site_url}/order/{order.token}?payment=check",
         },
-        "description": f"Заказ ТУЦ-{order.id}: 3D-печать, {order.material} × {order.qty} шт",
+        "description": (
+            f"Заказ {order_number(order.id)}: 3D-печать, {order.material} × {order.qty} шт"
+        ),
         "metadata": {"order_id": str(order.id)},
     }
     if settings.yookassa_vat_code:
@@ -119,7 +121,7 @@ def build_payment_request(order: Order) -> dict:
             "customer": customer,
             "items": [
                 {
-                    "description": f"3D-печать по заказу ТУЦ-{order.id}",
+                    "description": f"3D-печать по заказу {order_number(order.id)}",
                     "quantity": "1.00",
                     "amount": body["amount"],
                     "vat_code": int(settings.yookassa_vat_code),

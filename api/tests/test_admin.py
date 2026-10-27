@@ -84,24 +84,24 @@ def test_orders_list_filters_and_search(client, admin_on, pricing_file, fake_sli
 
     r = client.get("/admin/orders", headers=AUTH)
     assert r.status_code == 200
-    assert "ТУЦ-1" in r.text and "ТУЦ-2" in r.text
+    assert "BP-1" in r.text and "BP-2" in r.text
     assert "+7 999 123-45-67" in r.text and "курьер по Москве" in r.text
     assert "В работе (1)" in r.text  # done — не в работе
 
     r = client.get("/admin/orders?status=active", headers=AUTH)
-    assert "ТУЦ-1" in r.text and "ТУЦ-2" not in r.text
+    assert "BP-1" in r.text and "BP-2" not in r.text
     r = client.get("/admin/orders?status=done", headers=AUTH)
-    assert "ТУЦ-1" not in r.text and "ТУЦ-2" in r.text
+    assert "BP-1" not in r.text and "BP-2" in r.text
     r = client.get("/admin/orders?status=nonsense", headers=AUTH)  # неизвестный фильтр = все
-    assert "ТУЦ-1" in r.text and "ТУЦ-2" in r.text
+    assert "BP-1" in r.text and "BP-2" in r.text
 
     # поиск: по номеру, по хвосту телефона, по имени (без учёта регистра)
-    r = client.get("/admin/orders?q=ТУЦ-2", headers=AUTH)
-    assert "ТУЦ-2" in r.text and "ТУЦ-1" not in r.text
+    r = client.get("/admin/orders?q=BP-2", headers=AUTH)
+    assert "BP-2" in r.text and "BP-1" not in r.text
     r = client.get("/admin/orders?q=4567", headers=AUTH)
-    assert "ТУЦ-1" in r.text and "ТУЦ-2" not in r.text
+    assert "BP-1" in r.text and "BP-2" not in r.text
     r = client.get("/admin/orders?q=мария", headers=AUTH)
-    assert "ТУЦ-2" in r.text and "ТУЦ-1" not in r.text
+    assert "BP-2" in r.text and "BP-1" not in r.text
     r = client.get("/admin/orders?q=никого", headers=AUTH)
     assert "Заказов нет" in r.text
 
@@ -111,10 +111,10 @@ def test_orders_list_pagination(client, admin_on, pricing_file, fake_slicer, db,
     for i in range(3):
         _order(client, name=f"Клиент {i}")
     r = client.get("/admin/orders", headers=AUTH)
-    assert "ТУЦ-3" in r.text and "ТУЦ-2" in r.text and "ТУЦ-1" not in r.text
+    assert "BP-3" in r.text and "BP-2" in r.text and "BP-1" not in r.text
     assert "Страница 1 из 2" in r.text and "/admin/orders?page=2" in r.text
     r = client.get("/admin/orders?page=2", headers=AUTH)
-    assert "ТУЦ-1" in r.text and "ТУЦ-3" not in r.text
+    assert "BP-1" in r.text and "BP-3" not in r.text
     r = client.get("/admin/orders?page=99", headers=AUTH)  # за концом — последняя страница
     assert "Страница 2 из 2" in r.text
 
@@ -142,7 +142,7 @@ def test_orders_csv(client, admin_on, pricing_file, fake_slicer, db):
     header, row = text.splitlines()
     assert header.startswith("id;number;created_msk;status;")
     cols = dict(zip(header.split(";"), next(csv.reader([row], delimiter=";")), strict=True))
-    assert cols["number"] == "ТУЦ-1"
+    assert cols["number"] == "BP-1"
     assert cols["customer_name"] == "Иван; Петров"  # точка с запятой внутри — в кавычках
     assert cols["qty"] == "2" and cols["status_label"] == "принят"
     assert cols["paid_msk"] == "20.10.2026 12:00"
@@ -175,7 +175,7 @@ def test_order_page_and_status_change(client, admin_on, pricing_file, fake_slice
     o = _order(client, name="Иван", qty=2)
     r = client.get("/admin/orders/1", headers=AUTH)
     assert r.status_code == 200
-    assert "Заказ ТУЦ-1" in r.text and "Иван" in r.text
+    assert "Заказ BP-1" in r.text and "Иван" in r.text
     assert "Итого" in r.text and "Онлайн-оплату не начинали" in r.text
     assert f"/order/{o['token']}" in r.text
     assert "/admin/orders/1/file" in r.text and "/admin/orders/1/gcode" in r.text

@@ -56,6 +56,21 @@ class PhoneError(ValueError):
     pass
 
 
+def order_number(order_id: int) -> str:
+    """Номер заказа для людей: «BP-12». Префикс — настройка ORDER_NUMBER_PREFIX."""
+    return f"{settings.order_number_prefix}-{order_id}"
+
+
+def parse_order_number(raw: str) -> int | None:
+    """«12», «BP-12», «bp 12», «№12», старый «ТУЦ-12» → 12; иначе None."""
+    text = (raw or "").strip().lower()
+    prefixes = {settings.order_number_prefix.lower(), "bp", "бп", "туц", "tuc"}
+    m = re.fullmatch(r"([a-zа-яё]*)[-\s№#]*(\d+)", text)
+    if not m or (m.group(1) and m.group(1) not in prefixes):
+        return None
+    return int(m.group(2))
+
+
 def normalize_phone(raw: str) -> str:
     """«8 (999) 123-45-67», «+7 999 1234567», «9991234567» → «+79991234567».
 
@@ -273,7 +288,7 @@ def change_status(db: Session, order_id: int, status: str, notify_client: bool =
     if order is None:
         raise StatusError(f"Заказ № {order_id} не найден.")
     if order.status == status:
-        raise StatusError(f"ТУЦ-{order.id} уже в статусе «{STATUS_LABELS[status]}».")
+        raise StatusError(f"{order_number(order.id)} уже в статусе «{STATUS_LABELS[status]}».")
     order.status = status
     db.commit()
     db.refresh(order)

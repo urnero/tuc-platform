@@ -76,7 +76,7 @@ def test_create_order_pickup(client, pricing_file, fake_slicer, db):
     r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"], "comment": " срочно "})
     assert r.status_code == 201, r.text
     o = r.json()
-    assert o["id"] == 1 and o["number"] == "ТУЦ-1"
+    assert o["id"] == 1 and o["number"] == "BP-1"
     assert len(o["token"]) == 32
     assert o["status"] == "new"
     assert o["customer_name"] == "Иван"
@@ -270,3 +270,22 @@ def test_create_order_after_units_change_404(client, pricing_file, fake_slicer, 
     r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
     assert r.status_code == 404
     assert "заново" in r.json()["detail"]
+
+
+def test_order_number_uses_prefix_setting(monkeypatch):
+    from app.orders import order_number
+
+    assert order_number(12) == "BP-12"
+    monkeypatch.setattr(settings, "order_number_prefix", "ZZ")
+    assert order_number(12) == "ZZ-12"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("12", 12), ("BP-12", 12), ("bp 12", 12), ("№12", 12), ("#12", 12),
+     ("ТУЦ-12", 12), ("бп-12", 12), ("XX-12", None), ("", None), ("BP-", None)],
+)
+def test_parse_order_number(raw, expected):
+    from app.orders import parse_order_number
+
+    assert parse_order_number(raw) == expected

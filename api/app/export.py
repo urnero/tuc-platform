@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Order, Payment
+from app.orders import order_number
 from app.telegram import STATUS_LABELS
 
 MSK = timedelta(hours=3)
@@ -51,7 +52,7 @@ def order_row(o: Order, paid_at: datetime | None) -> list:
     """Заказ → список значений в порядке COLUMNS."""
     quote = o.quote or {}
     return [
-        o.id, f"ТУЦ-{o.id}", fmt_dt(o.created_at), o.status, STATUS_LABELS[o.status],
+        o.id, order_number(o.id), fmt_dt(o.created_at), o.status, STATUS_LABELS[o.status],
         o.customer_name, o.phone, o.email or "", o.delivery, o.address or "",
         o.material, int(o.supports), o.qty, o.postprocess, o.total,
         round((quote.get("print_time_s") or 0) / 3600 * o.qty, 2),

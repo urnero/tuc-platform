@@ -30,7 +30,7 @@ export type Notifications = {
 /** GET /api/v1/orders/{token} и ответ POST /api/v1/orders. */
 export type Order = {
   id: number;
-  number: string; // «ТУЦ-12»
+  number: string; // «BP-12»
   token: string;
   status: OrderStatus;
   created_at: string;

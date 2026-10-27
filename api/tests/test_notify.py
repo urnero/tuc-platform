@@ -69,7 +69,7 @@ def test_status_text_by_status(session, monkeypatch):
     for status, subject in notify.SUBJECTS.items():
         text = notify.status_text(o | {"status": status})
         assert text is not None
-        assert text[0] == subject.format(n="ТУЦ-1")
+        assert text[0] == subject.format(n="BP-1")
         assert text[1].startswith("Здравствуйте, Иван!")
         assert "PLA × 2 шт, 900 ₽" in text[1]
         assert f"https://tuc.example/order/{o['token']}" in text[1]
@@ -106,8 +106,8 @@ def test_telegram_text_escapes():
 def test_deliver_email_and_telegram(session, mailbox, tg_box):
     o = make_order(session, email="ivan@example.ru", telegram_chat_id="777", status="printing")
     assert notify.deliver(o.to_dict()) == {"email": True, "telegram": True}
-    assert mailbox[0][0] == "ivan@example.ru" and mailbox[0][1] == "Заказ ТУЦ-1 печатается"
-    assert tg_box[0][0] == "777" and tg_box[0][1].startswith("<b>Заказ ТУЦ-1 печатается</b>")
+    assert mailbox[0][0] == "ivan@example.ru" and mailbox[0][1] == "Заказ BP-1 печатается"
+    assert tg_box[0][0] == "777" and tg_box[0][1].startswith("<b>Заказ BP-1 печатается</b>")
 
 
 def test_deliver_nowhere(session, mailbox, tg_box):
@@ -130,13 +130,13 @@ def test_change_status_notifies_client(session, mailbox):
     o = make_order(session, email="ivan@example.ru")
     change_status(session, o.id, "paid")
     change_status(session, o.id, "printing")
-    assert [m[1] for m in mailbox] == ["Заказ ТУЦ-1 оплачен", "Заказ ТУЦ-1 печатается"]
+    assert [m[1] for m in mailbox] == ["Заказ BP-1 оплачен", "Заказ BP-1 печатается"]
     change_status(session, o.id, "ready", notify_client=False)
     assert len(mailbox) == 2
     # возврат в «принят» (из отменённого) — без письма
     change_status(session, o.id, "cancelled")
     change_status(session, o.id, "new")
-    assert [m[1] for m in mailbox][-1] == "Заказ ТУЦ-1 отменён"
+    assert [m[1] for m in mailbox][-1] == "Заказ BP-1 отменён"
 
 
 def test_background_thread_delivers(session, mailbox, monkeypatch):
@@ -154,7 +154,7 @@ def test_background_thread_delivers(session, mailbox, monkeypatch):
     monkeypatch.setattr(notify, "deliver", deliver_and_signal)
     o = make_order(session, email="ivan@example.ru", status="ready").to_dict()
     notify.status_changed(o)
-    assert done.wait(5) and mailbox[0][1] == "Заказ ТУЦ-1 готов"
+    assert done.wait(5) and mailbox[0][1] == "Заказ BP-1 готов"
 
 
 # --- API: письмо «принят» и блок notifications -----------------------------------
@@ -178,7 +178,7 @@ def test_create_order_sends_confirmation(client, pricing_file, fake_slicer, mail
     order = _order(client, email="ivan@example.ru")
     assert len(mailbox) == 1
     to, subject, text = mailbox[0]
-    assert to == "ivan@example.ru" and subject == "Заказ ТУЦ-1 принят"
+    assert to == "ivan@example.ru" and subject == "Заказ BP-1 принят"
     assert f"/order/{order['token']}" in text
     assert order["notifications"] == {
         "email": "ivan@example.ru",
@@ -286,13 +286,13 @@ def test_bot_client_subscribes(session, monkeypatch, mailbox, tg_box):
         assert m.text == bot.NOT_LINKED
 
         (m,) = await send(_msg_update(f"/start {o.token}", STRANGER))
-        assert "ТУЦ-1" in m.text and "«принят»" in m.text and f"/order/{o.token}" in m.text
+        assert "BP-1" in m.text and "«принят»" in m.text and f"/order/{o.token}" in m.text
         session.expire_all()
         assert session.get(Order, o.id).telegram_chat_id == str(STRANGER.id)
 
         # владелец ставит статус — клиенту уходит и письмо, и сообщение в Telegram
         bot.status_reply(session, o.id, "printing")
-        assert mailbox[-1][1] == "Заказ ТУЦ-1 печатается"
+        assert mailbox[-1][1] == "Заказ BP-1 печатается"
         assert tg_box[-1] == (
             str(STRANGER.id),
             notify.telegram_text(*notify.status_text(session.get(Order, o.id).to_dict())),

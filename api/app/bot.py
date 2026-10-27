@@ -7,7 +7,7 @@
 - /start, /help      — подсказка;
 - /orders            — активные заказы (принят, оплачен, печатается, готов), новые сверху;
 - /orders all        — последние 20 заказов любых статусов;
-- /order 12          — карточка заказа ТУЦ-12 с кнопками статусов;
+- /order 12          — карточка заказа BP-12 с кнопками статусов;
 - кнопки под карточкой — поставить статус (запись в таблицу orders), карточка обновляется.
 
 Уведомление о новом заказе шлёт не бот, а API (`app/telegram.py::notify_owner_new_order`),
@@ -42,22 +42,24 @@ from app.orders import (
     get_order_by_id,
     link_telegram,
     list_orders,
+    parse_order_number,
     unlink_telegram,
 )
 
 log = logging.getLogger(__name__)
 
 HELP = (
-    "<b>Бот студии ТУЦ</b>\n"
+    "<b>Бот студии BroPrint (БроПринт)</b>\n"
     "/orders — активные заказы\n"
     "/orders all — последние 20 заказов\n"
-    "/order 12 — карточка заказа ТУЦ-12\n"
+    "/order 12 — карточка заказа BP-12\n"
     "/stop — не получать сюда статусы заказов (для клиентов)\n"
     "Кнопки под карточкой меняют статус заказа."
 )
 NOT_OWNER = (
-    "Этот бот присылает статусы заказов студии ТУЦ. Чтобы подключить уведомления, нажмите "
-    "«Получать статусы в Telegram» на странице вашего заказа. Отписаться — /stop."
+    "Этот бот присылает статусы заказов студии BroPrint (БроПринт). "
+    "Чтобы подключить уведомления, нажмите «Получать статусы в Telegram» "
+    "на странице вашего заказа. Отписаться — /stop."
 )
 NOT_LINKED = "Такого заказа нет. Откройте страницу заказа на сайте и нажмите кнопку там ещё раз."
 
@@ -177,11 +179,11 @@ async def cmd_orders(message: Message, command: CommandObject) -> None:
 
 
 async def cmd_order(message: Message, command: CommandObject) -> None:
-    raw = (command.args or "").strip().upper().replace("ТУЦ-", "").replace("#", "")
-    if not raw.isdigit():
+    number = parse_order_number(command.args or "")
+    if number is None:
         await message.answer("Напишите номер: /order 12")
         return
-    text, markup = await in_db(lambda db: order_reply(db, int(raw)))
+    text, markup = await in_db(lambda db: order_reply(db, number))
     await message.answer(text, reply_markup=kb(markup))
 
 

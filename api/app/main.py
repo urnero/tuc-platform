@@ -16,7 +16,7 @@ from app.quotes import router as quotes_router
 from app.slices import router as slices_router
 from app.uploads import router as uploads_router
 
-app = FastAPI(title="ТУЦ API", version="0.1.0")
+app = FastAPI(title="BroPrint API", version="0.1.0")
 app.include_router(uploads_router)
 app.include_router(slices_router)
 app.include_router(quotes_router)

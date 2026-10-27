@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # В тестах ставят False — тогда отправка идёт сразу, в том же потоке.
 IN_BACKGROUND = True
 
-# Тема письма по статусу. {n} — номер заказа («ТУЦ-12»).
+# Тема письма по статусу. {n} — номер заказа («BP-12»).
 SUBJECTS = {
     "new": "Заказ {n} принят",
     "paid": "Заказ {n} оплачен",
@@ -72,7 +72,7 @@ def status_text(order: dict) -> tuple[str, str] | None:
         f"{tg.fmt_money(order['total'])}.",
         f"Страница заказа: {order_url(order)}",
         "",
-        "Студия 3D-печати ТУЦ",
+        "Студия 3D-печати BroPrint (БроПринт)",
     ]
     return subject.format(n=order["number"]), "\n".join(lines)
 

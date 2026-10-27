@@ -165,7 +165,7 @@ def test_export_writes_header_and_rows(client, fake_slicer, pricing_file, google
     assert rows[0] == export.COLUMNS
     assert len(rows) == 3
     first = dict(zip(export.COLUMNS, rows[1], strict=True))
-    assert first["number"] == f"ТУЦ-{o1['id']}"
+    assert first["number"] == f"BP-{o1['id']}"
     assert first["customer_name"] == "Мария"
     assert first["phone"] == "+79991234567"  # текст, «+» на месте
     assert first["qty"] == 2 and first["total"] == o1["total"]

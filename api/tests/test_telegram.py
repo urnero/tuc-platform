@@ -68,7 +68,7 @@ def test_order_card_escapes_and_links(session, monkeypatch):
     monkeypatch.setattr(settings, "site_url", "https://tuc.example")
     o = make_order(session, comment="срочно & <script>", address=None).to_dict()
     text = tg.order_card(o)
-    assert text.startswith("<b>Заказ ТУЦ-1</b> · 900 ₽")
+    assert text.startswith("<b>Заказ BP-1</b> · 900 ₽")
     assert "Иван &lt;b&gt;" in text  # имя клиента экранировано
     assert "срочно &amp; &lt;script&gt;" in text
     assert "PLA × 2 шт" in text
@@ -76,8 +76,8 @@ def test_order_card_escapes_and_links(session, monkeypatch):
     assert "самовывоз" in text
     assert text.endswith(f"https://tuc.example/order/{o['token']}")
 
-    header = tg.order_card(o, header="🆕 Новый заказ ТУЦ-1")
-    assert header.startswith("<b>🆕 Новый заказ ТУЦ-1</b>")
+    header = tg.order_card(o, header="🆕 Новый заказ BP-1")
+    assert header.startswith("<b>🆕 Новый заказ BP-1</b>")
 
 
 def test_order_card_courier_address(session):
@@ -135,7 +135,7 @@ def test_orders_list(session):
     orders = [make_order(session).to_dict() for _ in range(5)]
     text, markup = tg.orders_list(orders, title="Активные заказы")
     assert text.startswith("<b>Активные заказы</b>")
-    assert "<b>ТУЦ-3</b> · Иван &lt;b&gt; · PLA × 2 · 900 ₽" in text
+    assert "<b>BP-3</b> · Иван &lt;b&gt; · PLA × 2 · 900 ₽" in text
     buttons = [b for row in markup["inline_keyboard"] for b in row]
     assert [b["callback_data"] for b in buttons] == [f"order:{o['id']}" for o in orders]
     assert [len(r) for r in markup["inline_keyboard"]] == [4, 1]
@@ -196,7 +196,7 @@ def test_notify_owner_new_order(monkeypatch, tg_calls, session):
     assert url == "https://api.telegram.org/bot123:ABC/sendMessage"
     assert payload["chat_id"] == "42"
     assert payload["parse_mode"] == "HTML"
-    assert "🆕 Новый заказ ТУЦ-1" in payload["text"]
+    assert "🆕 Новый заказ BP-1" in payload["text"]
     assert payload["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "status:1:paid"
 
 
@@ -233,7 +233,7 @@ def test_create_order_notifies_owner(client, fake_slicer, monkeypatch):
     )
     assert r.status_code == 201, r.text
     assert len(sent) == 1
-    assert sent[0]["number"] == "ТУЦ-1" and sent[0]["token"] == r.json()["token"]
+    assert sent[0]["number"] == "BP-1" and sent[0]["token"] == r.json()["token"]
     reload_pricing()  # чтобы кэш прайса не утёк в другие тесты
 
 
@@ -283,18 +283,18 @@ def test_bot_replies(session):
     make_order(session)
     make_order(session, status="done")
     text, markup = bot.orders_reply(session, active_only=True)
-    assert "ТУЦ-1" in text and "ТУЦ-2" not in text
+    assert "BP-1" in text and "BP-2" not in text
     text, markup = bot.orders_reply(session, active_only=False)
-    assert "ТУЦ-1" in text and "ТУЦ-2" in text and "Последние 20" in text
+    assert "BP-1" in text and "BP-2" in text and "Последние 20" in text
 
     text, markup = bot.order_reply(session, 1)
-    assert "Заказ ТУЦ-1" in text
+    assert "Заказ BP-1" in text
     assert markup["inline_keyboard"][0][0]["callback_data"] == "status:1:paid"
     text, markup = bot.order_reply(session, 9)
     assert "не найден" in text and markup == {"inline_keyboard": []}
 
     text, markup, toast = bot.status_reply(session, 1, "paid")
-    assert "Статус: 💰 оплачен" in text and toast == "ТУЦ-1: 💰 оплачен"
+    assert "Статус: 💰 оплачен" in text and toast == "BP-1: 💰 оплачен"
     assert markup["inline_keyboard"][0][0]["callback_data"] == "status:1:printing"
     text, markup, toast = bot.status_reply(session, 1, "paid")  # повторно — ошибка, карточка та же
     assert "уже в статусе «оплачен»" in toast and "Статус: 💰 оплачен" in text
@@ -397,27 +397,27 @@ def test_bot_end_to_end(session, monkeypatch):
 
     async def scenario():
         (m,) = await send(_msg_update("/start"))
-        assert "Бот студии ТУЦ" in m.text
+        assert "Бот студии BroPrint" in m.text
 
         (m,) = await send(_msg_update("/orders"))
-        assert "ТУЦ-1" in m.text and "ТУЦ-2" not in m.text and _buttons(m) == ["order:1"]
+        assert "BP-1" in m.text and "BP-2" not in m.text and _buttons(m) == ["order:1"]
 
         (m,) = await send(_msg_update("/orders all"))
         assert _buttons(m) == ["order:2", "order:1"]
 
-        (m,) = await send(_msg_update("/order ТУЦ-1"))
-        assert m.text.startswith("<b>Заказ ТУЦ-1</b>")
+        (m,) = await send(_msg_update("/order BP-1"))
+        assert m.text.startswith("<b>Заказ BP-1</b>")
         assert _buttons(m) == ["status:1:paid", "status:1:printing", "status:1:cancelled", "orders"]
 
         (m,) = await send(_msg_update("/order abc"))
         assert "/order 12" in m.text
 
         answer, m = await send(_button_update("order:1"))
-        assert type(m).__name__ == "SendMessage" and "ТУЦ-1" in m.text
+        assert type(m).__name__ == "SendMessage" and "BP-1" in m.text
 
         # кнопка статуса: запись в БД, карточка редактируется на месте
         answer, edit = await send(_button_update("status:1:paid"))
-        assert answer.text == "ТУЦ-1: 💰 оплачен"
+        assert answer.text == "BP-1: 💰 оплачен"
         assert type(edit).__name__ == "EditMessageText"
         assert "Статус: 💰 оплачен" in edit.text
         assert _buttons(edit) == ["status:1:printing", "status:1:cancelled", "orders"]
