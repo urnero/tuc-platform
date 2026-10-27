@@ -1,12 +1,14 @@
 /**
- * Шапка сайта (B14): название — ссылка на главную, пара ссылок и кнопка «Загрузить модель».
- * Подключена в app/layout.tsx — видна на всех страницах. Без состояния, серверный компонент.
+ * Шапка сайта (B14 → B40): логотип BroPrint, ссылки, переключатель темы и кнопка «Загрузить модель».
+ * На телефоне ссылки прячутся в меню-«бургер» (components/MobileMenu.tsx, без JS-состояния на сервере).
+ * Подключена в app/layout.tsx — видна на всех страницах.
  */
 
 import Link from "next/link";
-import { COMPANY } from "@/lib/company";
+import MobileMenu from "@/components/MobileMenu";
+import { Button, Logo, ThemeToggle } from "@/components/ui";
 
-const LINKS = [
+export const NAV_LINKS = [
   { href: "/catalog", label: "Каталог" },
   { href: "/editors", label: "Редакторы" },
   { href: "/#how", label: "Как это работает" },
@@ -17,27 +19,24 @@ const LINKS = [
 
 export default function SiteHeader() {
   return (
-    <header className="mx-auto flex w-full max-w-5xl items-center gap-4 px-4 py-4 text-sm">
-      <Link href="/" className="text-lg font-bold tracking-tight" aria-label="На главную">
-        {COMPANY.brand}
-        <span className="ml-2 hidden text-xs font-normal uppercase tracking-widest sm:inline" style={{ color: "var(--muted)" }}>
-          3D-печать · {COMPANY.city}
-        </span>
-      </Link>
-      <nav className="ml-auto hidden gap-4 md:flex" style={{ color: "var(--muted)" }}>
-        {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className="underline-offset-2 hover:underline">
-            {l.label}
-          </Link>
-        ))}
-      </nav>
-      <Link
-        href="/upload"
-        className="ml-auto rounded-md px-3 py-1.5 font-medium md:ml-0"
-        style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
-      >
-        Загрузить модель
-      </Link>
+    <header className="sticky top-0 z-40 border-b" style={{ background: "color-mix(in srgb, var(--surface) 92%, transparent)", borderColor: "var(--line)", backdropFilter: "blur(8px)" }}>
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3">
+        <Link href="/" aria-label="BroPrint — на главную" className="shrink-0">
+          <Logo kind="lockup" height={32} />
+        </Link>
+        <nav className="ml-auto hidden items-center gap-5 text-sm font-semibold lg:flex" style={{ color: "var(--ink-muted)" }} aria-label="Разделы сайта">
+          {NAV_LINKS.map((l) => (
+            <Link key={l.href} href={l.href} className="hover:text-ink underline-offset-4 hover:underline">
+              {l.label}
+            </Link>
+          ))}
+        </nav>
+        <ThemeToggle className="ml-auto flex h-10 w-10 items-center justify-center rounded-md hover:bg-sand lg:ml-0" />
+        <Button href="/upload" size="sm" className="hidden sm:inline-flex">
+          Загрузить модель
+        </Button>
+        <MobileMenu links={NAV_LINKS} />
+      </div>
     </header>
   );
 }

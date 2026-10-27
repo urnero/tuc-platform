@@ -31,7 +31,7 @@ import {
 } from "@/lib/order";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS, type Quote, quoteLines } from "@/lib/pricing";
 
-const fieldStyle = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
+const fieldStyle = { borderColor: "var(--ink-muted)", background: "var(--surface)", color: "var(--ink)" };
 
 export default function NewOrderPage() {
   // useSearchParams требует Suspense в Next 15 при сборке статической страницы.
@@ -111,7 +111,7 @@ function NewOrder() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
         <p role="alert">{loadError}</p>
-        <Link href={uploadId ? `/upload/${uploadId}` : "/upload"} style={{ color: "var(--accent)" }}>
+        <Link href={uploadId ? `/upload/${uploadId}` : "/upload"} style={{ color: "var(--filament-text)" }}>
           {uploadId ? "← К модели и расчёту цены" : "← Загрузить модель"}
         </Link>
       </main>
@@ -123,30 +123,30 @@ function NewOrder() {
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
-      <Link href={`/upload/${quote.upload_id}`} className="text-sm" style={{ color: "var(--accent)" }}>
+      <Link href={`/upload/${quote.upload_id}`} className="text-sm" style={{ color: "var(--filament-text)" }}>
         ← Назад к модели
       </Link>
       <h1 className="text-2xl font-bold leading-tight">Оформление заказа</h1>
 
-      <section className="flex flex-col gap-3 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+      <section className="flex flex-col gap-3 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
         <h2 className="text-lg font-semibold">Что заказываем</h2>
         <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1 text-sm">
-          <dt style={{ color: "var(--muted)" }}>Модель</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Модель</dt>
           <dd className="truncate text-right">{quote.original_name ?? quote.upload_id}</dd>
-          <dt style={{ color: "var(--muted)" }}>Материал</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Материал</dt>
           <dd className="text-right">
             {quote.material}
             {quote.supports ? ", с поддержками" : ""}
           </dd>
-          <dt style={{ color: "var(--muted)" }}>Тираж</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Тираж</dt>
           <dd className="text-right">{quote.qty} шт</dd>
-          <dt style={{ color: "var(--muted)" }}>Постобработка</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Постобработка</dt>
           <dd className="text-right">{POSTPROCESS_LABELS[quote.postprocess] ?? quote.postprocess}</dd>
-          <dt style={{ color: "var(--muted)" }}>Получение</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Получение</dt>
           <dd className="text-right">{DELIVERY_LABELS[quote.delivery] ?? quote.delivery}</dd>
           {quoteLines(quote).map((line) => (
             <div key={line.label} className="contents">
-              <dt style={{ color: "var(--muted)" }}>{line.label}</dt>
+              <dt style={{ color: "var(--ink-muted)" }}>{line.label}</dt>
               <dd className="text-right">{line.value}</dd>
             </div>
           ))}
@@ -154,17 +154,17 @@ function NewOrder() {
         <p className="text-2xl font-bold" data-testid="total">
           {formatPrice(quote.total)}
         </p>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Цена предварительная: менеджер подтвердит её перед печатью. Оплата — после подтверждения.
         </p>
         {quote.k_batch < 1 && (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
             В цене учтена скидка за тираж −{Math.round((1 - quote.k_batch) * 100)} %.
           </p>
         )}
       </section>
 
-      <form onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+      <form onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
         <h2 className="text-lg font-semibold">Контакты</h2>
 
         <Field label="Имя" error={errors.name}>
@@ -229,12 +229,12 @@ function NewOrder() {
           />
           <span>
             Заказ от организации или ИП — оплата по счёту (безнал).
-            <span style={{ color: "var(--muted)" }}> Счёт появится на странице заказа сразу после оформления.</span>
+            <span style={{ color: "var(--ink-muted)" }}> Счёт появится на странице заказа сразу после оформления.</span>
           </span>
         </label>
 
         {form.b2b && (
-          <div className="flex flex-col gap-4 rounded-md border p-4" style={{ borderColor: "var(--muted)" }} data-testid="company">
+          <div className="flex flex-col gap-4 rounded-md border p-4" style={{ borderColor: "var(--ink-muted)" }} data-testid="company">
             <Field label="Наименование" error={errors.companyName}>
               <input
                 name="companyName"
@@ -330,7 +330,7 @@ function NewOrder() {
           type="submit"
           disabled={sending}
           className="self-start rounded-md px-5 py-2 font-medium disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "var(--bg)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           {sending ? "Отправляем…" : form.b2b ? `Заказать и получить счёт на ${formatPrice(quote.total)}` : `Заказать за ${formatPrice(quote.total)}`}
         </button>
@@ -342,7 +342,7 @@ function NewOrder() {
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <label className="flex min-w-0 flex-col gap-1 text-sm">
-      <span style={{ color: "var(--muted)" }}>{label}</span>
+      <span style={{ color: "var(--ink-muted)" }}>{label}</span>
       {children}
       {error && <span role="alert">{error}</span>}
     </label>

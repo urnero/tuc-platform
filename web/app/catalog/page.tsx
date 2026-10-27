@@ -11,18 +11,18 @@ import CatalogOrderButton from "@/components/CatalogOrderButton";
 import { type CatalogModel, dimsText, groupByCategory, loadCatalog } from "@/lib/catalog";
 
 export const metadata: Metadata = {
-  title: "Каталог готовых моделей — ТУЦ",
+  title: "Каталог готовых моделей — BroPrint",
   description: "Готовые модели для 3D-печати: выберите, укажите материал и количество — цена сразу.",
   alternates: { canonical: "/catalog" },
 };
 
-const CARD_BORDER = { borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" };
+const CARD_BORDER = { borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" };
 
 function ModelCard({ model }: { model: CatalogModel }) {
   const dims = dimsText(model);
   return (
     <li className="flex flex-col overflow-hidden rounded-lg border" style={CARD_BORDER}>
-      <Link href={`/catalog/${model.slug}`} className="relative block aspect-[4/3]" style={{ background: "color-mix(in srgb, var(--muted) 12%, transparent)" }}>
+      <Link href={`/catalog/${model.slug}`} className="relative block aspect-[4/3]" style={{ background: "color-mix(in srgb, var(--ink-muted) 12%, transparent)" }}>
         <Image
           src={model.preview_url}
           alt={model.title}
@@ -39,17 +39,17 @@ function ModelCard({ model }: { model: CatalogModel }) {
               {model.title}
             </Link>
           </h3>
-          <span className="text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+          <span className="text-xs uppercase tracking-wider" style={{ color: "var(--filament-text)" }}>
             {model.material}
           </span>
         </div>
         {model.text && (
-          <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
             {model.text}
           </p>
         )}
         <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-          <span className="text-sm" style={{ color: "var(--muted)" }}>
+          <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
             {dims ?? "Габариты уточняются"}
           </span>
           <CatalogOrderButton slug={model.slug} />
@@ -67,9 +67,9 @@ export default async function CatalogPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 pb-20 pt-10">
       <section className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold">Каталог готовых моделей</h1>
-        <p className="max-w-prose" style={{ color: "var(--muted)" }}>
+        <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
           Нажмите «Заказать» — модель откроется в расчёте: материал, количество, цена сразу. Есть своя модель?{" "}
-          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
             Загрузите её
           </Link>
           .
@@ -88,7 +88,7 @@ export default async function CatalogPage() {
       {!catalog && (
         <p role="alert" className="rounded-lg border p-6" style={CARD_BORDER}>
           Каталог временно недоступен. Попробуйте обновить страницу чуть позже или{" "}
-          <Link href="/upload" style={{ color: "var(--accent)" }}>
+          <Link href="/upload" style={{ color: "var(--filament-text)" }}>
             загрузите свою модель
           </Link>
           .
@@ -105,7 +105,7 @@ export default async function CatalogPage() {
           <div className="flex flex-col gap-1">
             <h2 className="text-2xl font-bold">{category.title}</h2>
             {category.text && (
-              <p className="max-w-prose" style={{ color: "var(--muted)" }}>
+              <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
                 {category.text}
               </p>
             )}

@@ -17,7 +17,7 @@ export const metadata: Metadata = { alternates: { canonical: "/" } };
 /** Заглушка вместо фото работы: контур куба в цвете акцента. */
 function CubePlaceholder() {
   return (
-    <svg viewBox="0 0 120 120" className="h-16 w-16" aria-hidden="true" fill="none" stroke="var(--accent)" strokeWidth="3">
+    <svg viewBox="0 0 120 120" className="h-16 w-16" aria-hidden="true" fill="none" stroke="var(--filament-text)" strokeWidth="3">
       <path d="M60 14 104 36v48L60 106 16 84V36z" />
       <path d="M16 36l44 22 44-22M60 58v48" />
     </svg>
@@ -29,7 +29,7 @@ function SectionTitle({ id, title, subtitle }: { id?: string; title: string; sub
     <div id={id} className="flex scroll-mt-24 flex-col gap-1">
       <h2 className="text-2xl font-bold">{title}</h2>
       {subtitle && (
-        <p className="max-w-prose" style={{ color: "var(--muted)" }}>
+        <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
           {subtitle}
         </p>
       )}
@@ -48,18 +48,18 @@ export default async function Home() {
       <section className="grid items-center gap-8 md:grid-cols-2">
         <div className="flex flex-col gap-5">
           <h1 className="text-4xl font-bold leading-tight">Загрузите модель — получите цену за минуту</h1>
-          <p className="max-w-prose text-lg" style={{ color: "var(--muted)" }}>
+          <p className="max-w-prose text-lg" style={{ color: "var(--ink-muted)" }}>
             FDM-печать из PLA, PETG и ABS по вашим STL/3MF. Цену считает сервер, оплата картой онлайн, статус заказа
             — по ссылке.{minOrder && <> {minOrder}.</>}
           </p>
           <div className="flex flex-wrap gap-4 text-sm">
-            <a href="#how" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+            <a href="#how" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
               Как это работает ↓
             </a>
-            <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+            <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
               Нет модели? Выберите в каталоге →
             </Link>
-            <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+            <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
               Или задайте размеры в редакторе →
             </Link>
           </div>
@@ -72,12 +72,12 @@ export default async function Home() {
         <SectionTitle id="how" title="Как это работает" subtitle="Четыре шага от файла до готовой детали — без менеджера." />
         <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="flex flex-col gap-2 rounded-lg border p-5" style={{ borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" }}>
-              <span className="text-sm font-semibold" style={{ color: "var(--accent)" }}>
+            <li key={s.title} className="flex flex-col gap-2 rounded-lg border p-5" style={{ borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" }}>
+              <span className="text-sm font-semibold" style={{ color: "var(--filament-text)" }}>
                 Шаг {i + 1}
               </span>
               <h3 className="font-semibold">{s.title}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
                 {s.text}
               </p>
             </li>
@@ -92,7 +92,7 @@ export default async function Home() {
           {BENEFITS.map((b) => (
             <li key={b.title} className="flex flex-col gap-1">
               <h3 className="font-semibold">{b.title}</h3>
-              <p className="max-w-prose leading-relaxed" style={{ color: "var(--muted)" }}>
+              <p className="max-w-prose leading-relaxed" style={{ color: "var(--ink-muted)" }}>
                 {b.text}
               </p>
             </li>
@@ -109,17 +109,17 @@ export default async function Home() {
         />
         <ul className="grid gap-4 sm:grid-cols-3">
           {materials.map((m) => (
-            <li key={m.name} className="flex flex-col gap-2 rounded-lg border p-5" style={{ borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" }}>
+            <li key={m.name} className="flex flex-col gap-2 rounded-lg border p-5" style={{ borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" }}>
               <div className="flex items-baseline justify-between gap-2">
                 <h3 className="text-lg font-semibold">{m.name}</h3>
                 {m.price && (
-                  <span className="text-sm font-medium" style={{ color: "var(--accent)" }}>
+                  <span className="text-sm font-medium" style={{ color: "var(--filament-text)" }}>
                     {m.price}
                   </span>
                 )}
               </div>
               {m.tagline && <p className="text-sm font-medium">{m.tagline}</p>}
-              <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
                 {m.text}
               </p>
             </li>
@@ -134,8 +134,8 @@ export default async function Home() {
           {WORKS.map((w) => {
             const src = workImageUrl(w);
             return (
-              <li key={w.title} className="flex flex-col overflow-hidden rounded-lg border" style={{ borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" }}>
-                <div className="relative flex aspect-[4/3] items-center justify-center" style={{ background: "color-mix(in srgb, var(--muted) 12%, transparent)" }}>
+              <li key={w.title} className="flex flex-col overflow-hidden rounded-lg border" style={{ borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" }}>
+                <div className="relative flex aspect-[4/3] items-center justify-center" style={{ background: "color-mix(in srgb, var(--ink-muted) 12%, transparent)" }}>
                   {src ? (
                     <Image src={src} alt={w.title} fill unoptimized sizes="(min-width: 1024px) 320px, (min-width: 640px) 50vw, 100vw" className="object-cover" />
                   ) : (
@@ -145,11 +145,11 @@ export default async function Home() {
                 <div className="flex flex-col gap-1 p-4">
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="font-semibold">{w.title}</h3>
-                    <span className="text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+                    <span className="text-xs uppercase tracking-wider" style={{ color: "var(--filament-text)" }}>
                       {w.material}
                     </span>
                   </div>
-                  <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
                     {w.text}
                   </p>
                 </div>
@@ -160,16 +160,16 @@ export default async function Home() {
       </section>
 
       {/* Призыв внизу */}
-      <section className="flex flex-col items-start gap-4 rounded-lg p-8" style={{ background: "color-mix(in srgb, var(--accent) 12%, transparent)" }}>
+      <section className="flex flex-col items-start gap-4 rounded-lg p-8" style={{ background: "color-mix(in srgb, var(--filament-text) 12%, transparent)" }}>
         <h2 className="text-2xl font-bold">Готовы? Загрузите модель</h2>
-        <p className="max-w-prose" style={{ color: "var(--muted)" }}>
+        <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
           Расчёт ни к чему не обязывает: цена видна до оформления заказа.
         </p>
         <div className="flex flex-wrap gap-3">
-          <Link href="/upload" className="rounded-md px-4 py-2 text-sm font-medium" style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}>
+          <Link href="/upload" className="rounded-md px-4 py-2 text-sm font-medium" style={{ background: "var(--filament)", color: "var(--on-filament)" }}>
             Загрузить модель
           </Link>
-          <Link href="/about" className="rounded-md border px-4 py-2 text-sm" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+          <Link href="/about" className="rounded-md border px-4 py-2 text-sm" style={{ borderColor: "var(--filament-text)", color: "var(--filament-text)" }}>
             О студии
           </Link>
         </div>

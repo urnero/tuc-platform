@@ -10,8 +10,8 @@ import { Doc, Facts, Items, MissingRequisitesNote, P, Section } from "@/componen
 import { COMPANY, formatDocumentsDate, requisite } from "@/lib/company";
 
 export const metadata: Metadata = {
-  title: "Публичная оферта — ТУЦ",
-  description: "Условия заказа 3D-печати в студии ТУЦ: цена, оплата, сроки, доставка, качество и возврат.",
+  title: "Публичная оферта — BroPrint",
+  description: "Условия заказа 3D-печати в мастерской BroPrint: цена, оплата, сроки, доставка, качество и возврат.",
   alternates: { canonical: "/offer" },
 };
 

@@ -30,8 +30,8 @@ import {
 } from "@/lib/emboss";
 
 const POLL_MS = 2000;
-const BORDER = { borderColor: "var(--muted)" };
-const FIELD = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
+const BORDER = { borderColor: "var(--ink-muted)" };
+const FIELD = { borderColor: "var(--ink-muted)", background: "var(--surface)", color: "var(--ink)" };
 
 type Props = {
   uploadId: string;
@@ -143,7 +143,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
     <section className="flex flex-col gap-4 rounded-lg border p-6" style={BORDER}>
       <div>
         <h2 className="text-lg font-semibold">Надпись или логотип на модели</h2>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Нанесём на одну из граней — выпуклыми буквами поверх модели или вырезом в ней. Получится
           новая модель, исходная останется как есть.
         </p>
@@ -164,7 +164,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
             aria-checked={form.kind === value}
             onClick={() => set("kind", value)}
             className="rounded-md border px-3 py-1.5 text-sm"
-            style={form.kind === value ? { background: "var(--accent)", color: "var(--bg)", borderColor: "var(--accent)" } : BORDER}
+            style={form.kind === value ? { background: "var(--filament)", color: "var(--on-filament)", borderColor: "var(--filament-text)" } : BORDER}
           >
             {label}
           </button>
@@ -217,7 +217,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
                 </button>
               </>
             ) : (
-              <span style={{ color: "var(--muted)" }}>Логотип ещё не загружен.</span>
+              <span style={{ color: "var(--ink-muted)" }}>Логотип ещё не загружен.</span>
             )}
             <label className="cursor-pointer rounded-md border px-3 py-1.5" style={BORDER}>
               {logoBusy ? "Загружаем…" : logoName ? "Заменить SVG" : "Выбрать SVG"}
@@ -237,7 +237,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
           {errors.kind ? (
             <span role="alert">{errors.kind}</span>
           ) : (
-            <span style={{ color: "var(--muted)" }}>
+            <span style={{ color: "var(--ink-muted)" }}>
               SVG до 1 МБ, только контуры: текст в редакторе переведите в кривые (Inkscape: «Контур → Оконтурить объект»). Картинка
               будет одним цветом, без заливок и градиентов.
             </span>
@@ -291,7 +291,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
       </div>
 
       <details className="text-sm">
-        <summary className="cursor-pointer" style={{ color: "var(--muted)" }}>
+        <summary className="cursor-pointer" style={{ color: "var(--ink-muted)" }}>
           Сдвиг и поворот (по умолчанию — по центру грани)
         </summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">
@@ -307,12 +307,12 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
           onClick={() => void build()}
           disabled={working}
           className="rounded-md px-5 py-2.5 font-medium disabled:opacity-60"
-          style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           {working ? "Наносим…" : "Нанести"}
         </button>
         {job && job.status !== "done" && (
-          <span className="text-sm" aria-live="polite" style={{ color: "var(--muted)" }}>
+          <span className="text-sm" aria-live="polite" style={{ color: "var(--ink-muted)" }}>
             {STATUS_TEXT[job.status]}
           </span>
         )}
@@ -332,18 +332,18 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
         <div className="flex flex-col gap-2 rounded-md border p-4 text-sm" style={BORDER} aria-live="polite">
           <p>Готово — модель с тиснением построена.</p>
           {job.warnings.map((w) => (
-            <p key={w} style={{ color: "var(--muted)" }}>
+            <p key={w} style={{ color: "var(--ink-muted)" }}>
               ⚠ {WARNING_TEXT[w] ?? w}
             </p>
           ))}
           <Link
             href={`/upload/${job.result_upload_id}`}
             className="inline-block rounded-md px-4 py-2 font-medium"
-            style={{ background: "var(--accent)", color: "var(--bg, #fff)", width: "fit-content" }}
+            style={{ background: "var(--filament)", color: "var(--on-filament)", width: "fit-content" }}
           >
             Открыть модель с тиснением →
           </Link>
-          <p style={{ color: "var(--muted)" }}>
+          <p style={{ color: "var(--ink-muted)" }}>
             Там же — 3D-просмотр, расчёт печати и заказ. Не понравилось — вернитесь сюда и
             нанесите заново с другими параметрами.
           </p>
@@ -372,7 +372,7 @@ function Field({
       {error ? (
         <span role="alert">{error}</span>
       ) : (
-        hint && <span style={{ color: "var(--muted)" }}>{hint}</span>
+        hint && <span style={{ color: "var(--ink-muted)" }}>{hint}</span>
       )}
     </label>
   );

@@ -11,7 +11,7 @@ import dynamic from "next/dynamic";
 const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[420px] items-center justify-center rounded-lg border" style={{ borderColor: "var(--muted)" }}>
+    <div className="flex h-[420px] items-center justify-center rounded-lg border" style={{ borderColor: "var(--ink-muted)" }}>
       Загружаем 3D-просмотр…
     </div>
   ),

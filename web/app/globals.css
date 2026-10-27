@@ -1,22 +1,408 @@
 @import "tailwindcss";
 
+/*
+ * Дизайн-система BroPrint (B40). Источник значений — docs/DESIGN.md и docs/brand-tokens.json.
+ * Менять цвета только там и здесь.
+ *
+ * Как устроено:
+ *  1. Токены бренда объявлены на :root (светлая тема).
+ *  2. Тёмная тема включается двумя путями: системная настройка (prefers-color-scheme),
+ *     если пользователь не выбрал светлую вручную, и явный выбор переключателем в шапке
+ *     (атрибут data-theme="dark" на <html>, см. components/ui/ThemeToggle.tsx).
+ *  3. Старые переменные --bg/--fg/--muted/--accent остались как алиасы — их используют
+ *     все страницы, написанные до B40. Новый код берёт токены напрямую или классы ниже.
+ */
+
 :root {
-  --bg: #f5f6f4;
-  --fg: #1d2321;
-  --muted: #5d6762;
-  --accent: #0d6b63;
+  /* --- Цвета, светлая тема --- */
+  --filament: #f26a1b; /* фирменный оранжевый: кнопка действия, акценты, ≤10 % площади */
+  --on-filament: #1c1d1f; /* текст на оранжевом (белый не используем) */
+  --filament-text: #b4460a; /* оранжевый для текста и ссылок на фоне */
+  --graphite: #1c1d1f; /* тёмные плашки, нижний слой знака */
+  --steel: #3e5566; /* вторичный: иконки, второстепенные плашки */
+  --sand: #e8dcc8; /* фон карточек с изделиями, подложка фото */
+  --surface: #f5f2ec; /* фон страницы */
+  --surface-raised: #ffffff; /* карточки и плашки */
+  --ink: #1c1d1f; /* основной текст */
+  --ink-muted: #5e5a53; /* подписи, второстепенный текст */
+  --line: #d9d3c8; /* разделители и рамки карточек */
+  --success: #2f7d4f; /* только статус «Готово» / «Выдан» */
+  --danger: #b3261e; /* ошибки форм и отменённый заказ (в брендбуке нет — см. DECISIONS.md) */
+
+  /* --- Шрифты (подключены в app/layout.tsx из npm, не с Google Fonts) --- */
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --font-sans: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
+
+  /* --- Отступы и радиусы --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-10: 40px;
+  --radius-sm: 4px; /* метки, поля ввода */
+  --radius-md: 12px; /* карточки, кнопки, фото */
+  --radius-pill: 9999px; /* полосы паттерна «Слои» */
+
+  /* --- Алиасы для страниц до B40 --- */
+  --bg: var(--surface);
+  --fg: var(--ink);
+  --muted: var(--ink-muted);
+  --accent: var(--filament-text);
+
+  color-scheme: light;
 }
 
+/* Тёмная тема по системной настройке — если пользователь не выбрал светлую вручную. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141917;
-    --fg: #e4e9e6;
-    --muted: #9aa5a0;
-    --accent: #4fbfb2;
+  :root:not([data-theme="light"]) {
+    --filament: #f26a1b;
+    --on-filament: #1c1d1f;
+    --filament-text: #ff8a45;
+    --graphite: #34373c;
+    --steel: #8fa9bb;
+    --sand: #3a332a;
+    --surface: #17181a;
+    --surface-raised: #222326;
+    --ink: #f3efe7;
+    --ink-muted: #a9a49b;
+    --line: #34353a;
+    --success: #5cc08a;
+    --danger: #ff7b72;
+    color-scheme: dark;
   }
 }
 
-body {
-  background: var(--bg);
-  color: var(--fg);
+/* Тёмная тема по выбору переключателя. Значения те же, что выше, — CSS не умеет «повторить блок». */
+:root[data-theme="dark"] {
+  --filament: #f26a1b;
+  --on-filament: #1c1d1f;
+  --filament-text: #ff8a45;
+  --graphite: #34373c;
+  --steel: #8fa9bb;
+  --sand: #3a332a;
+  --surface: #17181a;
+  --surface-raised: #222326;
+  --ink: #f3efe7;
+  --ink-muted: #a9a49b;
+  --line: #34353a;
+  --success: #5cc08a;
+  --danger: #ff7b72;
+  color-scheme: dark;
+}
+
+/* Токены для утилит Tailwind: bg-filament, text-ink-muted, border-line, font-display, rounded-md и т. д. */
+@theme inline {
+  --color-filament: var(--filament);
+  --color-on-filament: var(--on-filament);
+  --color-filament-text: var(--filament-text);
+  --color-graphite: var(--graphite);
+  --color-steel: var(--steel);
+  --color-sand: var(--sand);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-md);
+  --radius-xl: 16px;
+}
+
+/* Слои: база и компоненты лежат в слоях Tailwind, чтобы утилиты (text-2xl, w-full…) могли их переопределять. */
+@layer base {
+  /* --- База --- */
+
+  body {
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  /* Заголовки — Unbounded 700 на всех страницах (docs/DESIGN.md: display / heading). */
+  h1,
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  h1 {
+    font-size: 36px;
+    line-height: 40px;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: 26px;
+    line-height: 32px;
+  }
+
+  @media (min-width: 768px) {
+    h1 {
+      font-size: 56px;
+      line-height: 60px;
+    }
+
+    h2 {
+      font-size: 32px;
+      line-height: 38px;
+    }
+  }
+
+  /* Названия карточек — Unbounded 600 (у шрифта из npm есть только 700, браузер подберёт). */
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 26px;
+  }
+
+  /* Классы типографики из брендбука — когда элемент не заголовок, а выглядеть должен как он. */
+  .t-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 36px;
+    line-height: 40px;
+    letter-spacing: -0.02em;
+  }
+
+  .t-heading {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 26px;
+    line-height: 32px;
+    letter-spacing: -0.01em;
+  }
+
+  @media (min-width: 768px) {
+    .t-display {
+      font-size: 56px;
+      line-height: 60px;
+    }
+
+    .t-heading {
+      font-size: 32px;
+      line-height: 38px;
+    }
+  }
+
+  .t-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 26px;
+  }
+
+  .t-lead {
+    font-weight: 500;
+    font-size: 18px;
+    line-height: 28px;
+  }
+
+  .t-caption {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.02em;
+  }
+
+  /* Видимый фокус с клавиатуры — одинаковый у кнопок, ссылок и полей. */
+  :focus-visible {
+    outline: 2px solid var(--filament);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* --- Компоненты (components/ui/*, но классы можно писать и руками) --- */
+
+  /* Кнопка. Высота 44 px на телефоне — чтобы попадать пальцем. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 44px;
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 24px;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      opacity 0.15s;
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--filament);
+    color: var(--on-filament);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--filament) 88%, var(--on-filament));
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--ink);
+    border-color: var(--steel);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--steel) 12%, transparent);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--filament-text);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--filament) 12%, transparent);
+  }
+
+  .btn-sm {
+    min-height: 36px;
+    padding: 6px 14px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  /* Карточка: белая (в тёмной — чуть светлее фона) плашка с тонкой рамкой. */
+  .card {
+    background: var(--surface-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+  }
+
+  /* Карточка изделия — на песке, под фото. */
+  .card-sand {
+    background: var(--sand);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+  }
+
+  /* Поле ввода и селект: рамка — сталь, не line (так требует брендбук), радиус маленький. */
+  .field {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--steel);
+    background: var(--surface-raised);
+    color: var(--ink);
+    font: inherit;
+  }
+
+  .field::placeholder {
+    color: var(--ink-muted);
+  }
+
+  .field:focus {
+    outline: 2px solid var(--filament);
+    outline-offset: 0;
+    border-color: var(--filament);
+  }
+
+  .field[aria-invalid="true"] {
+    border-color: var(--danger);
+  }
+
+  .field:disabled {
+    opacity: 0.6;
+  }
+
+  select.field {
+    appearance: none;
+    padding-right: 36px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%235e5a53' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6l4 4 4-4'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+  }
+
+  /* Бейдж статуса: подпись 13 px, цвет по тону (нейтральный / в работе / готово / отменён). */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px 10px;
+    border-radius: var(--radius-pill);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .badge-neutral {
+    background: color-mix(in srgb, var(--steel) 16%, transparent);
+    color: var(--ink);
+  }
+
+  .badge-active {
+    background: color-mix(in srgb, var(--filament) 18%, transparent);
+    color: var(--filament-text);
+  }
+
+  .badge-success {
+    background: color-mix(in srgb, var(--success) 18%, transparent);
+    color: var(--success);
+  }
+
+  .badge-danger {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+  }
+
+  /* Паттерн «Слои»: полосы-пилюли filament / sand / steel на графите. Фон первого экрана и пустых состояний. */
+  /* Цвета в SVG записаны числами: внутри data-URI переменные CSS не работают; на графите они одинаковы в обеих темах. */
+  .layers {
+    background-color: #1c1d1f;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 300'><rect x='-40' y='60' width='420' height='22' rx='11' fill='%23F26A1B'/><rect x='300' y='140' width='560' height='22' rx='11' fill='%23E8DCC8'/><rect x='-80' y='220' width='520' height='22' rx='11' fill='%233E5566'/></svg>");
+    background-size: cover;
+    background-position: center;
+  }
+}
+
+/* Логотип: обычный файл на светлом фоне, *-light.svg — в тёмной теме (components/ui/Logo.tsx). */
+.logo-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .logo-dark {
+    display: inline;
+  }
+}
+
+:root[data-theme="dark"] .logo-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .logo-dark {
+  display: inline;
 }

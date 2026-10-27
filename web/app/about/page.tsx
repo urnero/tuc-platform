@@ -10,8 +10,8 @@ import { Doc, Items, P, Section } from "@/components/Doc";
 import { COMPANY } from "@/lib/company";
 
 export const metadata: Metadata = {
-  title: "О студии — ТУЦ",
-  description: "Студия 3D-печати ТУЦ в Москве: FDM-печать по вашим моделям из PLA, PETG и ABS, расчёт цены онлайн.",
+  title: "О студии — BroPrint",
+  description: "Мастерская 3D-печати BroPrint в Москве: FDM-печать по вашим моделям из PLA, PETG и ABS, расчёт цены онлайн.",
   alternates: { canonical: "/about" },
 };
 
@@ -91,14 +91,14 @@ export default function AboutPage() {
         <Link
           href="/upload"
           className="w-fit rounded-md px-4 py-2 text-sm font-medium"
-          style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           Загрузить модель
         </Link>
         <Link
           href="/contacts"
           className="w-fit rounded-md border px-4 py-2 text-sm"
-          style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+          style={{ borderColor: "var(--filament-text)", color: "var(--filament-text)" }}
         >
           Контакты
         </Link>

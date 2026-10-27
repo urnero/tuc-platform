@@ -70,14 +70,14 @@ export default function UploadDropzone({ idleText }: { idleText?: string }) {
           onFiles(e.dataTransfer.files);
         }}
         className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-10 text-center"
-        style={{ borderColor: dragOver ? "var(--accent)" : "var(--muted)" }}
+        style={{ borderColor: dragOver ? "var(--filament-text)" : "var(--ink-muted)" }}
       >
         {state.kind === "uploading" ? (
           <span>Загружаем и проверяем «{state.name}»…</span>
         ) : (
           <>
             <span className="font-medium">{idleText ?? "Перетащите файл сюда или нажмите, чтобы выбрать"}</span>
-            <span className="text-sm" style={{ color: "var(--muted)" }}>
+            <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
               STL или 3MF, до {MAX_UPLOAD_MB} МБ
             </span>
           </>

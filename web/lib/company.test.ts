@@ -22,7 +22,7 @@ const filled = {
 describe("requisite", () => {
   it("возвращает значение, если поле заполнено", () => {
     expect(requisite("legalName", filled)).toBe("ИП Иванов Иван Иванович");
-    expect(requisite("brand")).toBe("ТУЦ");
+    expect(requisite("brand")).toBe("BroPrint");
   });
   it("пустое поле или пробелы → заглушка «уточняется»", () => {
     expect(requisite("inn", { ...filled, inn: "" })).toBe(PLACEHOLDER);

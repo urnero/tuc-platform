@@ -32,7 +32,7 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
 });
 
 const POLL_MS = 1500;
-const BORDER = { borderColor: "var(--muted)" };
+const BORDER = { borderColor: "var(--ink-muted)" };
 
 function ViewerBox({ children }: { children: React.ReactNode }) {
   return (
@@ -188,11 +188,11 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
           type="submit"
           disabled={busy || hasErrors || !editor.scad_ready}
           className="rounded-md px-5 py-2.5 font-medium disabled:opacity-60"
-          style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           {busy ? BUILD_STATUS_TEXT[build?.status ?? "queued"] : dirty || !build ? "Построить модель" : "Модель построена"}
         </button>
-        <p className="text-xs" style={{ color: "var(--muted)" }}>
+        <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
           Размеры в мм. Модель строится на сервере — обычно за несколько секунд.
         </p>
       </form>
@@ -217,11 +217,11 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
           {ready && build.mesh ? (
             <>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <dt style={{ color: "var(--muted)" }}>Габариты</dt>
+                <dt style={{ color: "var(--ink-muted)" }}>Габариты</dt>
                 <dd>{formatDims(build.mesh.bbox_mm, "mm")}</dd>
-                <dt style={{ color: "var(--muted)" }}>Объём</dt>
+                <dt style={{ color: "var(--ink-muted)" }}>Объём</dt>
                 <dd>{fmt(build.mesh.volume_cm3)} см³</dd>
-                <dt style={{ color: "var(--muted)" }}>Материал по умолчанию</dt>
+                <dt style={{ color: "var(--ink-muted)" }}>Материал по умолчанию</dt>
                 <dd>{editor.material} — можно поменять при расчёте</dd>
               </dl>
               {build.mesh.warnings.length > 0 && (
@@ -232,13 +232,13 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
                 </ul>
               )}
               {dirty && (
-                <p className="text-sm" style={{ color: "var(--muted)" }}>
+                <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
                   Параметры изменились — нажмите «Построить модель», чтобы увидеть новую версию.
                 </p>
               )}
             </>
           ) : (
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
+            <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
               Габариты и объём появятся, когда модель построится.
             </p>
           )}
@@ -248,11 +248,11 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
               onClick={() => void order()}
               disabled={!ready || dirty || busy || ordering}
               className="rounded-md px-5 py-2.5 font-medium disabled:opacity-60"
-              style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+              style={{ background: "var(--filament)", color: "var(--on-filament)" }}
             >
               {ordering ? "Готовим…" : "Заказать"}
             </button>
-            <span className="text-sm" style={{ color: "var(--muted)" }}>
+            <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
               Дальше — расчёт печати, цена и оформление заказа.
             </span>
           </div>
@@ -286,7 +286,7 @@ function Field({
     "aria-invalid": error ? true : undefined,
     "aria-describedby": error ? errorId : undefined,
     className: "w-full max-w-full rounded-md border bg-transparent px-3 py-2",
-    style: { borderColor: error ? "var(--accent)" : "var(--muted)" },
+    style: { borderColor: error ? "var(--filament-text)" : "var(--ink-muted)" },
   };
 
   if (param.type === "bool") {
@@ -296,7 +296,7 @@ function Field({
           <input id={id} type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} />
           {param.label}
         </span>
-        {param.hint && <span style={{ color: "var(--muted)" }}>{param.hint}</span>}
+        {param.hint && <span style={{ color: "var(--ink-muted)" }}>{param.hint}</span>}
       </label>
     );
   }
@@ -305,7 +305,7 @@ function Field({
     <label className="flex min-w-0 flex-col gap-1 text-sm" htmlFor={id}>
       <span>
         {param.label}
-        {param.unit && <span style={{ color: "var(--muted)" }}>, {param.unit}</span>}
+        {param.unit && <span style={{ color: "var(--ink-muted)" }}>, {param.unit}</span>}
       </span>
       {param.type === "choice" ? (
         <select {...common} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
@@ -336,7 +336,7 @@ function Field({
         />
       )}
       {param.type === "number" && (param.min !== null || param.max !== null) && !error && (
-        <span style={{ color: "var(--muted)" }}>
+        <span style={{ color: "var(--ink-muted)" }}>
           {param.min !== null && param.max !== null
             ? `от ${fmt(param.min)} до ${fmt(param.max)}`
             : param.min !== null
@@ -345,7 +345,7 @@ function Field({
           {param.hint ? ` · ${param.hint}` : ""}
         </span>
       )}
-      {param.type !== "number" && param.hint && !error && <span style={{ color: "var(--muted)" }}>{param.hint}</span>}
+      {param.type !== "number" && param.hint && !error && <span style={{ color: "var(--ink-muted)" }}>{param.hint}</span>}
       {error && (
         <span id={errorId} role="alert">
           {error}

@@ -18,15 +18,15 @@ import { checkText, editorJsonLd, metaDescription, pageMetadata, paramDefaultTex
 
 type Params = { params: Promise<{ slug: string }> };
 
-const BORDER = { borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" };
+const BORDER = { borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
   const editor = await loadEditor(slug);
-  if (!editor) return { title: "Редактор не найден — ТУЦ", robots: { index: false } };
+  if (!editor) return { title: "Редактор не найден — BroPrint", robots: { index: false } };
   return pageMetadata({
     path: `/editors/${editor.slug}`,
-    title: `${editor.title} по вашим размерам — 3D-печать — ТУЦ`,
+    title: `${editor.title} по вашим размерам — 3D-печать — BroPrint`,
     description: metaDescription(
       editor.text,
       `Задайте размеры «${editor.title}» — модель построится сразу, дальше цена и заказ.`,
@@ -44,7 +44,7 @@ function ParamsTable({ editor }: { editor: Editor }) {
       <div className="overflow-x-auto rounded-lg border" style={BORDER}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left" style={{ color: "var(--muted)" }}>
+            <tr className="text-left" style={{ color: "var(--ink-muted)" }}>
               <th className="px-3 py-2 font-medium">Параметр</th>
               <th className="px-3 py-2 font-medium">Диапазон</th>
               <th className="px-3 py-2 font-medium">По умолчанию</th>
@@ -56,7 +56,7 @@ function ParamsTable({ editor }: { editor: Editor }) {
                 <td className="px-3 py-2">
                   {p.label}
                   {p.hint && (
-                    <span className="block text-xs" style={{ color: "var(--muted)" }}>
+                    <span className="block text-xs" style={{ color: "var(--ink-muted)" }}>
                       {p.hint}
                     </span>
                   )}
@@ -69,7 +69,7 @@ function ParamsTable({ editor }: { editor: Editor }) {
         </table>
       </div>
       {editor.checks.length > 0 && (
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Ограничения: {editor.checks.map(checkText).join("; ")}. Форма подскажет, если размеры не сходятся.
         </p>
       )}
@@ -90,13 +90,13 @@ export default async function EditorPage({ params }: Params) {
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-16">
-      <nav aria-label="Хлебные крошки" className="text-sm" style={{ color: "var(--accent)" }}>
+      <nav aria-label="Хлебные крошки" className="text-sm" style={{ color: "var(--filament-text)" }}>
         <Link href="/editors">← Все редакторы</Link>
       </nav>
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold leading-tight">{editor.title}</h1>
         {editor.text && (
-          <p className="max-w-prose leading-relaxed" style={{ color: "var(--muted)" }}>
+          <p className="max-w-prose leading-relaxed" style={{ color: "var(--ink-muted)" }}>
             {editor.text}
           </p>
         )}
@@ -115,23 +115,23 @@ export default async function EditorPage({ params }: Params) {
               <p className="font-medium">
                 {i + 1}. {step.title}
               </p>
-              <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+              <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
                 {step.text}
               </p>
             </li>
           ))}
         </ol>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Материал по умолчанию — {editor.material}; при расчёте его можно поменять. Нужна другая деталь? Посмотрите{" "}
-          <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
             остальные редакторы
           </Link>
           ,{" "}
-          <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
             каталог готовых моделей
           </Link>{" "}
           или{" "}
-          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
             загрузите свою
           </Link>
           .

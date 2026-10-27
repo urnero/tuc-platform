@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 /** Кабинет клиента (B32) — личные данные, не для поиска. */
 export const metadata: Metadata = {
-  title: "Кабинет — ТУЦ",
+  title: "Кабинет — BroPrint",
   robots: { index: false, follow: false },
 };
 

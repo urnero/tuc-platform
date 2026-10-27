@@ -38,7 +38,7 @@ import {
 
 const POLL_MS = 2000;
 
-const selectStyle = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
+const selectStyle = { borderColor: "var(--ink-muted)", background: "var(--surface)", color: "var(--ink)" };
 
 type Props = {
   uploadId: string;
@@ -152,12 +152,12 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
   const hint = pricing ? batchHint(pricing.batch) : "";
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+    <section className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
       <h2 className="text-lg font-semibold">Расчёт печати и цены</h2>
 
       <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <label className="flex min-w-0 max-w-full flex-col gap-1">
-          <span style={{ color: "var(--muted)" }}>Материал</span>
+          <span style={{ color: "var(--ink-muted)" }}>Материал</span>
           <select
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
@@ -174,7 +174,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
         </label>
 
         <label className="flex min-w-0 max-w-full flex-col gap-1">
-          <span style={{ color: "var(--muted)" }}>Тираж, шт{hint ? ` (${hint})` : ""}</span>
+          <span style={{ color: "var(--ink-muted)" }}>Тираж, шт{hint ? ` (${hint})` : ""}</span>
           <input
             type="number"
             min={1}
@@ -187,7 +187,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
         </label>
 
         <label className="flex min-w-0 max-w-full flex-col gap-1">
-          <span style={{ color: "var(--muted)" }}>Постобработка</span>
+          <span style={{ color: "var(--ink-muted)" }}>Постобработка</span>
           <select
             value={postprocess}
             onChange={(e) => setPostprocess(e.target.value)}
@@ -203,7 +203,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
         </label>
 
         <label className="flex min-w-0 max-w-full flex-col gap-1">
-          <span style={{ color: "var(--muted)" }}>Доставка</span>
+          <span style={{ color: "var(--ink-muted)" }}>Доставка</span>
           <select
             value={delivery}
             onChange={(e) => setDelivery(e.target.value)}
@@ -229,11 +229,11 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
           onClick={() => void calculate()}
           disabled={busy || inProgress}
           className="rounded-md px-4 py-2 font-medium disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "var(--bg)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           {res ? "Пересчитать" : "Рассчитать цену"}
         </button>
-        {stale && <span style={{ color: "var(--muted)" }}>Материал изменился — нажмите «Пересчитать».</span>}
+        {stale && <span style={{ color: "var(--ink-muted)" }}>Материал изменился — нажмите «Пересчитать».</span>}
       </div>
 
       {error && <p role="alert">{error}</p>}
@@ -248,18 +248,18 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
           )}
           {res && (
             <dl className="grid grid-cols-2 gap-x-6 gap-y-2">
-              <dt style={{ color: "var(--muted)" }}>Материал</dt>
+              <dt style={{ color: "var(--ink-muted)" }}>Материал</dt>
               <dd>
                 {res.material}
                 {res.supports ? ", с поддержками" : ""}
               </dd>
-              <dt style={{ color: "var(--muted)" }}>Время печати</dt>
+              <dt style={{ color: "var(--ink-muted)" }}>Время печати</dt>
               <dd>{formatDuration(res.print_time_s)}</dd>
-              <dt style={{ color: "var(--muted)" }}>Пластика</dt>
+              <dt style={{ color: "var(--ink-muted)" }}>Пластика</dt>
               <dd>{formatGrams(res.filament_g)}</dd>
               {res.layer_height_mm != null && (
                 <>
-                  <dt style={{ color: "var(--muted)" }}>Слой</dt>
+                  <dt style={{ color: "var(--ink-muted)" }}>Слой</dt>
                   <dd>{res.layer_height_mm.toString().replace(".", ",")} мм</dd>
                 </>
               )}
@@ -269,35 +269,35 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
           {res && quote && (
             <div
               className="flex flex-col gap-3 rounded-md border p-4"
-              style={{ borderColor: "var(--muted)", opacity: stale ? 0.5 : 1 }}
+              style={{ borderColor: "var(--ink-muted)", opacity: stale ? 0.5 : 1 }}
               data-testid="quote"
             >
               <p className="text-2xl font-bold">
                 {formatPrice(quote.total)}
-                <span className="ml-2 text-sm font-normal" style={{ color: "var(--muted)" }}>
+                <span className="ml-2 text-sm font-normal" style={{ color: "var(--ink-muted)" }}>
                   за {quote.qty} шт
                 </span>
               </p>
               <dl className="grid grid-cols-[1fr_auto] gap-x-6 gap-y-1">
                 {quoteLines(quote).map((line) => (
                   <div key={line.label} className="contents">
-                    <dt style={{ color: "var(--muted)" }}>{line.label}</dt>
+                    <dt style={{ color: "var(--ink-muted)" }}>{line.label}</dt>
                     <dd className="text-right">{line.value}</dd>
                   </div>
                 ))}
               </dl>
-              <p style={{ color: "var(--muted)" }}>
+              <p style={{ color: "var(--ink-muted)" }}>
                 Расчёт № <code className="break-all">{quote.id}</code>. Цены предварительные: менеджер подтвердит их при заказе.
               </p>
               {stale ? (
-                <span className="text-sm" style={{ color: "var(--muted)" }}>
+                <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
                   Пересчитайте цену, чтобы оформить заказ.
                 </span>
               ) : (
                 <Link
                   href={`/order/new?quote=${encodeURIComponent(quote.id)}`}
                   className="self-start rounded-md px-4 py-2 font-medium"
-                  style={{ background: "var(--accent)", color: "var(--bg)" }}
+                  style={{ background: "var(--filament)", color: "var(--on-filament)" }}
                 >
                   Оформить заказ
                 </Link>

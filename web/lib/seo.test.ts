@@ -139,7 +139,7 @@ describe("метатеги", () => {
     expect(m.alternates?.canonical).toBe("http://localhost:8080/editors/spacer");
     const og = m.openGraph as { url: string; siteName: string; locale: string; images: { url: string }[] };
     expect(og.url).toBe("http://localhost:8080/editors/spacer");
-    expect(og.siteName).toBe("ТУЦ");
+    expect(og.siteName).toBe("BroPrint");
     expect(og.locale).toBe("ru_RU");
     expect(og.images[0]!.url).toBe("http://localhost:8080/api/x.png");
     expect((pageMetadata({ path: "/", title: "t", description: "d" }).openGraph as { images?: unknown }).images).toBeUndefined();

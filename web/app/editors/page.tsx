@@ -11,12 +11,12 @@ import { pageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = pageMetadata({
   path: "/editors",
-  title: "Редакторы деталей — 3D-печать по вашим размерам — ТУЦ",
+  title: "Редакторы деталей — 3D-печать по вашим размерам — BroPrint",
   description:
     "Задайте размеры в форме — модель построится сразу, дальше расчёт печати, цена и заказ. Без CAD и без своей модели.",
 });
 
-const CARD_BORDER = { borderColor: "color-mix(in srgb, var(--muted) 35%, transparent)" };
+const CARD_BORDER = { borderColor: "color-mix(in srgb, var(--ink-muted) 35%, transparent)" };
 
 function EditorCard({ editor }: { editor: Editor }) {
   const labels = editor.params.map((p) => p.label.toLowerCase());
@@ -28,24 +28,24 @@ function EditorCard({ editor }: { editor: Editor }) {
             {editor.title}
           </Link>
         </h2>
-        <span className="text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>
+        <span className="text-xs uppercase tracking-wider" style={{ color: "var(--filament-text)" }}>
           {editor.material}
         </span>
       </div>
       {editor.text && (
-        <p className="text-sm leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-sm leading-relaxed" style={{ color: "var(--ink-muted)" }}>
           {editor.text}
         </p>
       )}
       <p className="text-sm">
-        <span style={{ color: "var(--muted)" }}>Можно задать: </span>
+        <span style={{ color: "var(--ink-muted)" }}>Можно задать: </span>
         {labels.join(", ")}.
       </p>
       <div className="mt-auto pt-1">
         <Link
           href={`/editors/${editor.slug}`}
           className="inline-block rounded-md px-4 py-2 text-sm font-medium"
-          style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           Открыть редактор
         </Link>
@@ -61,14 +61,14 @@ export default async function EditorsPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-4 pb-20 pt-10">
       <section className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold">Редакторы деталей</h1>
-        <p className="max-w-prose" style={{ color: "var(--muted)" }}>
+        <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
           Нет своей 3D-модели? Выберите деталь, впишите размеры — модель построится на сервере, вы увидите её в
           3D и сразу перейдёте к расчёту и заказу. Готовые модели без настройки — в{" "}
-          <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
             каталоге
           </Link>
           , своя модель —{" "}
-          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--accent)" }}>
+          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
             в загрузке
           </Link>
           .
@@ -78,7 +78,7 @@ export default async function EditorsPage() {
       {!editors && (
         <p role="alert" className="rounded-lg border p-6" style={CARD_BORDER}>
           Редакторы временно недоступны. Попробуйте обновить страницу чуть позже или{" "}
-          <Link href="/upload" style={{ color: "var(--accent)" }}>
+          <Link href="/upload" style={{ color: "var(--filament-text)" }}>
             загрузите свою модель
           </Link>
           .

@@ -47,7 +47,7 @@ export default function CatalogOrderButton({ slug, size = "sm" }: Props) {
         onClick={() => void order()}
         disabled={busy}
         className={`w-fit rounded-md font-medium disabled:opacity-60 ${padding}`}
-        style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+        style={{ background: "var(--filament)", color: "var(--on-filament)" }}
       >
         {busy ? "Готовим…" : "Заказать"}
       </button>

@@ -33,7 +33,7 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   loading: () => (
     <div
       className="flex h-[420px] items-center justify-center rounded-lg border"
-      style={{ borderColor: "var(--muted)" }}
+      style={{ borderColor: "var(--ink-muted)" }}
     >
       Загружаем 3D-просмотр…
     </div>
@@ -80,7 +80,7 @@ export default function ModelPage() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
         <p role="alert">{error}</p>
-        <Link href="/upload" style={{ color: "var(--accent)" }}>
+        <Link href="/upload" style={{ color: "var(--filament-text)" }}>
           ← Загрузить другую модель
         </Link>
       </main>
@@ -106,7 +106,7 @@ export default function ModelPage() {
         <Link
           href={`/catalog/${upload.catalog!.slug}`}
           className="text-sm"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--filament-text)" }}
         >
           ← Назад к модели в каталоге
         </Link>
@@ -114,7 +114,7 @@ export default function ModelPage() {
         <Link
           href={`/editors/${upload.editor!.slug}`}
           className="text-sm"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--filament-text)" }}
         >
           ← Назад в редактор
         </Link>
@@ -122,7 +122,7 @@ export default function ModelPage() {
         <Link
           href={`/upload/${upload.emboss!.parent_id}`}
           className="text-sm"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--filament-text)" }}
         >
           ← Назад к модели без тиснения
         </Link>
@@ -130,7 +130,7 @@ export default function ModelPage() {
         <Link
           href={`/upload/${upload.paint!.parent_id}`}
           className="text-sm"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--filament-text)" }}
         >
           ← Назад к модели без раскраски
         </Link>
@@ -138,7 +138,7 @@ export default function ModelPage() {
         <Link
           href="/upload"
           className="text-sm"
-          style={{ color: "var(--accent)" }}
+          style={{ color: "var(--filament-text)" }}
         >
           ← Загрузить другую модель
         </Link>
@@ -147,17 +147,17 @@ export default function ModelPage() {
         {fromCatalog ? upload.catalog!.title : fromEditor ? upload.editor!.title : upload.original_name}
       </h1>
       {fromEditor && upload.editor!.summary && (
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Параметры: {upload.editor!.summary}
         </p>
       )}
       {fromEmboss && (
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
         </p>
       )}
       {fromPaint && (
-        <div className="flex flex-col gap-2 text-sm" style={{ color: "var(--muted)" }}>
+        <div className="flex flex-col gap-2 text-sm" style={{ color: "var(--ink-muted)" }}>
           <p>
             Это копия модели «{upload.paint!.parent_name}» в цветах: {upload.paint!.summary}.
           </p>
@@ -167,7 +167,7 @@ export default function ModelPage() {
                 <span
                   aria-hidden
                   className="inline-block h-4 w-4 rounded-full border"
-                  style={{ background: c.hex, borderColor: "var(--muted)" }}
+                  style={{ background: c.hex, borderColor: "var(--ink-muted)" }}
                 />
                 {c.name}
               </li>
@@ -185,7 +185,7 @@ export default function ModelPage() {
 
       <section
         className="flex flex-col gap-4 rounded-lg border p-6"
-        style={{ borderColor: "var(--muted)" }}
+        style={{ borderColor: "var(--ink-muted)" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">
@@ -200,13 +200,13 @@ export default function ModelPage() {
         </div>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-          <dt style={{ color: "var(--muted)" }}>Объём</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Объём</dt>
           <dd>{m.volume_cm3.toFixed(1).replace(".", ",")} см³</dd>
-          <dt style={{ color: "var(--muted)" }}>Треугольников</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Треугольников</dt>
           <dd>{m.triangles.toLocaleString("ru-RU")}</dd>
-          <dt style={{ color: "var(--muted)" }}>Сетка</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Сетка</dt>
           <dd>{m.watertight ? "замкнута" : "есть дыры"}</dd>
-          <dt style={{ color: "var(--muted)" }}>Файл</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>Файл</dt>
           <dd>
             {upload.ext.toUpperCase()}, {formatBytes(upload.size_bytes)}
           </dd>
@@ -214,7 +214,7 @@ export default function ModelPage() {
 
         {!knownUnits && (
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span style={{ color: "var(--muted)" }}>Единицы в файле:</span>
+            <span style={{ color: "var(--ink-muted)" }}>Единицы в файле:</span>
             <Toggle
               value={upload.units}
               onChange={(u) => void setFileUnits(u)}
@@ -235,7 +235,7 @@ export default function ModelPage() {
           </ul>
         )}
 
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Номер загрузки: <code>{upload.id}</code>. Цена — в блоке ниже.
         </p>
       </section>
@@ -243,9 +243,9 @@ export default function ModelPage() {
       {/* Раскрашенную модель (3MF с цветами) не тисним и не красим заново: тиснение склеило бы
           детали в одну и потеряло цвета. Хотите иначе — вернитесь к исходной модели. */}
       {fromPaint ? (
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Изменить цвета или добавить надпись можно на{" "}
-          <Link href={`/upload/${upload.paint!.parent_id}`} style={{ color: "var(--accent)" }}>
+          <Link href={`/upload/${upload.paint!.parent_id}`} style={{ color: "var(--filament-text)" }}>
             исходной модели
           </Link>
           .
@@ -295,7 +295,7 @@ function Toggle({
   return (
     <div
       className="inline-flex overflow-hidden rounded-md border text-sm"
-      style={{ borderColor: "var(--muted)" }}
+      style={{ borderColor: "var(--ink-muted)" }}
       title={title}
     >
       {(["mm", "inch"] as Units[]).map((u) => (
@@ -307,8 +307,8 @@ function Toggle({
           className="px-3 py-1"
           style={
             value === u
-              ? { background: "var(--accent)", color: "var(--bg)" }
-              : { color: "var(--fg)" }
+              ? { background: "var(--filament)", color: "var(--on-filament)" }
+              : { color: "var(--ink)" }
           }
         >
           {labels[u]}

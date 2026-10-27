@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 /** Страница загруженной модели — личная ссылка клиента, не для поиска (B25). */
 export const metadata: Metadata = {
-  title: "Ваша модель — ТУЦ",
+  title: "Ваша модель — BroPrint",
   robots: { index: false, follow: false },
 };
 

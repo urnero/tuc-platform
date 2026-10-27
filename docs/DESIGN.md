@@ -61,3 +61,14 @@
 ## Фото
 
 Только реальные изделия и процесс, тёплый свет, фон песок/графит/верстак. Без стока. Пока фото нет — заглушка на `sand` с контуром знака.
+
+## Как это сделано на сайте (B40)
+
+- Токены — `web/app/globals.css`: `:root` (светлая), `@media (prefers-color-scheme: dark)` под `:root:not([data-theme="light"])` и `:root[data-theme="dark"]`. Те же токены отданы Tailwind через `@theme inline`, поэтому работают утилиты `bg-filament`, `text-ink-muted`, `border-line`, `font-display`, `hover:bg-sand` и т. д. База (шрифты заголовков) и компоненты лежат в `@layer base` / `@layer components`, чтобы утилиты Tailwind могли их переопределять.
+- Алиасы `--bg/--fg/--muted/--accent` → `surface/ink/ink-muted/filament-text`; все страницы до B40 переведены на токены напрямую (`var(--ink-muted)` и т. п.), кнопки действия — `var(--filament)` + `var(--on-filament)`.
+- Добавлен токен `--danger` (ошибки форм, статус «Отменён»): в брендбуке его нет, светлая `#B3261E`, тёмная `#FF7B72` (запись в DECISIONS.md).
+- Шрифты — `app/layout.tsx` импортирует `@fontsource/unbounded/700.css` и `@fontsource-variable/manrope` (семейство в CSS — `"Manrope Variable"`). Заголовки `h1/h2/h3` — Unbounded через базовые стили; классы `.t-display .t-heading .t-title .t-lead .t-caption` — для текста, который не заголовок.
+- Компоненты — `web/components/ui/` (`import { Button, Card, Field, Select, StatusBadge, Logo, ThemeToggle } from "@/components/ui"`). CSS-классы те же, что у компонентов, их можно писать и руками: `.btn .btn-primary|secondary|ghost .btn-sm`, `.card .card-sand`, `.field` (input/select/textarea), `.badge .badge-neutral|active|success|danger`, `.layers` (паттерн «Слои»). Чистая логика (классы, тон статуса, тема) — `web/lib/ui.ts` с тестами.
+- Тема: `ThemeToggle` в шапке пишет `data-theme` на `<html>` и `localStorage["bp-theme"]`; скрипт `THEME_INIT_SCRIPT` в `<head>` ставит атрибут до первой отрисовки (без мигания). Без выбора — как в системе.
+- Шапка `components/SiteHeader.tsx` (логотип-lockup, ссылки с `lg`, переключатель, кнопка; бургер-меню — `components/MobileMenu.tsx`), подвал `components/SiteFooter.tsx` (знак, слоган, разделы, документы, контакты). Логотип — `components/ui/Logo.tsx`: показывает обычный файл или `*-light.svg` по теме через классы `.logo-light/.logo-dark`.
+- Фавикон — `web/app/icon.svg` (копия знака) и `web/app/apple-icon.png` (180×180, знак на `surface`), Next подключает их сам. Цвет адресной строки — `viewport.themeColor` в layout.
