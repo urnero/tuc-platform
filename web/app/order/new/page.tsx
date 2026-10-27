@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import type { Account } from "@/lib/account";
+import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
 import {
   EMPTY_FORM,
@@ -96,6 +97,7 @@ function NewOrder() {
         throw new Error(typeof body.detail === "string" ? body.detail : `Ошибка ${r.status}.`);
       }
       const order = (await r.json()) as Order;
+      reachGoal("order");
       router.push(`/order/${order.token}`);
     } catch (err) {
       setServerError((err as Error).message);

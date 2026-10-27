@@ -10,7 +10,9 @@ COPY . .
 # SITE_URL нужен уже при сборке: статические страницы кладут в HTML абсолютные canonical/og:url (B25).
 # docker-compose передаёт сюда значение из .env.
 ARG SITE_URL=http://localhost:8080
-ENV NEXT_TELEMETRY_DISABLED=1 SITE_URL=$SITE_URL
+# Номер счётчика Метрики (B51): NEXT_PUBLIC_* вшивается в код при сборке.
+ARG NEXT_PUBLIC_YM_ID=
+ENV NEXT_TELEMETRY_DISABLED=1 SITE_URL=$SITE_URL NEXT_PUBLIC_YM_ID=$NEXT_PUBLIC_YM_ID
 RUN npm run build
 
 FROM node:22-alpine AS run

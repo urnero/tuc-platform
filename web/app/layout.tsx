@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SiteFooter from "@/components/SiteFooter";
+import Metrika from "@/components/Metrika";
 import SiteHeader from "@/components/SiteHeader";
 import { SITE_NAME, siteUrl } from "@/lib/seo";
 import "./globals.css";
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ru" className="scroll-smooth">
       {/* flex-колонка, чтобы подвал прижимался к низу даже на коротких страницах */}
       <body className="flex min-h-screen flex-col antialiased">
+        <Metrika />
         <SiteHeader />
         {children}
         <SiteFooter />

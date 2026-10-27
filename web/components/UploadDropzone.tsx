@@ -8,6 +8,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { reachGoal } from "@/lib/metrika";
 import { MAX_UPLOAD_MB, type Upload, validateFile } from "@/lib/mesh";
 
 type State =
@@ -38,6 +39,7 @@ export default function UploadDropzone({ idleText }: { idleText?: string }) {
         return;
       }
       const upload = (await r.json()) as Upload;
+      reachGoal("upload");
       router.push(`/upload/${upload.id}`);
     } catch {
       setState({ kind: "error", message: "Не удалось связаться с сервером. Попробуйте ещё раз." });

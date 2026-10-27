@@ -15,6 +15,7 @@
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
 import {
   formatDate,
@@ -52,6 +53,11 @@ function OrderStatus() {
     if (!r.ok) throw new Error(r.status === 404 ? "Заказ не найден. Проверьте ссылку." : `Ошибка ${r.status}.`);
     return (await r.json()) as Order;
   }
+
+  // B51: цель «оплата» — один раз за сессию вкладки на заказ
+  useEffect(() => {
+    if (order?.status === "paid") reachGoal("paid", order.token);
+  }, [order]);
 
   useEffect(() => {
     let cancelled = false;

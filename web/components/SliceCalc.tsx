@@ -17,6 +17,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Preset } from "@/lib/account";
+import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
 import {
   batchHint,
@@ -112,7 +113,10 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
         return (await r.json()) as Quote;
       })
       .then((q) => {
-        if (seq === quoteSeq.current) setQuote(q);
+        if (seq === quoteSeq.current) {
+          setQuote(q);
+          reachGoal("quote", uploadId);
+        }
       })
       .catch((e: Error) => {
         if (seq === quoteSeq.current) setError(e.message);
