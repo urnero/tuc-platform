@@ -374,6 +374,29 @@
     color: var(--danger);
   }
 
+  /* Вопрос-ответ на главной (B41): нативный <details>, строки разделены линией, «+» поворачивается в «×». */
+  .faq-item + .faq-item {
+    border-top: 1px solid var(--line);
+  }
+
+  .faq-item summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq-item summary {
+    list-style: none;
+  }
+
+  .faq-chevron {
+    font-size: 24px;
+    line-height: 1;
+    transition: transform 0.2s ease;
+  }
+
+  .faq-item[open] .faq-chevron {
+    transform: rotate(45deg);
+  }
+
   /* Паттерн «Слои»: полосы-пилюли filament / sand / steel на графите. Фон первого экрана и пустых состояний. */
   /* Цвета в SVG записаны числами: внутри data-URI переменные CSS не работают; на графите они одинаковы в обеих темах. */
   .layers {
@@ -381,6 +404,13 @@
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 300'><rect x='-40' y='60' width='420' height='22' rx='11' fill='%23F26A1B'/><rect x='300' y='140' width='560' height='22' rx='11' fill='%23E8DCC8'/><rect x='-80' y='220' width='520' height='22' rx='11' fill='%233E5566'/></svg>");
     background-size: cover;
     background-position: center;
+  }
+
+  /* Узкая полоса паттерна (шапка карточки на главной): все три полосы по высоте, повтор по ширине. */
+  .layers-band {
+    background-size: auto 100%;
+    background-repeat: repeat-x;
+    background-position: left center;
   }
 }
 

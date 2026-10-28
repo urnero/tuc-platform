@@ -3,6 +3,7 @@ import {
   COMPANY,
   formatDocumentsDate,
   LEGAL_NAME_PLACEHOLDER,
+  mapEmbedUrl,
   missingRequisites,
   phoneUrl,
   PLACEHOLDER,
@@ -68,5 +69,21 @@ describe("ссылки на контакты", () => {
   it("phone: оставляет только цифры и плюс, пусто → null", () => {
     expect(phoneUrl("+7 999 123-45-67")).toBe("tel:+79991234567");
     expect(phoneUrl("")).toBeNull();
+  });
+});
+
+describe("mapEmbedUrl (карта самовывоза, B41)", () => {
+  it("принимает виджет Яндекс Карт и 2ГИС по https", () => {
+    expect(mapEmbedUrl("https://yandex.ru/map-widget/v1/?um=constructor%3Aabc&source=constructor")).toBe(
+      "https://yandex.ru/map-widget/v1/?um=constructor%3Aabc&source=constructor",
+    );
+    expect(mapEmbedUrl(" https://widgets.2gis.ru/widget?data=1 ")).toBe("https://widgets.2gis.ru/widget?data=1");
+  });
+  it("пусто, не https, чужой сайт или просто адрес карты (не виджет) → null", () => {
+    expect(mapEmbedUrl("")).toBeNull();
+    expect(mapEmbedUrl("http://yandex.ru/map-widget/v1/?um=1")).toBeNull();
+    expect(mapEmbedUrl("https://example.com/map-widget/v1/")).toBeNull();
+    expect(mapEmbedUrl("https://yandex.ru/maps/213/moscow/")).toBeNull();
+    expect(mapEmbedUrl("<iframe src=\"https://yandex.ru/map-widget/v1/\">")).toBeNull();
   });
 });

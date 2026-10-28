@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BENEFITS, formatPerGram, materialCards, minOrderText, STEPS } from "./landing";
+import { BENEFITS, FACTS, FAQ, faqJsonLd, formatPerGram, materialCards, minOrderText, STEPS, STUDIO } from "./landing";
 import type { Pricing } from "./pricing";
 
 const pricing: Pricing = {
@@ -64,5 +64,40 @@ describe("тексты блоков", () => {
       expect(item.title.trim()).not.toBe("");
       expect(item.text.trim()).not.toBe("");
     }
+  });
+});
+
+describe("воронка главной (B41)", () => {
+  it("FAQ — от 5 до 7 вопросов, без повторов, у каждого есть ответ", () => {
+    expect(FAQ.length).toBeGreaterThanOrEqual(5);
+    expect(FAQ.length).toBeLessThanOrEqual(7);
+    expect(new Set(FAQ.map((f) => f.q)).size).toBe(FAQ.length);
+    for (const f of FAQ) {
+      expect(f.q.trim().endsWith("?")).toBe(true);
+      expect(f.a.trim().length).toBeGreaterThan(20);
+    }
+  });
+
+  it("ответ про сроки повторяет обещание из STUDIO — чтобы срок на главной был один", () => {
+    const about = FAQ.find((f) => f.q.includes("быстро"));
+    expect(about?.a).toContain(STUDIO.leadTime);
+  });
+
+  it("факты о парке: четыре плашки с числом и подписью, цифры совпадают с docs/PRINTERS.md", () => {
+    expect(FACTS).toHaveLength(4);
+    for (const f of FACTS) {
+      expect(f.value.trim()).not.toBe("");
+      expect(f.label.trim()).not.toBe("");
+    }
+    expect(FACTS.map((f) => f.value)).toEqual(expect.arrayContaining(["8", "256 мм"]));
+  });
+
+  it("faqJsonLd — FAQPage со всеми вопросами, без undefined", () => {
+    const ld = faqJsonLd([{ q: "Что?", a: "Это." }]) as { "@type": string; mainEntity: { name: string; acceptedAnswer: { text: string } }[] };
+    expect(ld["@type"]).toBe("FAQPage");
+    expect(ld.mainEntity).toHaveLength(1);
+    expect(ld.mainEntity[0].name).toBe("Что?");
+    expect(ld.mainEntity[0].acceptedAnswer.text).toBe("Это.");
+    expect(JSON.stringify(faqJsonLd())).not.toContain("undefined");
   });
 });

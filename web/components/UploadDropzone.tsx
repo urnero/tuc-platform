@@ -17,7 +17,13 @@ type State =
   | { kind: "uploading"; name: string }
   | { kind: "error"; message: string };
 
-export default function UploadDropzone({ idleText }: { idleText?: string }) {
+type Props = {
+  idleText?: string;
+  /** Текст оранжевой кнопки внутри зоны (главная, B41): одно действие на первом экране. Без неё — только текст. */
+  cta?: string;
+};
+
+export default function UploadDropzone({ idleText, cta }: Props) {
   const router = useRouter();
   const [state, setState] = useState<State>({ kind: "idle" });
   const [dragOver, setDragOver] = useState(false);
@@ -56,7 +62,7 @@ export default function UploadDropzone({ idleText }: { idleText?: string }) {
       <div
         role="button"
         tabIndex={0}
-        aria-label="Загрузить файл модели"
+        aria-label={cta ? `${cta}: выбрать файл STL или 3MF` : "Загрузить файл модели"}
         onClick={() => inputRef.current?.click()}
         onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
         onDragOver={(e) => {
@@ -69,14 +75,22 @@ export default function UploadDropzone({ idleText }: { idleText?: string }) {
           setDragOver(false);
           onFiles(e.dataTransfer.files);
         }}
-        className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-10 text-center"
-        style={{ borderColor: dragOver ? "var(--filament-text)" : "var(--ink-muted)" }}
+        data-testid="dropzone"
+        className={`flex cursor-pointer flex-col items-center gap-2 rounded-md border-2 border-dashed text-center ${cta ? "p-6 sm:p-8" : "p-10"}`}
+        style={{
+          borderColor: dragOver ? "var(--filament-text)" : "var(--steel)",
+          background: dragOver ? "color-mix(in srgb, var(--filament) 10%, transparent)" : undefined,
+        }}
       >
         {state.kind === "uploading" ? (
           <span>Загружаем и проверяем «{state.name}»…</span>
         ) : (
           <>
-            <span className="font-medium">{idleText ?? "Перетащите файл сюда или нажмите, чтобы выбрать"}</span>
+            {/* Кнопка — оформление: кликабельна вся зона (role="button" выше), поэтому это span, не <button>. */}
+            {cta && <span className="btn btn-primary w-full sm:w-auto">{cta}</span>}
+            <span className={cta ? "text-sm" : "font-medium"} style={cta ? { color: "var(--ink-muted)" } : undefined}>
+              {idleText ?? "Перетащите файл сюда или нажмите, чтобы выбрать"}
+            </span>
             <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
               STL или 3MF, до {MAX_UPLOAD_MB} МБ
             </span>
@@ -92,7 +106,7 @@ export default function UploadDropzone({ idleText }: { idleText?: string }) {
       </div>
 
       {state.kind === "error" && (
-        <p role="alert" className="rounded-md border px-4 py-3" style={{ borderColor: "#c0392b" }}>
+        <p role="alert" className="rounded-md border px-4 py-3" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>
           {state.message}
         </p>
       )}
