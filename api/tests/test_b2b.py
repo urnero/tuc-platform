@@ -171,7 +171,7 @@ def test_order_card_shows_company(client, pricing_file, fake_slicer):
 
 
 def test_export_columns_end_with_company(client, pricing_file, fake_slicer):
-    assert COLUMNS[-3:] == ["company_name", "company_inn", "payment_method"]
+    assert COLUMNS[21:24] == ["company_name", "company_inn", "payment_method"]
     _order(client)
     with session_factory()() as s:
         row = order_row(s.scalar(select(Order)), None)

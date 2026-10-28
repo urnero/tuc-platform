@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import Order, Payment
 from app.orders import order_number
 from app.telegram import STATUS_LABELS
@@ -24,6 +25,8 @@ COLUMNS = [
     "print_time_h", "material_g", "original_name", "comment", "paid_msk", "upload_id",
     # B33: добавлены в конец, чтобы формулы владельца на старые колонки не сдвинулись.
     "company_name", "company_inn", "payment_method",
+    # B47: ссылка на карточку заказа в админке (открывается с логином и паролем админки).
+    "admin_url",
 ]
 
 
@@ -59,7 +62,13 @@ def order_row(o: Order, paid_at: datetime | None) -> list:
         round((quote.get("material_g") or 0) * o.qty, 1),
         o.original_name or "", o.comment or "", fmt_dt(paid_at), o.upload_id,
         o.company_name or "", o.company_inn or "", o.payment_method,
+        admin_url(o.id),
     ]
+
+
+def admin_url(order_id: int) -> str:
+    """Карточка заказа в админке (B09) — чтобы из таблицы учёта открыть заказ одним кликом."""
+    return f"{settings.site_url.rstrip('/')}/admin/orders/{order_id}"
 
 
 def order_rows(db: Session, orders: list[Order]) -> list[list]:

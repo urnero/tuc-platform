@@ -211,6 +211,7 @@ def create_order(
     # Владельцу — в Telegram, клиенту — письмо «принят» (B34); уже после ответа клиенту.
     background.add_task(notify_owner_new_order, data)
     background.add_task(notify.order_created, data)
+    background.add_task(_push_to_sheet, order.id)  # B47: строка в Google-таблице учёта
     return order_response(db, order)
 
 
@@ -294,7 +295,15 @@ def change_status(db: Session, order_id: int, status: str, notify_client: bool =
     db.refresh(order)
     if notify_client:
         notify.status_changed(order.to_dict())
+    _push_to_sheet(order.id)  # B47: обновить строку заказа в Google-таблице учёта
     return order
+
+
+def _push_to_sheet(order_id: int) -> None:
+    # Импорт здесь, а не наверху: app.sheets сам импортирует app.orders (через app.export).
+    from app import sheets
+
+    sheets.push_order(order_id)
 
 
 def link_telegram(db: Session, token: str, chat_id: int | str) -> Order | None:

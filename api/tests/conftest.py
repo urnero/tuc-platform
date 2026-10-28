@@ -71,6 +71,15 @@ def notify_in_foreground(monkeypatch):
     monkeypatch.setattr(notify, "IN_BACKGROUND", False)
 
 
+@pytest.fixture(autouse=True)
+def sheets_in_foreground(monkeypatch):
+    """Живой лог в Google-таблицу (B47) в тестах — в том же потоке и без пауз между попытками."""
+    from app import sheets
+
+    monkeypatch.setattr(sheets, "IN_BACKGROUND", False)
+    monkeypatch.setattr(sheets, "RETRY_DELAYS_S", ())
+
+
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Каждый тест пишет файлы в свою временную папку."""

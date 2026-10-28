@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     google_sa_json_path: Path | None = None
     google_sheet_id: str = ""
     google_sheet_tab: str = "Заказы (сайт)"
+    # B47: строка заказа в таблице сразу при создании и смене статуса.
+    # false — только ночная выгрузка.
+    google_sheet_live: bool = True
 
     # Автоудаление файлов моделей (B15) — сроки из политики ПДн (/policy, раздел 6).
     # Загрузки без заказа — через 30 дней, файлы закрытых заказов — через год. 0 = не удалять.
