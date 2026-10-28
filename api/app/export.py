@@ -11,10 +11,9 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.models import Order, Payment
 from app.orders import order_number
-from app.telegram import STATUS_LABELS
+from app.telegram import STATUS_LABELS, admin_order_url
 
 MSK = timedelta(hours=3)
 
@@ -68,7 +67,7 @@ def order_row(o: Order, paid_at: datetime | None) -> list:
 
 def admin_url(order_id: int) -> str:
     """Карточка заказа в админке (B09) — чтобы из таблицы учёта открыть заказ одним кликом."""
-    return f"{settings.site_url.rstrip('/')}/admin/orders/{order_id}"
+    return admin_order_url(order_id)
 
 
 def order_rows(db: Session, orders: list[Order]) -> list[list]:

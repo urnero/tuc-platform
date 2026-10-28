@@ -74,10 +74,25 @@ def test_order_card_escapes_and_links(session, monkeypatch):
     assert "PLA × 2 шт" in text
     assert "Печать: ~4.0 ч, 100 г" in text  # 2 изделия по 2 ч и 50 г
     assert "самовывоз" in text
-    assert text.endswith(f"https://tuc.example/order/{o['token']}")
+    page = f"https://tuc.example/order/{o['token']}"
+    assert text.endswith(f'<a href="{page}">Страница заказа</a>')
 
     header = tg.order_card(o, header="🆕 Новый заказ BP-1")
     assert header.startswith("<b>🆕 Новый заказ BP-1</b>")
+
+
+def test_order_card_links_admin_and_drive(session, monkeypatch):
+    """B48: под карточкой — ссылки на страницу заказа, админку (если включена) и папку Drive."""
+    monkeypatch.setattr(settings, "site_url", "https://tuc.example/")
+    o = make_order(session).to_dict()
+    monkeypatch.setattr(settings, "admin_password", "")
+    assert "Админка" not in tg.order_card(o)  # админка выключена — ссылка вела бы в 503
+    monkeypatch.setattr(settings, "admin_password", "secret")
+    o["drive_folder_url"] = "https://drive.google.com/drive/folders/abc?x=1&y=2"
+    last = tg.order_card(o).splitlines()[-1]
+    assert '<a href="https://tuc.example/admin/orders/1">Админка</a>' in last
+    drive = "https://drive.google.com/drive/folders/abc?x=1&amp;y=2"
+    assert f'<a href="{drive}">Файлы в Drive</a>' in last
 
 
 def test_order_card_courier_address(session):
@@ -210,6 +225,83 @@ def test_send_message_errors_do_not_raise(monkeypatch):
 
     monkeypatch.setattr(tg.httpx, "post", boom)
     assert tg.send_message("42", "hi") is False
+
+
+def test_send_message_retries_network_and_5xx(monkeypatch):
+    """B48: обрыв сети и 5xx — повторяем (1 с, 3 с), на третий раз прошло."""
+    monkeypatch.setattr(settings, "telegram_bot_token", "123:ABC")
+    sleeps: list[float] = []
+    monkeypatch.setattr(tg.time, "sleep", sleeps.append)
+    answers = [tg.httpx.ConnectError("no network"), FakeResponse(502, "Bad"), FakeResponse()]
+
+    def flaky(*a, **k):
+        a = answers.pop(0)
+        if isinstance(a, Exception):
+            raise a
+        return a
+
+    monkeypatch.setattr(tg.httpx, "post", flaky)
+    assert tg.send_message("42", "hi") is True
+    assert sleeps == [1, 3] and answers == []
+
+
+def test_send_message_gives_up_and_skips_client_errors(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", "123:ABC")
+    sleeps: list[float] = []
+    monkeypatch.setattr(tg.time, "sleep", sleeps.append)
+    calls = []
+
+    def down(*a, **k):
+        calls.append(1)
+        raise tg.httpx.ConnectError("no network")
+
+    monkeypatch.setattr(tg.httpx, "post", down)
+    assert tg.send_message("42", "hi") is False
+    assert len(calls) == 3 and sleeps == [1, 3]  # три попытки и сдались
+
+    # 400/401/403 — ошибка в запросе или токене: повтор не поможет
+    calls.clear(), sleeps.clear()
+    monkeypatch.setattr(tg.httpx, "post", lambda *a, **k: calls.append(1) or FakeResponse(403))
+    assert tg.send_message("42", "hi") is False
+    assert len(calls) == 1 and sleeps == []
+
+
+def test_send_message_429_waits_retry_after(monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", "123:ABC")
+    sleeps: list[float] = []
+    monkeypatch.setattr(tg.time, "sleep", sleeps.append)
+
+    class TooMany(FakeResponse):
+        def json(self):
+            return {"ok": False, "parameters": {"retry_after": 60}}
+
+    answers = [TooMany(429, "Too Many Requests"), FakeResponse()]
+    monkeypatch.setattr(tg.httpx, "post", lambda *a, **k: answers.pop(0))
+    assert tg.send_message("42", "hi") is True
+    assert sleeps == [tg.MAX_RETRY_AFTER_S]  # просили 60 с — ждём не больше 10
+
+
+def test_today_start_is_moscow_midnight():
+    # 21:30 UTC 28.10 = 00:30 МСК 29.10 → начало дня 29.10 по Москве = 21:00 UTC 28.10
+    now = datetime(2026, 10, 28, 21, 30, tzinfo=UTC)
+    assert bot.today_start_utc(now) == datetime(2026, 10, 28, 21, 0, tzinfo=UTC)
+    now = datetime(2026, 10, 28, 20, 59, tzinfo=UTC)  # 23:59 МСК 28.10
+    assert bot.today_start_utc(now) == datetime(2026, 10, 27, 21, 0, tzinfo=UTC)
+
+
+def test_today_reply(session):
+    make_order(session)
+    make_order(session, status="cancelled")
+    old = make_order(session, status="printing")
+    old.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    session.commit()
+    text, markup = bot.today_reply(session)
+    # сегодня два заказа, отменённый в сумму не входит; в работе — новый и печатающийся
+    assert text.startswith("<b>Сегодня: 2 заказ(ов) на 900 ₽ · в работе 2</b>")
+    assert [b["callback_data"] for row in markup["inline_keyboard"] for b in row] == [
+        "order:2",
+        "order:1",
+    ]
 
 
 def test_create_order_notifies_owner(client, fake_slicer, monkeypatch):
@@ -409,6 +501,13 @@ def test_bot_end_to_end(session, monkeypatch):
         assert m.text.startswith("<b>Заказ BP-1</b>")
         assert _buttons(m) == ["status:1:paid", "status:1:printing", "status:1:cancelled", "orders"]
 
+        (m,) = await send(_msg_update("/today"))
+        assert m.text.startswith("<b>Сегодня: 2 заказ(ов)")
+        assert _buttons(m) == ["order:2", "order:1"]
+
+        (m,) = await send(_msg_update("/help"))
+        assert "/today" in m.text
+
         (m,) = await send(_msg_update("/order abc"))
         assert "/order 12" in m.text
 
@@ -439,3 +538,21 @@ def test_bot_end_to_end(session, monkeypatch):
         assert session.get(Order, 1).status == "paid"
 
     asyncio.run(scenario())
+
+
+def test_bot_setup_commands(monkeypatch):
+    """B48: меню команд — владельцу все, остальным только /stop; сбой сети не роняет бота."""
+    monkeypatch.setattr(settings, "telegram_owner_chat_id", "42")
+    tg_session = RecordingSession()
+    aiobot = bot.Bot(token="123:ABC", session=tg_session)
+    asyncio.run(bot.setup_commands(aiobot))
+    client_menu, owner_menu = tg_session.calls
+    assert [c.command for c in client_menu.commands] == ["stop"]
+    assert owner_menu.scope.chat_id == 42
+    assert [c.command for c in owner_menu.commands] == ["orders", "today", "order", "help"]
+
+    class Down(RecordingSession):
+        async def make_request(self, bot, method, timeout=None):
+            raise OSError("no network")
+
+    asyncio.run(bot.setup_commands(bot.Bot(token="123:ABC", session=Down())))  # без исключения
