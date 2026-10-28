@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     pricing_path: Path = Path("config/pricing.yaml")
     # Цвета пластика для раскраски по частям (B31): key, name, hex. После правки перезапустить api.
     colors_path: Path = Path("config/colors.yaml")
+    # Справочник материалов (B44): свойства, цвета, max размер; смолы — «по запросу».
+    materials_path: Path = Path("config/materials.yaml")
     # Каталог готовых моделей (B20): catalog.yaml + models/. В docker монтируется как /srv/catalog.
     catalog_dir: Path = Path("catalog")
 
@@ -22,8 +24,9 @@ class Settings(BaseSettings):
     # Префикс номера заказа: «BP-12». Старые заказы в таблице учёта остались с «ТУЦ-» (B40b).
     order_number_prefix: str = "BP"
     max_upload_mb: int = 100
-    # Рабочая область принтера, мм: X×Y×Z. Модель больше этого — предупреждение.
-    print_bed_mm: str = "250x210x220"
+    # Рабочая область самого большого FDM-принтера (Bambu P1S, docs/PRINTERS.md), мм: X×Y×Z.
+    # Модель больше этого — предупреждение «печатаем частями или по запросу».
+    print_bed_mm: str = "256x256x256"
     # Защита от цикла запросов (app/limits.py): сколько раз в минуту с одного IP можно
     # создавать загрузки (файл, каталог, редактор, тиснение) и заказы. 0 = без ограничений.
     rate_limit_uploads_per_min: int = 10
@@ -101,7 +104,7 @@ class Settings(BaseSettings):
 
     @property
     def print_bed(self) -> tuple[float, float, float]:
-        """«250x210x220» → (250.0, 210.0, 220.0)."""
+        """«256x256x256» → (256.0, 256.0, 256.0)."""
         x, y, z = (float(v) for v in self.print_bed_mm.lower().split("x"))
         return (x, y, z)
 

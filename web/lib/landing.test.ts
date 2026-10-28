@@ -31,6 +31,29 @@ describe("materialCards", () => {
     expect(nylon.price).toBe("от 9 ₽/г");
     expect(nylon.text.length).toBeGreaterThan(0);
   });
+  it("со справочником (B44): названия из yaml, смола — «цена по запросу»", () => {
+    const item = (key: string, name: string, on_request: boolean) => ({
+      key,
+      tech: on_request ? ("SLA" as const) : ("FDM" as const),
+      name,
+      tagline: "т",
+      hint: "х",
+      pros: [],
+      cons: [],
+      uses: [],
+      colors: [],
+      heat_c: null,
+      needs_enclosure: false,
+      max_mm: null,
+      enabled: true,
+      on_request,
+    });
+    const cards = materialCards(pricing, [item("PETG", "PETG", false), item("RESIN", "Смола", true)]);
+    expect(cards.map((c) => [c.name, c.price, c.onRequest])).toEqual([
+      ["PETG", "от 4,5 ₽/г", false],
+      ["Смола", "цена по запросу", true],
+    ]);
+  });
   it("без прайса (API недоступен) — карточки известных материалов без цен", () => {
     const cards = materialCards(null);
     expect(cards.map((c) => c.name)).toEqual(["PLA", "PETG", "ABS"]);

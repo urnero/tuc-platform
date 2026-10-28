@@ -8,6 +8,7 @@
  */
 
 import { formatPrice } from "./format";
+import type { MaterialItem, MaterialsResponse } from "./materials";
 import type { Pricing } from "./pricing";
 
 /** Шаги «как это работает» — те же, что на /about, но короче. */
@@ -26,17 +27,38 @@ export const BENEFITS: { title: string; text: string }[] = [
   { title: "Тиражи дешевле", text: "Скидка за количество считается автоматически — от 10 штук и от 50." },
 ];
 
-/** Описания материалов для карточек. Ключ — имя из pricing.yaml / profiles/filament. */
+/**
+ * Запасные описания материалов — на случай, если API не отдал справочник (B44).
+ * Основной источник — config/materials.yaml (GET /api/v1/materials).
+ */
 export const MATERIAL_INFO: Record<string, { tagline: string; text: string }> = {
   PLA: { tagline: "точный и недорогой", text: "Макеты, корпуса, декор. Много цветов. Не любит жару выше 50 °C." },
   PETG: { tagline: "прочный, терпит влагу", text: "Функциональные детали, крепления, ёмкости. До 70 °C." },
   ABS: { tagline: "ударопрочный, до 90 °C", text: "Детали для авто и техники. Шлифуется, обрабатывается ацетоном." },
 };
 
-export type MaterialCard = { name: string; tagline: string; text: string; price: string | null };
+export type MaterialCard = {
+  name: string;
+  tagline: string;
+  text: string;
+  price: string | null;
+  onRequest?: boolean;
+};
 
-/** Карточки материалов из прайса: имя, описание, «от 4 ₽/г». Без прайса — описания без цен. */
-export function materialCards(pricing: Pricing | null): MaterialCard[] {
+/**
+ * Карточки материалов: имя, описание, «от 4 ₽/г».
+ * Есть справочник (B44) — карточки по нему (смолы — «цена по запросу»); нет — по прайсу и
+ * запасным описаниям. Без прайса — описания без цен.
+ */
+export function materialCards(pricing: Pricing | null, items: MaterialItem[] = []): MaterialCard[] {
+  if (items.length) {
+    return items.map((item) => {
+      const perG = pricing?.materials[item.key]?.price_per_g;
+      let price: string | null = perG === undefined ? null : `от ${formatPerGram(perG)}/г`;
+      if (item.on_request) price = "цена по запросу";
+      return { name: item.name, tagline: item.tagline, text: item.hint, price, onRequest: item.on_request };
+    });
+  }
   const names = pricing ? Object.keys(pricing.materials) : Object.keys(MATERIAL_INFO);
   return names.map((name) => {
     const info = MATERIAL_INFO[name] ?? { tagline: "", text: "Подробности — при расчёте цены." };
@@ -102,7 +124,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Какой материал выбрать?",
-    a: "PLA — для макетов, декора и всего, что не греется. PETG — для функциональных деталей: прочнее, терпит влагу и до 70 °C. ABS — ударопрочный, до 90 °C, для авто и техники. Под выбором материала на странице расчёта есть подсказка «когда какой».",
+    a: "PLA — для макетов, декора и всего, что не греется. PETG — для функциональных деталей: прочнее, терпит влагу и до 70 °C. ABS — ударопрочный, до 90 °C, для авто и техники. TPU — гибкий, как резина. Нейлон, поликарбонат и пластики с углеволокном — для нагруженных деталей. Смола — для миниатюр и мелких деталей, её цену называем по заявке. Под выбором материала на странице расчёта есть подсказка «когда какой».",
   },
   {
     q: "Можно напечатать большую деталь?",
@@ -140,6 +162,17 @@ export function apiInternalUrl(): string {
  * Прайс для главной. Ходит в API с сервера Next; если API недоступен (сборка образа,
  * dev без uvicorn) — null, и страница рендерится без цен, а не падает.
  */
+/** Справочник материалов для карточек (B44). Нет API — пустой список (карточки по прайсу). */
+export async function loadMaterials(): Promise<MaterialItem[]> {
+  try {
+    const r = await fetch(`${apiInternalUrl()}/api/v1/materials`, { next: { revalidate: 600 } });
+    if (!r.ok) return [];
+    return ((await r.json()) as MaterialsResponse).items ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function loadPricing(): Promise<Pricing | null> {
   try {
     const r = await fetch(`${apiInternalUrl()}/api/v1/pricing`, { next: { revalidate: 600 } });

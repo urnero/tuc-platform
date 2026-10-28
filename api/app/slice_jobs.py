@@ -21,13 +21,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import settings
-from app.slicer import MATERIALS, SlicerError, slice_model
+from app.slicer import SlicerError, check_material, slice_model
 
 
 def slice_key(material: str, supports: bool) -> str:
     material = material.upper()
-    if material not in MATERIALS:
-        raise SlicerError(f"Материал: {', '.join(MATERIALS)}.")
+    check_material(material)
     return f"{material}_supports" if supports else material
 
 

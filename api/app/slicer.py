@@ -22,10 +22,12 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from app import materials
 from app.config import settings
 from app.meshcheck import UNITS
 
-MATERIALS = ("PLA", "PETG", "ABS")  # для каждого есть profiles/filament/<материал>.ini
+# Список материалов — config/materials.yaml (B44): FDM-материалы, у каждого
+# profiles/filament/<материал>.ini. Смолы (SLA) слайсер не считает — они «по запросу».
 
 # «1d 2h 3m 4s» / «45m 12s» / «30s» → секунды
 _TIME_RE = re.compile(r"(?:(\d+)d\s*)?(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?")
@@ -62,11 +64,22 @@ def profiles_dir() -> Path:
     return settings.profiles_dir
 
 
+def check_material(material: str) -> None:
+    """Материал считается слайсером? Нет — SlicerError с понятным текстом."""
+    allowed = materials.sliceable()
+    if material in allowed:
+        return
+    if material in materials.on_request():
+        raise SlicerError(
+            f"{material} — смола, её цену называем вручную: оставьте заявку, ответим в течение дня."
+        )
+    raise SlicerError(f"Материал: {', '.join(allowed)}.")
+
+
 def profile_paths(material: str) -> list[Path]:
     """Три ini-файла, которые загружаем в слайсер по порядку: принтер, печать, материал."""
     material = material.upper()
-    if material not in MATERIALS:
-        raise SlicerError(f"Материал: {', '.join(MATERIALS)}.")
+    check_material(material)
     paths = [
         profiles_dir() / "printer.ini",
         profiles_dir() / "print.ini",

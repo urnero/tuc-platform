@@ -105,7 +105,7 @@ UNITS = {"mm": 1.0, "inch": 25.4}  # во сколько раз умножить
 def inspect_mesh(
     data: bytes,
     ext: str,
-    print_bed: tuple[float, float, float] = (250.0, 210.0, 220.0),
+    print_bed: tuple[float, float, float] = (256.0, 256.0, 256.0),
     units: str = "mm",
 ) -> MeshInfo:
     """Главная функция: байты файла + расширение → MeshInfo. Бросает MeshError.

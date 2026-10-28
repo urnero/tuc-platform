@@ -11,10 +11,16 @@ min_order: 500          # минимальная сумма заказа, ₽
 margin: 0.35            # наценка, доля
 k_supports: 1.15        # коэффициент, если нужны поддержки
 
-materials:               # ₽ за грамм
+materials:               # ₽ за грамм; список и описания — config/materials.yaml
   PLA:  { price_per_g: 4.0,  tech: FDM }
   PETG: { price_per_g: 4.5,  tech: FDM }
   ABS:  { price_per_g: 4.5,  tech: FDM }
+  TPU:  { price_per_g: 6.0,  tech: FDM }
+  PA:   { price_per_g: 7.0,  tech: FDM }
+  PC:   { price_per_g: 7.0,  tech: FDM }
+  PETG-CF: { price_per_g: 8.0,  tech: FDM }
+  PA-CF:   { price_per_g: 12.0, tech: FDM }
+  # Смолы (SLA) сюда не пишем: цена по запросу (config/materials.yaml, tech: SLA).
 
 technologies:            # ₽ за час работы принтера
   FDM: { machine_rate: 120 }

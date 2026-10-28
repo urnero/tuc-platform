@@ -14,7 +14,7 @@ import Link from "next/link";
 import UploadDropzone from "@/components/UploadDropzone";
 import { Button } from "@/components/ui";
 import { COMPANY, mapEmbedUrl, phoneUrl, requisite, telegramUrl } from "@/lib/company";
-import { FACTS, FAQ, faqJsonLd, loadPricing, materialCards, minOrderText, STEPS, STUDIO } from "@/lib/landing";
+import { FACTS, FAQ, faqJsonLd, loadMaterials, loadPricing, materialCards, minOrderText, STEPS, STUDIO } from "@/lib/landing";
 import { WORKS, workImageUrl, worksTitle } from "@/lib/works";
 
 // Заголовок и описание — в app/layout.tsx; здесь только канонический адрес главной (B25).
@@ -44,8 +44,8 @@ function SectionTitle({ id, title, subtitle }: { id?: string; title: string; sub
 }
 
 export default async function Home() {
-  const pricing = await loadPricing();
-  const materials = materialCards(pricing);
+  const [pricing, materialItems] = await Promise.all([loadPricing(), loadMaterials()]);
+  const materials = materialCards(pricing, materialItems);
   const minOrder = minOrderText(pricing);
   const tg = telegramUrl(COMPANY.telegram);
   const tel = phoneUrl(COMPANY.phone);
@@ -176,13 +176,16 @@ export default async function Home() {
           title="Материалы и цены"
           subtitle="Цена складывается из граммов пластика и часов печати — точную сумму покажет расчёт после загрузки."
         />
-        <ul className="grid gap-4 sm:grid-cols-3">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {materials.map((m) => (
             <li key={m.name} className="card flex flex-col gap-2">
-              <div className="flex items-baseline justify-between gap-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
                 <h3>{m.name}</h3>
                 {m.price && (
-                  <span className="t-caption" style={{ color: "var(--filament-text)" }}>
+                  <span
+                    className="t-caption"
+                    style={{ color: m.onRequest ? "var(--ink-muted)" : "var(--filament-text)" }}
+                  >
                     {m.price}
                   </span>
                 )}
@@ -195,11 +198,12 @@ export default async function Home() {
           ))}
         </ul>
         <p className="max-w-prose text-sm" style={{ color: "var(--ink-muted)" }}>
-          Нужен другой материал — TPU, нейлон, PC или смола? Напишите нам в{" "}
+          Смолу и материалы не из списка считаем вручную: выберите смолу на странице расчёта и оставьте заявку — или
+          напишите в{" "}
           <Link href="/contacts" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             контакты
           </Link>
-          , посчитаем по запросу.
+          .
         </p>
       </section>
 

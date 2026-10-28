@@ -97,6 +97,14 @@ def client(data_dir, db):
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def materials_yaml(monkeypatch):
+    """Справочник материалов (B44) — настоящий config/materials.yaml из корня репо."""
+    monkeypatch.setattr(settings, "materials_path", REPO_ROOT / "config" / "materials.yaml")
+
+
 FAKE_SLICER = Path(__file__).resolve().parent / "fake_slicer.py"
 
 

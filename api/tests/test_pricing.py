@@ -161,10 +161,10 @@ def test_repo_pricing_yaml_is_valid():
 
 def test_repo_pricing_matches_slicer_materials():
     """Материалы в pricing.yaml = профили в profiles/filament/, иначе цену не посчитать."""
-    from app.slicer import MATERIALS
+    from app import materials
 
     pricing = parse_pricing(yaml.safe_load(PRICING_YAML.read_text("utf-8")))
-    assert set(MATERIALS) <= set(pricing.materials)
+    assert set(materials.sliceable()) <= set(pricing.materials)
 
 
 def test_parse_pricing_errors():

@@ -13,6 +13,7 @@
 | `editor_build` | клиент нажал «Построить модель» в редакторе (B21) — ещё до загрузки, поэтому не шаг воронки и в сводке админки не показывается | — (`props.build_id`) | `editor_slug`, `build_id`, `params`, `cached` (true — такие параметры уже строили, OpenSCAD не запускался) |
 | `emboss_build` | клиент нажал «Нанести» на странице модели (B30) — тиснение надписи/логотипа; как и `editor_build`, не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `params` (kind, text, font, bold, size_mm, depth_mm, style, face, dx, dy, angle) |
 | `paint_build` | клиент нажал «Собрать модель в цветах» на странице модели (B31) — раскраска по частям; не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `parts` (сколько деталей), `colors` (сколько разных цветов) |
+| `material_request` | клиент оставил заявку «цена по запросу» — выбрал смолу (SLA) на странице модели (B44); не шаг воронки, оплаты нет | `upload_id` | `material`, `qty`, `name`, `phone`, `email`, `comment` (контакты — чтобы заявка не потерялась, если Telegram выключен) |
 | `account_login` | клиент вошёл в кабинет по коду из письма (B32); не шаг воронки, ключей нет — считаем только факт и время (кто вошёл — в `client_sessions`) | — | — |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty`, `payment_method` (`online` — карта через ЮKassa, `invoice` — по счёту), `b2b` (true — заказ от организации или ИП, B33) |
@@ -273,4 +274,16 @@ from orders
 where payment_method = 'invoice' and status = 'new'
   and created_at < now() - interval '5 days'
 order by created_at;
+```
+
+### Заявки «цена по запросу» (смолы, B44)
+
+```sql
+select created_at at time zone 'Europe/Moscow' as msk,
+       props->>'material' as material, (props->>'qty')::int as qty,
+       props->>'name' as name, props->>'phone' as phone, props->>'comment' as comment,
+       upload_id
+from events
+where name = 'material_request'
+order by created_at desc;
 ```

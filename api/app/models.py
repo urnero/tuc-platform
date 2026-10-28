@@ -30,6 +30,7 @@ PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 # editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
 # emboss_build / paint_build — тоже не шаги: клиент запустил тиснение (B30) / раскраску (B31).
 # account_login — клиент вошёл в кабинет по коду из письма (B32); не шаг воронки.
+# material_request — заявка «цена по запросу» (смолы, B44); контакты в props; не шаг воронки.
 EVENT_NAMES = (
     "upload",
     "quote",
@@ -40,6 +41,7 @@ EVENT_NAMES = (
     "emboss_build",
     "paint_build",
     "account_login",
+    "material_request",
 )
 
 

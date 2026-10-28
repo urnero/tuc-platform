@@ -14,14 +14,18 @@
  * запускается сам, клиенту остаётся проверить цену и нажать «Оформить заказ».
  * UX (B42): индикатор шагов расчёта с таймером, подсказка «когда какой материал», ошибки
  * человеческим языком (lib/errors.ts), на телефоне — липкая панель «цена + Оформить» внизу экрана.
+ * Материалы (B44): список и подсказки — из справочника (GET /api/v1/materials, config/materials.yaml).
+ * Смолы (SLA) — «цена по запросу»: вместо расчёта форма заявки (LeadForm), оплаты нет.
  */
 
 import Link from "next/link";
+import LeadForm from "@/components/LeadForm";
 import { useEffect, useRef, useState } from "react";
 import type { Preset } from "@/lib/account";
 import { caughtErrorText, responseErrorText, sliceErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
+import { FALLBACK_MATERIALS, materialHint, materialOptionLabel, type MaterialsResponse } from "@/lib/materials";
 import {
   batchHint,
   DELIVERY_LABELS,
@@ -54,7 +58,7 @@ type Props = {
 };
 
 export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = null }: Props) {
-  const [materials, setMaterials] = useState<string[]>(["PLA", "PETG", "ABS"]);
+  const [catalog, setCatalog] = useState<MaterialsResponse>(FALLBACK_MATERIALS);
   const [pricing, setPricing] = useState<Pricing | null>(null);
   const [material, setMaterial] = useState(preset?.material ?? defaultMaterial);
   const [supports, setSupports] = useState(preset?.supports ?? false);
@@ -72,7 +76,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
   useEffect(() => {
     fetch("/api/v1/materials")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { materials: string[] } | null) => d && setMaterials(d.materials))
+      .then((d: MaterialsResponse | null) => d && setCatalog(d))
       .catch(() => {});
     fetch("/api/v1/pricing")
       .then((r) => (r.ok ? r.json() : null))
@@ -155,6 +159,10 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
   // Материал или поддержки поменяли после расчёта — цена уже не про них.
   const stale = !!res && (res.material !== material || res.supports !== supports);
   const hint = pricing ? batchHint(pricing.batch) : "";
+  // Смола (SLA) — цена по запросу: показываем заявку вместо расчёта.
+  const onRequest = (catalog.on_request ?? []).includes(material);
+  const materialItem = catalog.items?.find((i) => i.key === material);
+  const materialText = materialHint(material, catalog.items, MATERIAL_HINTS);
   // Цена есть и актуальна — можно оформлять (кнопка в блоке и липкая панель на телефоне).
   const canOrder = !!res && !!quote && !stale;
   const orderHref = quote ? `/order/new?quote=${encodeURIComponent(quote.id)}` : "";
@@ -180,16 +188,28 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
             className="w-full max-w-full rounded-md border px-3 py-2"
             style={selectStyle}
           >
-            {materials.map((m) => (
-              <option key={m} value={m}>
-                {MATERIAL_LABELS[m] ?? m}
-                {pricing?.materials[m] ? ` — ${formatPrice(pricing.materials[m].price_per_g)}/г` : ""}
-              </option>
-            ))}
+            <optgroup label="Пластик — цена сразу">
+              {catalog.materials.map((m) => (
+                <option key={m} value={m}>
+                  {catalog.items?.length ? materialOptionLabel(m, catalog.items) : (MATERIAL_LABELS[m] ?? m)}
+                  {pricing?.materials[m] ? ` — ${formatPrice(pricing.materials[m].price_per_g)}/г` : ""}
+                </option>
+              ))}
+            </optgroup>
+            {(catalog.on_request ?? []).length > 0 && (
+              <optgroup label="Смола (SLA) — цена по запросу">
+                {(catalog.on_request ?? []).map((m) => (
+                  <option key={m} value={m}>
+                    {materialOptionLabel(m, catalog.items)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
-          {MATERIAL_HINTS[material] && (
+          {materialText && (
             <span className="text-xs leading-snug" style={{ color: "var(--ink-muted)" }} data-testid="material-hint">
-              {MATERIAL_HINTS[material]}
+              {materialText}
+              {materialItem?.needs_enclosure ? " Печатаем в закрытой камере." : ""}
             </span>
           )}
         </label>
@@ -207,55 +227,71 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
           />
         </label>
 
-        <label className="flex min-w-0 max-w-full flex-col gap-1">
-          <span style={{ color: "var(--ink-muted)" }}>Постобработка</span>
-          <select
-            value={postprocess}
-            onChange={(e) => setPostprocess(e.target.value)}
-            className="w-full max-w-full rounded-md border px-3 py-2"
-            style={selectStyle}
-          >
-            {Object.entries(pricing?.postprocess ?? { none: 0 }).map(([key, price]) => (
-              <option key={key} value={key}>
-                {optionLabel(POSTPROCESS_LABELS, key, price, true)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!onRequest && (
+          <>
+            <label className="flex min-w-0 max-w-full flex-col gap-1">
+              <span style={{ color: "var(--ink-muted)" }}>Постобработка</span>
+              <select
+                value={postprocess}
+                onChange={(e) => setPostprocess(e.target.value)}
+                className="w-full max-w-full rounded-md border px-3 py-2"
+                style={selectStyle}
+              >
+                {Object.entries(pricing?.postprocess ?? { none: 0 }).map(([key, price]) => (
+                  <option key={key} value={key}>
+                    {optionLabel(POSTPROCESS_LABELS, key, price, true)}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <label className="flex min-w-0 max-w-full flex-col gap-1">
-          <span style={{ color: "var(--ink-muted)" }}>Доставка</span>
-          <select
-            value={delivery}
-            onChange={(e) => setDelivery(e.target.value)}
-            className="w-full max-w-full rounded-md border px-3 py-2"
-            style={selectStyle}
-          >
-            {Object.entries(pricing?.delivery ?? { pickup: 0 }).map(([key, price]) => (
-              <option key={key} value={key}>
-                {optionLabel(DELIVERY_LABELS, key, price, false)}
-              </option>
-            ))}
-          </select>
-        </label>
+            <label className="flex min-w-0 max-w-full flex-col gap-1">
+              <span style={{ color: "var(--ink-muted)" }}>Доставка</span>
+              <select
+                value={delivery}
+                onChange={(e) => setDelivery(e.target.value)}
+                className="w-full max-w-full rounded-md border px-3 py-2"
+                style={selectStyle}
+              >
+                {Object.entries(pricing?.delivery ?? { pickup: 0 }).map(([key, price]) => (
+                  <option key={key} value={key}>
+                    {optionLabel(DELIVERY_LABELS, key, price, false)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <label className="flex items-center gap-2 py-2">
-          <input type="checkbox" checked={supports} onChange={(e) => setSupports(e.target.checked)} />
-          Нужны поддержки
-        </label>
-        <button
-          type="button"
-          onClick={() => void calculate()}
-          disabled={busy || inProgress}
-          className="rounded-md px-4 py-2 font-medium disabled:opacity-50"
-          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
-        >
-          {res ? "Пересчитать" : "Рассчитать цену"}
-        </button>
-        {stale && <span style={{ color: "var(--ink-muted)" }}>Материал изменился — нажмите «Пересчитать».</span>}
-      </div>
+      {onRequest && (
+        <LeadForm
+          key={material}
+          uploadId={uploadId}
+          material={material}
+          materialName={materialItem?.name ?? material}
+          qty={qty}
+        />
+      )}
+
+      {!onRequest && (
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <label className="flex items-center gap-2 py-2">
+            <input type="checkbox" checked={supports} onChange={(e) => setSupports(e.target.checked)} />
+            Нужны поддержки
+          </label>
+          <button
+            type="button"
+            onClick={() => void calculate()}
+            disabled={busy || inProgress}
+            className="rounded-md px-4 py-2 font-medium disabled:opacity-50"
+            style={{ background: "var(--filament)", color: "var(--on-filament)" }}
+          >
+            {res ? "Пересчитать" : "Рассчитать цену"}
+          </button>
+          {stale && <span style={{ color: "var(--ink-muted)" }}>Материал изменился — нажмите «Пересчитать».</span>}
+        </div>
+      )}
 
       {error && (
         <p role="alert" style={{ color: "var(--danger)" }}>
@@ -263,7 +299,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
         </p>
       )}
 
-      {record && (
+      {record && !onRequest && (
         <div className="flex flex-col gap-4 text-sm" aria-live="polite">
           {showProgress && (
             <SliceProgress

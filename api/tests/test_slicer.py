@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from conftest import REPO_ROOT, box_stl
 
-from app import slicer
+from app import materials, slicer
 from app.config import settings
 from app.slicer import SlicerError, build_command, parse_gcode, parse_time, slice_model
 
@@ -111,7 +111,7 @@ def test_build_command_missing_profile(monkeypatch, tmp_path):
 
 
 def test_all_materials_have_profiles(profiles):
-    for material in slicer.MATERIALS:
+    for material in materials.sliceable():
         assert slicer.profile_paths(material)
 
 
@@ -167,7 +167,7 @@ def _upload(client) -> str:
 
 
 def test_materials_endpoint(client):
-    assert client.get("/api/v1/materials").json() == {"materials": ["PLA", "PETG", "ABS"]}
+    assert client.get("/api/v1/materials").json()["materials"][:3] == ["PLA", "PETG", "ABS"]
 
 
 def test_slice_api_sync(client, fake_slicer):
