@@ -11,8 +11,11 @@ chat_id в Telegram (B34). В `orders.anonymized_at` пишется дата. С
 (docs/ANALYTICS.md) и учёту. У оплат (`payments`) стирается сырой ответ ЮKassa (`raw`) —
 там могут быть данные карты и чека; сумма, статус и id платежа остаются.
 
+Заявки «цена по запросу» (`leads`, B44) живут столько же, считая от даты заявки: у них
+стираются имя, телефон, e-mail и комментарий; материал, тираж и дата остаются.
+
 Файлы модели к этому времени давно удалены (app/cleanup.py — через год после закрытия).
-Таблицу `events` не трогаем: в ней нет данных клиента, только id загрузок и заказов.
+Таблицу `events` не трогаем: в ней нет данных клиента, только id загрузок, заказов и заявок.
 
 Запуск: cron в worker каждую ночь (app/worker.py) и руками —
 `python -m app.anonymize` (посмотреть, что изменится: `python -m app.anonymize --dry-run`).
@@ -30,7 +33,7 @@ from sqlalchemy.orm import Session
 from app.cleanup import CLOSED_STATUSES
 from app.config import settings
 from app.db import session_factory
-from app.models import Order, Payment
+from app.models import Lead, Order, Payment
 
 log = logging.getLogger(__name__)
 
@@ -48,16 +51,23 @@ BLANK_ORDER_FIELDS: dict = {
     "company_address": None,
     "telegram_chat_id": None,
 }
+BLANK_LEAD_FIELDS: dict = {"name": "", "phone": "", "email": None, "comment": None}
 
 
 @dataclass
 class AnonymizeReport:
     orders: list[int] = field(default_factory=list)  # номера обезличенных заказов
     payments: int = 0  # у скольких оплат стёрт raw
+    leads: list[int] = field(default_factory=list)  # номера обезличенных заявок (B44)
     dry_run: bool = False
 
     def to_dict(self) -> dict:
-        return {"orders": len(self.orders), "payments": self.payments, "dry_run": self.dry_run}
+        return {
+            "orders": len(self.orders),
+            "payments": self.payments,
+            "leads": len(self.leads),
+            "dry_run": self.dry_run,
+        }
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -81,12 +91,39 @@ def find_orders(db: Session, now: datetime | None = None) -> list[int]:
     return [order_id for order_id, updated_at in rows if _as_utc(updated_at) <= deadline]
 
 
+def find_leads(db: Session, now: datetime | None = None) -> list[int]:
+    """Номера заявок «цена по запросу», которым пора обезличиться (срок — от даты заявки)."""
+    if settings.anonymize_orders_days <= 0:
+        return []
+    now = now or datetime.now(UTC)
+    deadline = now - timedelta(days=settings.anonymize_orders_days)
+    rows = db.execute(
+        select(Lead.id, Lead.created_at).where(Lead.anonymized_at.is_(None)).order_by(Lead.id)
+    ).all()
+    return [lead_id for lead_id, created_at in rows if _as_utc(created_at) <= deadline]
+
+
 def anonymize_orders(
     db: Session, now: datetime | None = None, dry_run: bool = False
 ) -> AnonymizeReport:
     """Обезличить всё, чей срок вышел. dry_run=True — только перечислить."""
     now = now or datetime.now(UTC)
-    report = AnonymizeReport(orders=find_orders(db, now), dry_run=dry_run)
+    report = AnonymizeReport(
+        orders=find_orders(db, now), leads=find_leads(db, now), dry_run=dry_run
+    )
+    if report.leads and not dry_run:
+        db.execute(
+            update(Lead)
+            .where(Lead.id.in_(report.leads))
+            .values(**BLANK_LEAD_FIELDS, anonymized_at=now)
+        )
+        db.commit()
+    if report.leads:
+        log.info(
+            "Обезличивание: заявок «цена по запросу» %s — %d",
+            "обезличил бы" if dry_run else "обезличено",
+            len(report.leads),
+        )
     if not report.orders:
         log.info("Обезличивание: заказов старше %d дн. нет", settings.anonymize_orders_days)
         return report
@@ -138,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Заказов {verb}: {result['orders']} (закрыты больше "
         f"{settings.anonymize_orders_days} дн. назад), оплат с очищенным ответом ЮKassa: "
-        f"{result['payments']}."
+        f"{result['payments']}, заявок «цена по запросу»: {result['leads']}."
     )
     return 0
 

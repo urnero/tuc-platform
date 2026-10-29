@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app import anonymize, worker
 from app.config import settings
-from app.models import Order, Payment
+from app.models import Lead, Order, Payment
 
 NOW = datetime(2031, 11, 1, 1, 50, tzinfo=UTC)
 FIVE_YEARS = 5 * 365 + 1
@@ -195,3 +195,41 @@ def test_admin_card_after_anonymize(client, db, monkeypatch):
     assert "Данные клиента стёрты 01.11.2031" in r.text
     assert "Иван Петров" not in r.text and "ivan@example.com" not in r.text
     assert "Ромашка" not in r.text and "7707083893" not in r.text
+
+
+def _lead(db, days_ago: float) -> Lead:
+    lead = Lead(
+        created_at=NOW - timedelta(days=days_ago),
+        upload_id=secrets.token_hex(16),
+        material="RESIN",
+        qty=2,
+        name="Аня",
+        phone="+79991234567",
+        email="a@example.com",
+        comment="позвоните вечером",
+        telegram_sent=False,
+    )
+    db.add(lead)
+    db.commit()
+    return lead
+
+
+def test_old_leads_are_anonymized(session):
+    """Заявки «цена по запросу» (B44): контакты стираются через тот же срок от даты заявки."""
+    old = _lead(session, days_ago=FIVE_YEARS + 1)
+    recent = _lead(session, days_ago=FIVE_YEARS - 1)
+
+    dry = anonymize.anonymize_orders(session, now=NOW, dry_run=True)
+    assert dry.leads == [old.id]
+    session.expire_all()
+    assert session.get(Lead, old.id).name == "Аня"
+
+    report = anonymize.anonymize_orders(session, now=NOW)
+    assert report.leads == [old.id] and report.to_dict()["leads"] == 1
+    session.expire_all()
+    o = session.get(Lead, old.id)
+    assert o.name == "" and o.phone == "" and o.email is None and o.comment is None
+    assert o.anonymized_at is not None and o.material == "RESIN" and o.qty == 2
+    assert session.get(Lead, recent.id).name == "Аня"
+    # второй прогон ничего не трогает
+    assert anonymize.anonymize_orders(session, now=NOW).leads == []

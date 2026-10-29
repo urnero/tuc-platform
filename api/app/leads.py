@@ -2,12 +2,13 @@
 
 POST /api/v1/uploads/{upload_id}/request
      {material: "RESIN", qty: 1, name, phone, email?, comment?}
-     → 201 {ok: true, telegram: true|false}
+     → 201 {ok: true, telegram: true|false}  (telegram=false — бот не настроен)
 
-Оплаты здесь нет: владелец получает заявку в Telegram (карточка со ссылкой на файл в админке),
-смотрит модель и называет цену клиенту сам. Заявка пишется и в таблицу `events`
-(`material_request`, контакты в props) — так она не потеряется, даже если Telegram выключен:
-SQL — docs/ANALYTICS.md.
+Оплаты здесь нет: владелец получает заявку в Telegram (карточка со ссылкой на файл),
+смотрит модель и называет цену клиенту сам. Заявка с контактами сохраняется в таблицу `leads`
+— так она не потеряется, даже если Telegram выключен: список в админке /admin/leads.
+Через ANONYMIZE_ORDERS_DAYS контакты стираются (app/anonymize.py). В `events` пишется
+только факт заявки (`material_request`: material, qty, lead_id) — без данных клиента.
 
 Почему не обычный заказ: формула цены (pricing.py) смолы не умеет — PrusaSlicer SLA-режим
 мы не подключали (DECISIONS 2026-10-27 п. 3). Когда владелец захочет считать смолы
@@ -15,14 +16,18 @@ SQL — docs/ANALYTICS.md.
 """
 
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.orm import Session
 
 from app import materials
 from app.config import settings
+from app.db import get_db
 from app.events import track
 from app.limits import orders_guard
+from app.models import Lead
 from app.orders import EMAIL_RE, PhoneError, normalize_phone
 from app.telegram import esc, send_message, telegram_enabled
 from app.uploads import load_meta
@@ -92,27 +97,40 @@ def lead_text(upload_id: str, meta: dict, body: LeadRequest, material: materials
 
 
 @router.post("/uploads/{upload_id}/request", status_code=201, dependencies=[Depends(orders_guard)])
-def create_lead(upload_id: str, body: LeadRequest, background: BackgroundTasks) -> dict:
+def create_lead(
+    upload_id: str,
+    body: LeadRequest,
+    background: BackgroundTasks,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
     meta = load_meta(upload_id)  # 404, если загрузки нет
     material = materials.get(body.material)
     if material is None or not material.enabled:
         raise HTTPException(status_code=422, detail="Такого материала нет.")
+    sent = telegram_enabled()
+    lead = Lead(
+        upload_id=upload_id,
+        material=material.key,
+        qty=body.qty,
+        name=body.name,
+        phone=body.phone,
+        email=body.email,
+        comment=body.comment,
+        telegram_sent=sent,
+    )
+    db.add(lead)
+    db.flush()  # нужен lead.id для события
+    # Событие — одной транзакцией с заявкой. Контактов в нём нет (см. docstring модуля).
     track(
         "material_request",
         upload_id=upload_id,
-        props={
-            "material": material.key,
-            "qty": body.qty,
-            "name": body.name,
-            "phone": body.phone,
-            "email": body.email,
-            "comment": body.comment,
-        },
+        props={"material": material.key, "qty": body.qty, "lead_id": lead.id},
+        db=db,
     )
-    sent = telegram_enabled()
+    db.commit()
     if sent:
         text = lead_text(upload_id, meta, body, material)
         background.add_task(send_message, settings.telegram_owner_chat_id, text)
     else:
-        log.info("telegram выключен: заявка по %s без уведомления (есть в events)", upload_id)
+        log.info("telegram выключен: заявка № %s по %s — только в админке", lead.id, upload_id)
     return {"ok": True, "telegram": sent}

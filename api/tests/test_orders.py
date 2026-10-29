@@ -261,6 +261,42 @@ def test_alembic_matches_models(tmp_path, monkeypatch):
     assert "orders" not in inspect(create_engine(url)).get_table_names()
 
 
+def test_migration_0008_moves_lead_contacts_out_of_events(tmp_path, monkeypatch):
+    """[ПДн] старые заявки B44 с контактами в events.props переезжают в таблицу leads."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    monkeypatch.setattr(settings, "database_url", url)
+    cfg = Config(str(REPO_ROOT / "api" / "alembic.ini"))
+    cfg.set_main_option("script_location", str(REPO_ROOT / "api" / "alembic"))
+    command.upgrade(cfg, "0007")
+    engine = create_engine(url)
+    props = '{"material": "RESIN", "qty": 2, "name": "Аня", "phone": "+79991234567", '
+    props += '"email": null, "comment": "серый"}'
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "insert into events (created_at, name, upload_id, props) values "
+                "('2026-10-28 10:00:00', 'material_request', 'u1', :p), "
+                "('2026-10-28 11:00:00', 'upload', 'u1', '{\"ext\": \"stl\"}')"
+            ),
+            {"p": props},
+        )
+    command.upgrade(cfg, "head")
+    with engine.connect() as c:
+        lead = c.execute(
+            text(
+                "select id, upload_id, material, qty, name, phone, comment, "
+                "telegram_sent from leads"
+            )
+        ).one()
+        ev = c.execute(text("select props from events where name='material_request'")).scalar()
+        up = c.execute(text("select props from events where name='upload'")).scalar()
+    assert lead[1:] == ("u1", "RESIN", 2, "Аня", "+79991234567", "серый", 0)
+    assert json.loads(ev) == {"material": "RESIN", "qty": 2, "lead_id": lead[0]}
+    assert json.loads(up) == {"ext": "stl"}
+
+
 def test_create_order_after_units_change_404(client, pricing_file, fake_slicer, db):
     """[ДЕНЬГИ] расчёт цены сделан в мм, потом клиент переключил «файл в дюймах» —
     заказ по старому (в 16 000 раз заниженному) расчёту не оформить: его больше нет."""

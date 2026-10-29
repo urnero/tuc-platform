@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app import leads, materials
 from app.config import settings
 from app.db import session_factory
-from app.models import Event
+from app.models import Event, Lead
 from app.pricing import parse_pricing
 from app.slicer import SlicerError, check_material
 
@@ -134,19 +134,46 @@ def _upload(client) -> str:
     return r.json()["id"]
 
 
-def test_lead_without_telegram_goes_to_events(client, monkeypatch):
+def test_lead_without_telegram_saved_in_leads(client, monkeypatch):
     monkeypatch.setattr(settings, "telegram_bot_token", "")
     uid = _upload(client)
     r = client.post(
         f"/api/v1/uploads/{uid}/request",
-        json={"material": "resin", "qty": 3, "name": " Аня ", "phone": "8 999 123-45-67"},
+        json={
+            "material": "resin",
+            "qty": 3,
+            "name": " Аня ",
+            "phone": "8 999 123-45-67",
+            "email": "a@example.com",
+            "comment": "срочно",
+        },
     )
     assert r.status_code == 201 and r.json() == {"ok": True, "telegram": False}
     with session_factory()() as s:
+        lead = s.scalars(select(Lead)).one()
         ev = s.scalars(select(Event).where(Event.name == "material_request")).one()
+    assert lead.upload_id == uid and lead.material == "RESIN" and lead.qty == 3
+    assert lead.name == "Аня" and lead.phone.startswith("+7") and lead.email == "a@example.com"
+    assert lead.comment == "срочно" and lead.telegram_sent is False
+    # [ПДн] в events — только факт заявки, без контактов клиента
     assert ev.upload_id == uid
-    assert ev.props["material"] == "RESIN" and ev.props["qty"] == 3
-    assert ev.props["name"] == "Аня" and ev.props["phone"].startswith("+7")
+    assert ev.props == {"material": "RESIN", "qty": 3, "lead_id": lead.id}
+
+
+def test_admin_lists_leads(client, monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    monkeypatch.setattr(settings, "admin_password", "secret-pass")
+    uid = _upload(client)
+    client.post(
+        f"/api/v1/uploads/{uid}/request",
+        json={"material": "RESIN", "name": "Вера <i>", "phone": "89990001122"},
+    )
+    assert client.get("/admin/leads").status_code == 401
+    r = client.get("/admin/leads", auth=("admin", "secret-pass"))
+    assert r.status_code == 200
+    assert "Вера &lt;i&gt;" in r.text and "Смола стандартная" in r.text
+    assert f"/upload/{uid}" in r.text and "Бот не настроен" in r.text
+    assert 'href="/admin/leads"' in r.text  # ссылка в шапке
 
 
 def test_lead_sends_telegram(client, monkeypatch):
@@ -165,6 +192,8 @@ def test_lead_sends_telegram(client, monkeypatch):
         },
     )
     assert r.json()["telegram"] is True
+    with session_factory()() as s:
+        assert s.scalars(select(Lead)).one().telegram_sent is True
     chat, text = sent[0]
     assert chat == "42"
     assert "Смола прочная" in text and "Петя &lt;b&gt;" in text and "серый" in text
