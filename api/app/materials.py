@@ -7,6 +7,8 @@
 - `on_request()` — смолы (SLA): на сайте их можно выбрать, но цену называет владелец —
   клиент оставляет заявку (POST /api/v1/uploads/{id}/request), без оплаты.
 - `fits()` — влезает ли модель в область печати этого материала (с поворотом).
+- `size_problem()` — то же для сайта: текст клиенту, если деталь больше области печати
+  материала (проверяется до постановки расчёта в очередь, см. slices.py).
 
 Файл перечитывается, когда меняется его дата — после правки yaml перезапуск api не нужен.
 Если файла нет (например, папку config не смонтировали), слайсер всё равно работает:
@@ -157,3 +159,33 @@ def fits(size_mm: tuple[float, float, float], area_mm: tuple[float, float, float
     """Влезает ли деталь в область печати, если её можно повернуть.
     Сравниваем размеры по возрастанию: самый маленький с самым маленьким и т. д."""
     return all(s <= a for s, a in zip(sorted(size_mm), sorted(area_mm), strict=True))
+
+
+def model_size_mm(meta: dict) -> tuple[float, float, float] | None:
+    """Габариты загрузки X×Y×Z, мм, из meta.json (поле mesh.bbox_mm). Нет данных → None."""
+    bbox = (meta.get("mesh") or {}).get("bbox_mm") or {}
+    try:
+        size = tuple(float(bbox.get(k, 0)) for k in ("x", "y", "z"))
+    except (TypeError, ValueError):
+        return None
+    return size if any(size) else None  # type: ignore[return-value]
+
+
+def size_problem(size_mm: tuple[float, float, float] | None, key: str) -> str | None:
+    """Деталь больше области печати материала → понятный текст клиенту, иначе None.
+
+    Область — `max_mm` из config/materials.yaml (по принтерам из docs/PRINTERS.md).
+    Без размеров или без `max_mm` проверять нечего — пропускаем."""
+    material = get(key)
+    if size_mm is None or material is None or not material.max_mm:
+        return None
+    if fits(size_mm, material.max_mm):
+        return None
+    dims = " × ".join(f"{v:g}" for v in size_mm)
+    area = " × ".join(f"{v:g}" for v in material.max_mm)
+    name = material.name or material.key
+    return (
+        f"Модель {dims} мм не помещается в принтер для {name} (до {area} мм). "
+        "Уменьшите масштаб в файле, выберите другой материал или напишите нам — "
+        "напечатаем частями и склеим."
+    )

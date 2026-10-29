@@ -293,8 +293,10 @@ def test_api_quote_not_found(client, pricing_file):
 
 def test_api_quote_units_change_invalidates(client, pricing_file, fake_slicer):
     """[ДЕНЬГИ] после «мм → дюймы» старый расчёт цены удалён (заказ по нему невозможен),
-    а новый расчёт цены требует расчёта печати для новых единиц."""
-    upload_id = _upload(client)
+    а новый расчёт цены требует расчёта печати для новых единиц.
+    Коробка 2×3×4: в дюймах 51×76×102 мм — влезает в принтер."""
+    r = client.post("/api/v1/uploads", files={"file": ("b.stl", box_stl(2, 3, 4), "model/stl")})
+    upload_id = r.json()["id"]
     client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"})
     q = client.post(f"/api/v1/uploads/{upload_id}/quote", json={"material": "PLA"}).json()
     assert q["units"] == "mm"

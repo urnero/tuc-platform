@@ -99,6 +99,26 @@ def read_ini_value(path: Path, key: str) -> str | None:
     return None
 
 
+def printer_bed() -> tuple[float, float, float]:
+    """Стол из profiles/printer.ini: (X, Y, Z) мм. Отсюда берём центр для `--center`,
+    чтобы центр и стол слайсера не разъезжались (раньше центр брался из PRINT_BED_MM).
+
+    bed_shape — углы стола «0x0,256x0,256x256,0x256», max_print_height — высота."""
+    path = profiles_dir() / "printer.ini"
+    try:
+        shape = read_ini_value(path, "bed_shape") or ""
+        height = float(read_ini_value(path, "max_print_height") or 0)
+        corners = [tuple(float(v) for v in c.split("x")) for c in shape.split(",") if c.strip()]
+        xs = [c[0] for c in corners]
+        ys = [c[1] for c in corners]
+        bed = (max(xs) - min(xs), max(ys) - min(ys), height)
+    except (OSError, ValueError, IndexError) as e:
+        raise SlicerError(f"Не прочитал стол из профиля принтера {path}: {e}") from e
+    if not all(bed):
+        raise SlicerError(f"В профиле принтера {path} нет bed_shape или max_print_height.")
+    return bed
+
+
 # --- команда ---------------------------------------------------------------
 
 
@@ -119,7 +139,7 @@ def build_command(
         cmd += ["--load", str(p)]
     if UNITS[units] != 1.0:
         cmd += ["--scale", str(UNITS[units])]  # файл в дюймах → умножаем на 25.4
-    bed = print_bed or settings.print_bed
+    bed = print_bed or printer_bed()
     cmd += ["--center", f"{bed[0] / 2:g},{bed[1] / 2:g}"]  # ставим модель в центр стола
     if supports:
         cmd += ["--support-material"]

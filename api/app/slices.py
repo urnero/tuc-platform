@@ -77,6 +77,11 @@ async def create_slice(upload_id: str, body: SliceRequest, request: Request) -> 
         key = slice_key(body.material, body.supports)
     except SlicerError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    # Деталь больше области печати материала — в очередь не ставим: слайсер упал бы
+    # или положил модель за край стола. Клиенту — понятный текст, что делать.
+    problem = materials.size_problem(materials.model_size_mm(meta), body.material.upper())
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     record = _settle(upload_id, load_record(upload_id, key, units=units))
     if record and record["status"] in ("queued", "running", "done"):
