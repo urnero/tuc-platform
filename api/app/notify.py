@@ -44,6 +44,7 @@ BODIES = {
     "printing": "Модель уже на принтере. Напишем, когда заказ будет готов.",
     "ready_pickup": "Заказ готов — можно забирать в студии. Адрес и часы работы: {contacts}",
     "ready_courier": "Заказ готов — передаём курьеру, он свяжется с вами по телефону.",
+    "ready_cdek": "Заказ готов — отправляем СДЭК в выбранный пункт, номер отправления пришлём.",
     "done": "Заказ выдан. Спасибо, что печатаете с нами!",
     "cancelled": "Заказ отменён. Если это ошибка или остались вопросы — напишите нам: {contacts}",
 }
@@ -61,7 +62,8 @@ def status_text(order: dict) -> tuple[str, str] | None:
         return None
     key = status
     if status == "ready":
-        key = "ready_pickup" if order["delivery"] == "pickup" else "ready_courier"
+        by_delivery = {"pickup": "ready_pickup", "cdek": "ready_cdek"}
+        key = by_delivery.get(order["delivery"], "ready_courier")
     body = BODIES[key].format(contacts=f"{settings.site_url}/contacts")
     lines = [f"Здравствуйте, {order['customer_name']}!", "", body]
     if status == "new":

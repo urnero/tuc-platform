@@ -83,6 +83,8 @@ def test_ready_text_depends_on_delivery(session, monkeypatch):
     assert "забирать в студии" in notify.status_text(pickup)[1]
     assert "https://tuc.example/contacts" in notify.status_text(pickup)[1]
     assert "курьеру" in notify.status_text(courier | {"status": "ready"})[1]
+    cdek = make_order(session, delivery="cdek", address="Казань, пункт СДЭК").to_dict()
+    assert "СДЭК" in notify.status_text(cdek | {"status": "ready"})[1]
 
 
 def test_new_text_explains_payment(session, monkeypatch):

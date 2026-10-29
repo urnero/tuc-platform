@@ -244,10 +244,10 @@ function NewOrder() {
           {courier && (
             <Field
               id="order-address"
-              label="Адрес доставки"
+              label={delivery === "cdek" ? "Город и адрес пункта СДЭК" : "Адрес доставки"}
               name="address"
               autoComplete="street-address"
-              placeholder="Москва, улица, дом, квартира"
+              placeholder={delivery === "cdek" ? "Казань, ул. Баумана, 1 — пункт СДЭК" : "Москва, улица, дом, квартира"}
               value={form.address}
               error={errors.address}
               onChange={(e) => set("address", e.target.value)}

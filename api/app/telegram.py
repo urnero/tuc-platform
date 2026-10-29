@@ -53,8 +53,12 @@ NEXT_STATUSES: dict[str, list[str]] = {
 # Заказы в этих статусах показываем в /orders как «активные».
 ACTIVE_STATUSES = ("new", "paid", "printing", "ready")
 
-DELIVERY_LABELS = {"pickup": "самовывоз", "courier_moscow": "курьер по Москве"}
-POSTPROCESS_LABELS = {"none": "нет", "sanding": "шлифовка"}
+DELIVERY_LABELS = {
+    "pickup": "самовывоз",
+    "courier_moscow": "курьер по Москве",
+    "cdek": "СДЭК до пункта выдачи",
+}
+POSTPROCESS_LABELS = {"none": "нет", "sanding": "шлифовка", "painting": "грунт и покраска"}
 
 MSK = timedelta(hours=3)
 

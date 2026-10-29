@@ -159,6 +159,25 @@ def test_repo_pricing_yaml_is_valid():
     assert "none" in pricing.postprocess
 
 
+def test_repo_pricing_numbers_are_sane():
+    """B45: оценка по рынку — числа не потеряли смысл (опечатка 23 вместо 2.3 и т. п.)."""
+    from app.telegram import DELIVERY_LABELS, POSTPROCESS_LABELS
+
+    pricing = parse_pricing(yaml.safe_load(PRICING_YAML.read_text("utf-8")))
+    for name, m in pricing.materials.items():
+        assert 0.5 <= m["price_per_g"] <= 50, name
+    assert 0 < pricing.margin < 2
+    assert pricing.k_supports >= 1
+    ks = [t["k"] for t in pricing.batch]
+    assert ks == sorted(ks, reverse=True) and all(0 < k <= 1 for k in ks), "скидка растёт с тиражом"
+    # у каждого варианта есть подпись в карточке Telegram (на сайте — web/lib/pricing.ts)
+    assert set(pricing.delivery) <= set(DELIVERY_LABELS)
+    assert set(pricing.postprocess) <= set(POSTPROCESS_LABELS)
+    # PLA, деталь 50 г / 3 ч: цена за грамм в коридоре рынка Москвы (DECISIONS 2026-10-29)
+    q = calc_price(pricing, material="PLA", material_g=50, print_time_s=3 * 3600)
+    assert 5 <= q.total / 50 <= 15
+
+
 def test_repo_pricing_matches_slicer_materials():
     """Материалы в pricing.yaml = профили в profiles/filament/, иначе цену не посчитать."""
     from app import materials
@@ -236,8 +255,8 @@ def test_api_quote_flow(client, pricing_file, fake_slicer):
     assert q["material"] == "PLA"
     assert q["material_g"] == grams
     assert q["qty"] == 2
-    assert q["delivery_cost"] == 400
-    assert q["total"] >= 400 + q["min_order"]
+    assert q["delivery_cost"] == 450
+    assert q["total"] >= 450 + q["min_order"]
     assert q["upload_id"] == upload_id
     assert q["original_name"] == "box.stl"
 

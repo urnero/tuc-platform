@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { batchHint, DELIVERY_LABELS, optionLabel, POSTPROCESS_LABELS, quoteLines, type Quote } from "./pricing";
+import { batchHint, clientPerGram, DELIVERY_LABELS, optionLabel, POSTPROCESS_LABELS, quoteLines, type Pricing, type Quote } from "./pricing";
 
 const base: Quote = {
   id: "a-b",
@@ -39,6 +39,15 @@ describe("optionLabel", () => {
   });
   it("платный за штуку", () => {
     expect(optionLabel(POSTPROCESS_LABELS, "sanding", 150, true)).toBe("Шлифовка (+150 ₽/шт)");
+  });
+  it("цена грамма для клиента — с наценкой", () => {
+    const p = { margin: 0.4, materials: { PLA: { price_per_g: 2.3, tech: "FDM" } } } as unknown as Pricing;
+    expect(clientPerGram(p, "PLA")).toBe(3.2);
+    expect(clientPerGram(p, "PA")).toBeNull();
+  });
+  it("новые варианты B45 подписаны по-русски", () => {
+    expect(optionLabel(POSTPROCESS_LABELS, "painting", 900, true)).toBe("Грунт и покраска в один цвет (+900 ₽/шт)");
+    expect(optionLabel(DELIVERY_LABELS, "cdek", 500, false)).toBe("СДЭК до пункта выдачи (Россия) (+500 ₽)");
   });
   it("неизвестный ключ показываем как есть", () => {
     expect(optionLabel(POSTPROCESS_LABELS, "paint", 0, true)).toBe("paint");

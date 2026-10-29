@@ -9,7 +9,9 @@
 
 import { formatPrice } from "./format";
 import type { MaterialItem, MaterialsResponse } from "./materials";
-import type { Pricing } from "./pricing";
+import { clientPerGram, formatPerGram, type Pricing } from "./pricing";
+
+export { formatPerGram };
 
 /** Шаги «как это работает» — те же, что на /about, но короче. */
 export const STEPS: { title: string; text: string }[] = [
@@ -46,15 +48,15 @@ export type MaterialCard = {
 };
 
 /**
- * Карточки материалов: имя, описание, «от 4 ₽/г».
+ * Карточки материалов: имя, описание, «от 5,4 ₽/г» (грамм с наценкой — clientPerGram).
  * Есть справочник (B44) — карточки по нему (смолы — «цена по запросу»); нет — по прайсу и
  * запасным описаниям. Без прайса — описания без цен.
  */
 export function materialCards(pricing: Pricing | null, items: MaterialItem[] = []): MaterialCard[] {
   if (items.length) {
     return items.map((item) => {
-      const perG = pricing?.materials[item.key]?.price_per_g;
-      let price: string | null = perG === undefined ? null : `от ${formatPerGram(perG)}/г`;
+      const perG = pricing ? clientPerGram(pricing, item.key) : null;
+      let price: string | null = perG === null ? null : `от ${formatPerGram(perG)}/г`;
       if (item.on_request) price = "цена по запросу";
       return { name: item.name, tagline: item.tagline, text: item.hint, price, onRequest: item.on_request };
     });
@@ -62,20 +64,14 @@ export function materialCards(pricing: Pricing | null, items: MaterialItem[] = [
   const names = pricing ? Object.keys(pricing.materials) : Object.keys(MATERIAL_INFO);
   return names.map((name) => {
     const info = MATERIAL_INFO[name] ?? { tagline: "", text: "Подробности — при расчёте цены." };
-    const perG = pricing?.materials[name]?.price_per_g;
+    const perG = pricing ? clientPerGram(pricing, name) : null;
     return {
       name,
       tagline: info.tagline,
       text: info.text,
-      price: perG === undefined ? null : `от ${formatPerGram(perG)}/г`,
+      price: perG === null ? null : `от ${formatPerGram(perG)}/г`,
     };
   });
-}
-
-/** 4 → «4 ₽», 4.5 → «4,5 ₽» — цена за грамм без лишних нулей. */
-export function formatPerGram(rub: number): string {
-  const rounded = Math.round(rub * 100) / 100;
-  return `${String(rounded).replace(".", ",")} ₽`;
 }
 
 /** Подзаголовок про минимальный заказ: «Минимальный заказ — 500 ₽». Без прайса — пусто. */

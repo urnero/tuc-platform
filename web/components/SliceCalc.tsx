@@ -28,7 +28,9 @@ import { formatPrice } from "@/lib/format";
 import { FALLBACK_MATERIALS, materialHint, materialOptionLabel, type MaterialsResponse } from "@/lib/materials";
 import {
   batchHint,
+  clientPerGram,
   DELIVERY_LABELS,
+  formatPerGram,
   optionLabel,
   POSTPROCESS_LABELS,
   type Pricing,
@@ -192,7 +194,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
               {catalog.materials.map((m) => (
                 <option key={m} value={m}>
                   {catalog.items?.length ? materialOptionLabel(m, catalog.items) : (MATERIAL_LABELS[m] ?? m)}
-                  {pricing?.materials[m] ? ` — ${formatPrice(pricing.materials[m].price_per_g)}/г` : ""}
+                  {perGramSuffix(pricing, m)}
                 </option>
               ))}
             </optgroup>
@@ -437,4 +439,10 @@ function SliceProgress({ record, hasQuote, elapsed }: { record: SliceRecord; has
       )}
     </div>
   );
+}
+
+/** « — от 3,2 ₽/г» в списке материалов: грамм с наценкой, без часа принтера. */
+function perGramSuffix(pricing: Pricing | null, material: string): string {
+  const perG = pricing ? clientPerGram(pricing, material) : null;
+  return perG === null ? "" : ` — от ${formatPerGram(perG)}/г`;
 }

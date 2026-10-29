@@ -22,13 +22,13 @@ describe("materialCards", () => {
   it("берёт материалы из прайса и подставляет цену за грамм", () => {
     const cards = materialCards(pricing);
     expect(cards.map((c) => c.name)).toEqual(["PLA", "PETG", "NYLON"]);
-    expect(cards[0].price).toBe("от 4 ₽/г");
-    expect(cards[1].price).toBe("от 4,5 ₽/г");
+    expect(cards[0].price).toBe("от 5,4 ₽/г");
+    expect(cards[1].price).toBe("от 6,1 ₽/г");
     expect(cards[0].tagline).not.toBe("");
   });
   it("незнакомый материал из yaml получает общее описание, но цену — свою", () => {
     const nylon = materialCards(pricing)[2];
-    expect(nylon.price).toBe("от 9 ₽/г");
+    expect(nylon.price).toBe("от 12,2 ₽/г");
     expect(nylon.text.length).toBeGreaterThan(0);
   });
   it("со справочником (B44): названия из yaml, смола — «цена по запросу»", () => {
@@ -50,7 +50,7 @@ describe("materialCards", () => {
     });
     const cards = materialCards(pricing, [item("PETG", "PETG", false), item("RESIN", "Смола", true)]);
     expect(cards.map((c) => [c.name, c.price, c.onRequest])).toEqual([
-      ["PETG", "от 4,5 ₽/г", false],
+      ["PETG", "от 6,1 ₽/г", false],
       ["Смола", "цена по запросу", true],
     ]);
   });
