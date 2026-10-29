@@ -148,7 +148,8 @@ def test_lead_without_telegram_saved_in_leads(client, monkeypatch):
             "comment": "срочно",
         },
     )
-    assert r.status_code == 201 and r.json() == {"ok": True, "telegram": False}
+    assert r.status_code == 201
+    assert r.json() == {"ok": True, "telegram": False, "email": False, "delivered": False}
     with session_factory()() as s:
         lead = s.scalars(select(Lead)).one()
         ev = s.scalars(select(Event).where(Event.name == "material_request")).one()
@@ -199,6 +200,36 @@ def test_lead_sends_telegram(client, monkeypatch):
     assert "Смола прочная" in text and "Петя &lt;b&gt;" in text and "серый" in text
     assert f"/api/v1/uploads/{uid}/file" in text
     assert "20 × 30 × 40 мм" in text and "⚠️" not in text
+
+
+def test_lead_emails_owner_without_telegram(client, monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    monkeypatch.setattr(settings, "smtp_host", "log")
+    monkeypatch.setattr(settings, "owner_email", "owner@example.com")
+    mails = []
+    monkeypatch.setattr(leads, "send_mail", lambda to, subj, text: mails.append((to, subj, text)))
+    uid = _upload(client)
+    r = client.post(
+        f"/api/v1/uploads/{uid}/request",
+        json={"material": "RESIN", "name": "Оля <b>", "phone": "89991112233"},
+    )
+    assert r.json() == {"ok": True, "telegram": False, "email": True, "delivered": True}
+    to, subj, text = mails[0]
+    assert to == "owner@example.com" and "Смола стандартная" in subj
+    # в письме простой текст: без HTML-тегов и без экранирования
+    assert "Оля <b>" in text and "<b>Заявка" not in text and "/admin/leads" in text
+
+
+def test_lead_no_email_without_owner_address(client, monkeypatch):
+    monkeypatch.setattr(settings, "telegram_bot_token", "")
+    monkeypatch.setattr(settings, "smtp_host", "log")
+    monkeypatch.setattr(settings, "owner_email", "")
+    uid = _upload(client)
+    r = client.post(
+        f"/api/v1/uploads/{uid}/request",
+        json={"material": "RESIN", "name": "Оля", "phone": "89991112233"},
+    )
+    assert r.json()["delivered"] is False
 
 
 def test_lead_validation(client):

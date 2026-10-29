@@ -2,9 +2,13 @@
 
 POST /api/v1/uploads/{upload_id}/request
      {material: "RESIN", qty: 1, name, phone, email?, comment?}
-     → 201 {ok: true, telegram: true|false}  (telegram=false — бот не настроен)
+     → 201 {ok: true, telegram: bool, email: bool, delivered: bool}
 
-Оплаты здесь нет: владелец получает заявку в Telegram (карточка со ссылкой на файл),
+Оплаты здесь нет: владелец получает заявку в Telegram (карточка со ссылкой на файл)
+и/или письмом на OWNER_EMAIL (нужен SMTP_HOST, как для кабинета). `delivered=false` —
+ни одного канала нет: заявка только в админке, и сайт честно говорит клиенту, что ответ
+будет не сразу, и показывает контакты студии (web/lib/materials.ts::leadSentText).
+
 смотрит модель и называет цену клиенту сам. Заявка с контактами сохраняется в таблицу `leads`
 — так она не потеряется, даже если Telegram выключен: список в админке /admin/leads.
 Через ANONYMIZE_ORDERS_DAYS контакты стираются (app/anonymize.py). В `events` пишется
@@ -27,9 +31,11 @@ from app.config import settings
 from app.db import get_db
 from app.events import track
 from app.limits import orders_guard
+from app.mailer import mail_enabled, send_mail
 from app.models import Lead
 from app.orders import EMAIL_RE, PhoneError, normalize_phone
-from app.telegram import esc, send_message, telegram_enabled
+from app.telegram import esc as tg_esc
+from app.telegram import send_message, telegram_enabled
 from app.uploads import load_meta
 
 log = logging.getLogger(__name__)
@@ -69,12 +75,22 @@ class LeadRequest(BaseModel):
         return v
 
 
-def lead_text(upload_id: str, meta: dict, body: LeadRequest, material: materials.Material) -> str:
-    """Карточка заявки для Telegram владельца (HTML)."""
+def lead_text(
+    upload_id: str,
+    meta: dict,
+    body: LeadRequest,
+    material: materials.Material,
+    html: bool = True,
+) -> str:
+    """Карточка заявки владельцу: HTML для Telegram (html=True) или простой текст для письма."""
+
+    def esc(v: str) -> str:
+        return tg_esc(v) if html else v
+
     bbox = (meta.get("mesh") or {}).get("bbox_mm") or {}
     size = tuple(float(bbox.get(k, 0)) for k in ("x", "y", "z"))
     lines = [
-        "📝 <b>Заявка: цена по запросу</b>",
+        "📝 <b>Заявка: цена по запросу</b>" if html else "Заявка: цена по запросу",
         f"Материал: {esc(material.name)}",
         f"Тираж: {body.qty} шт.",
         f"Файл: {esc(meta.get('original_name', ''))}",
@@ -108,6 +124,7 @@ def create_lead(
     if material is None or not material.enabled:
         raise HTTPException(status_code=422, detail="Такого материала нет.")
     sent = telegram_enabled()
+    by_email = bool(mail_enabled() and settings.owner_email)
     lead = Lead(
         upload_id=upload_id,
         material=material.key,
@@ -131,6 +148,11 @@ def create_lead(
     if sent:
         text = lead_text(upload_id, meta, body, material)
         background.add_task(send_message, settings.telegram_owner_chat_id, text)
-    else:
-        log.info("telegram выключен: заявка № %s по %s — только в админке", lead.id, upload_id)
-    return {"ok": True, "telegram": sent}
+    if by_email:
+        subject = f"Заявка № {lead.id}: цена по запросу ({material.name})"
+        text = lead_text(upload_id, meta, body, material, html=False)
+        text += f"\nВсе заявки: {settings.site_url}/admin/leads"
+        background.add_task(send_mail, settings.owner_email, subject, text)
+    if not (sent or by_email):
+        log.warning("нет Telegram и OWNER_EMAIL: заявка № %s — только в админке", lead.id)
+    return {"ok": True, "telegram": sent, "email": by_email, "delivered": sent or by_email}

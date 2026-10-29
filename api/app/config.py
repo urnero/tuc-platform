@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""  # адрес отправителя; пусто = SMTP_USER
     smtp_ssl: bool = True
+    # Почта владельца для заявок «цена по запросу» (смолы): копия карточки из Telegram.
+    # Пусто или SMTP_HOST пуст = писем нет, заявка видна в Telegram и /admin/leads.
+    owner_email: str = ""
 
     # Кабинет клиента (B32): вход по коду из письма.
     login_code_ttl_min: int = 15  # сколько минут действует код

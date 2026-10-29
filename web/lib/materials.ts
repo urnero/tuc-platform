@@ -7,6 +7,7 @@
  * (POST /api/v1/uploads/{id}/request), владелец называет цену сам.
  */
 
+import { COMPANY, phoneUrl, telegramUrl } from "./company";
 import { isValidEmail, isValidPhone } from "./order";
 
 export type MaterialItem = {
@@ -114,4 +115,58 @@ export function leadRequest(form: LeadForm, material: string, qty: number) {
     email: form.email.trim() || null,
     comment: form.comment.trim() || null,
   };
+}
+
+/** Ответ POST /api/v1/uploads/{id}/request. delivered=false — заявка дошла только до админки. */
+export type LeadResponse = {
+  ok: boolean;
+  telegram?: boolean;
+  email?: boolean;
+  delivered?: boolean;
+};
+
+/**
+ * Что сказать клиенту после заявки. Если ни Telegram, ни почта владельцу не настроены
+ * (delivered=false), обещать «позвоним в течение дня» нечестно: заявка лежит в админке,
+ * пока владелец туда не заглянет. Тогда говорим «ответим в рабочее время» и даём контакты.
+ * Старый ответ api без поля delivered считаем доставленным по флагу telegram.
+ */
+export function leadSentMessage(
+  res: LeadResponse,
+  phone: string,
+): { title: string; text: string; showContacts: boolean } {
+  const delivered = res.delivered ?? Boolean(res.telegram || res.email);
+  if (delivered) {
+    return {
+      title: "Заявка отправлена",
+      text: `Посмотрим модель и позвоним или напишем на ${phone} с ценой и сроком — обычно в течение рабочего дня. Оплата — после подтверждения.`,
+      showContacts: false,
+    };
+  }
+  return {
+    title: "Заявка сохранена",
+    text: `Мастерская увидит её в рабочее время и свяжется по номеру ${phone} с ценой и сроком. Оплата — после подтверждения. Если срочно — напишите или позвоните нам сами.`,
+    showContacts: true,
+  };
+}
+
+/** Контакты студии для «если срочно» — только заполненные в web/lib/company.ts. */
+export function studioContacts(
+  company: typeof COMPANY = COMPANY,
+): { label: string; href: string }[] {
+  const out: { label: string; href: string }[] = [];
+  const tel = phoneUrl(company.phone);
+  if (tel) out.push({ label: company.phone, href: tel });
+  const tg = telegramUrl(company.telegram);
+  if (tg)
+    out.push({
+      label: `Telegram @${company.telegram.trim().replace(/^@/, "")}`,
+      href: tg,
+    });
+  if (company.email.trim())
+    out.push({
+      label: company.email.trim(),
+      href: `mailto:${company.email.trim()}`,
+    });
+  return out;
 }

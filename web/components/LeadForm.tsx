@@ -3,7 +3,8 @@
 /**
  * Заявка «цена по запросу» (B44) — для смол (SLA): цену называет мастерская, оплаты на сайте нет.
  * Показывается в блоке расчёта вместо кнопки «Рассчитать», когда выбрана смола.
- * POST /api/v1/uploads/{id}/request → владельцу в Telegram + строка в таблице events.
+ * POST /api/v1/uploads/{id}/request → таблица leads (/admin/leads) + Telegram и/или письмо владельцу.
+ * Если ни один канал не настроен — клиенту честный текст и контакты студии (leadSentMessage).
  */
 
 import { useState } from "react";
@@ -12,7 +13,10 @@ import { caughtErrorText, responseErrorText } from "@/lib/errors";
 import {
   EMPTY_LEAD,
   type LeadForm as Form,
+  type LeadResponse,
   leadRequest,
+  leadSentMessage,
+  studioContacts,
   validateLead,
 } from "@/lib/materials";
 import { maskPhone } from "@/lib/order";
@@ -33,7 +37,7 @@ export default function LeadForm({
   const [form, setForm] = useState<Form>(EMPTY_LEAD);
   const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<LeadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const set = (k: keyof Form) => (e: { target: { value: string } }) => {
@@ -56,7 +60,7 @@ export default function LeadForm({
         body: JSON.stringify(leadRequest(form, material, qty)),
       });
       if (!r.ok) throw new Error(await responseErrorText(r));
-      setSent(true);
+      setSent((await r.json()) as LeadResponse);
     } catch (err) {
       setError(caughtErrorText(err));
     } finally {
@@ -65,17 +69,29 @@ export default function LeadForm({
   }
 
   if (sent) {
+    const msg = leadSentMessage(sent, form.phone);
+    const contacts = msg.showContacts ? studioContacts() : [];
     return (
       <div
         className="card flex flex-col gap-2"
         role="status"
         data-testid="lead-sent"
       >
-        <p className="font-semibold">Заявка отправлена</p>
+        <p className="font-semibold">{msg.title}</p>
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-          Посмотрим модель и позвоним или напишем на {form.phone} с ценой и
-          сроком — обычно в течение рабочего дня. Оплата — после подтверждения.
+          {msg.text}
         </p>
+        {contacts.length > 0 && (
+          <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {contacts.map((c) => (
+              <li key={c.href}>
+                <a href={c.href} className="underline">
+                  {c.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }

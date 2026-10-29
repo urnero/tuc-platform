@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { COMPANY } from "./company";
 import {
   EMPTY_LEAD,
   formatSize,
   leadRequest,
+  leadSentMessage,
+  studioContacts,
   type MaterialItem,
   materialFacts,
   materialHint,
@@ -97,5 +100,55 @@ describe("заявка «цена по запросу»", () => {
       email: null,
       comment: "серый",
     });
+  });
+});
+
+describe("leadSentMessage", () => {
+  it("доставлено владельцу — обещаем ответ в течение дня", () => {
+    const m = leadSentMessage(
+      { ok: true, telegram: true, delivered: true },
+      "+7 999 1",
+    );
+    expect(m.title).toBe("Заявка отправлена");
+    expect(m.text).toContain("+7 999 1");
+    expect(m.showContacts).toBe(false);
+  });
+  it("нет ни бота, ни почты — честный текст и контакты", () => {
+    const m = leadSentMessage(
+      { ok: true, telegram: false, email: false, delivered: false },
+      "x",
+    );
+    expect(m.title).toBe("Заявка сохранена");
+    expect(m.text).not.toContain("в течение рабочего дня");
+    expect(m.showContacts).toBe(true);
+  });
+  it("старый ответ без delivered — по флагу telegram", () => {
+    expect(
+      leadSentMessage({ ok: true, telegram: false }, "x").showContacts,
+    ).toBe(true);
+    expect(
+      leadSentMessage({ ok: true, telegram: true }, "x").showContacts,
+    ).toBe(false);
+  });
+});
+
+describe("studioContacts", () => {
+  const base = { ...COMPANY, phone: "", telegram: "", email: "" };
+  it("пустые контакты — пустой список", () => {
+    expect(studioContacts(base)).toEqual([]);
+  });
+  it("только заполненные", () => {
+    expect(
+      studioContacts({
+        ...base,
+        phone: "+7 999 123-45-67",
+        telegram: "@bro",
+        email: "a@b.ru",
+      }),
+    ).toEqual([
+      { label: "+7 999 123-45-67", href: "tel:+79991234567" },
+      { label: "Telegram @bro", href: "https://t.me/bro" },
+      { label: "a@b.ru", href: "mailto:a@b.ru" },
+    ]);
   });
 });
