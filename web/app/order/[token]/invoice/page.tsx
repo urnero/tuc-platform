@@ -48,7 +48,7 @@ export default function InvoicePage() {
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
         <p role="alert">{error}</p>
-        <Link href={`/order/${encodeURIComponent(token)}`} style={{ color: "var(--accent)" }}>
+        <Link href={`/order/${encodeURIComponent(token)}`} style={{ color: "var(--filament-text)" }}>
           ← К заказу
         </Link>
       </main>
@@ -67,21 +67,21 @@ export default function InvoicePage() {
       {/* На бумаге — только сам счёт, без шапки и подвала сайта */}
       <style>{`@media print { body > header, body > footer, nav { display: none !important; } }`}</style>
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm print:hidden">
-        <Link href={`/order/${encodeURIComponent(token)}`} style={{ color: "var(--accent)" }}>
+        <Link href={`/order/${encodeURIComponent(token)}`} style={{ color: "var(--filament-text)" }}>
           ← К заказу {order.number}
         </Link>
         <button
           type="button"
           onClick={() => window.print()}
           className="rounded-md px-4 py-2 font-medium"
-          style={{ background: "var(--accent)", color: "var(--bg)" }}
+          style={{ background: "var(--filament)", color: "var(--on-filament)" }}
         >
           Распечатать или сохранить в PDF
         </button>
       </div>
 
       {seller.missing.length > 0 && (
-        <p className="rounded-md border px-4 py-3 text-sm print:hidden" role="alert" style={{ borderColor: "var(--muted)" }}>
+        <p className="rounded-md border px-4 py-3 text-sm print:hidden" role="alert" style={{ borderColor: "var(--ink-muted)" }}>
           Счёт ещё нельзя оплатить: студия не указала {seller.missing.join(", ")}. Напишите нам — пришлём счёт с реквизитами.
         </p>
       )}

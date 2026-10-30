@@ -45,7 +45,7 @@ const quote: Quote = {
 
 const order: Order = {
   id: 12,
-  number: "ТУЦ-12",
+  number: "BP-12",
   token: "t",
   status: "new",
   created_at: "2026-10-26T21:10:00+00:00",
@@ -101,9 +101,9 @@ describe("invoiceLines", () => {
 
 describe("шапка счёта", () => {
   it("номер счёта = номер заказа, дата по Москве, назначение платежа", () => {
-    expect(invoiceNumber(order)).toBe("ТУЦ-12");
+    expect(invoiceNumber(order)).toBe("BP-12");
     expect(invoiceDate(order.created_at)).toBe("27 октября 2026 г.");
-    expect(paymentPurpose(order)).toBe("Оплата по счёту № ТУЦ-12 от 27 октября 2026 г. за услуги 3D-печати. Без НДС.");
+    expect(paymentPurpose(order)).toBe("Оплата по счёту № BP-12 от 27 октября 2026 г. за услуги 3D-печати. Без НДС.");
   });
   it("реквизиты студии в репозитории пусты — список недостающих не пуст, в полях заглушка", () => {
     const s = sellerRequisites(COMPANY);

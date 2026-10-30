@@ -15,13 +15,18 @@ class Settings(BaseSettings):
     pricing_path: Path = Path("config/pricing.yaml")
     # Цвета пластика для раскраски по частям (B31): key, name, hex. После правки перезапустить api.
     colors_path: Path = Path("config/colors.yaml")
+    # Справочник материалов (B44): свойства, цвета, max размер; смолы — «по запросу».
+    materials_path: Path = Path("config/materials.yaml")
     # Каталог готовых моделей (B20): catalog.yaml + models/. В docker монтируется как /srv/catalog.
     catalog_dir: Path = Path("catalog")
 
     # Загрузка моделей (B02)
+    # Префикс номера заказа: «BP-12». Старые заказы в таблице учёта остались с «ТУЦ-» (B40b).
+    order_number_prefix: str = "BP"
     max_upload_mb: int = 100
-    # Рабочая область принтера, мм: X×Y×Z. Модель больше этого — предупреждение.
-    print_bed_mm: str = "250x210x220"
+    # Рабочая область самого большого FDM-принтера (Bambu P1S, docs/PRINTERS.md), мм: X×Y×Z.
+    # Модель больше этого — предупреждение «печатаем частями или по запросу».
+    print_bed_mm: str = "256x256x256"
     # Защита от цикла запросов (app/limits.py): сколько раз в минуту с одного IP можно
     # создавать загрузки (файл, каталог, редактор, тиснение) и заказы. 0 = без ограничений.
     rate_limit_uploads_per_min: int = 10
@@ -63,6 +68,23 @@ class Settings(BaseSettings):
     google_sa_json_path: Path | None = None
     google_sheet_id: str = ""
     google_sheet_tab: str = "Заказы (сайт)"
+    # B47: строка заказа в таблице сразу при создании и смене статуса.
+    # false — только ночная выгрузка.
+    google_sheet_live: bool = True
+    # Google Drive (B46): файлы каждого заказа → папка «Заказы сайта/ГГГГ-ММ/BP-N — Имя».
+    # Способ 1 (обычный Gmail): OAuth-доступ от имени владельца — client_id/secret
+    # приложения «Desktop» и refresh-токен (получить: python -m app.drive auth).
+    # Файлы лежат на Диске владельца и занимают его место. Папку FOLDER_ID тогда не задают:
+    # корневую «Заказы сайта» приложение создаёт само (у него доступ только к своим файлам).
+    # Способ 2 (Google Workspace): сервисный аккаунт (тот же GOOGLE_SA_JSON_PATH) и
+    # GOOGLE_DRIVE_FOLDER_ID — папка на общем диске (Shared drive), где SA — редактор.
+    # У сервисного аккаунта нет своего места на Диске, в обычную папку Gmail он писать не может.
+    # Ничего не задано — копирование выключено, заказы работают как раньше.
+    google_drive_client_id: str = ""
+    google_drive_client_secret: str = ""
+    google_drive_refresh_token: str = ""
+    google_drive_folder_id: str = ""
+    google_drive_root_name: str = "Заказы сайта"
 
     # Автоудаление файлов моделей (B15) — сроки из политики ПДн (/policy, раздел 6).
     # Загрузки без заказа — через 30 дней, файлы закрытых заказов — через год. 0 = не удалять.
@@ -85,6 +107,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""  # адрес отправителя; пусто = SMTP_USER
     smtp_ssl: bool = True
+    # Почта владельца для заявок «цена по запросу» (смолы): копия карточки из Telegram.
+    # Пусто или SMTP_HOST пуст = писем нет, заявка видна в Telegram и /admin/leads.
+    owner_email: str = ""
 
     # Кабинет клиента (B32): вход по коду из письма.
     login_code_ttl_min: int = 15  # сколько минут действует код
@@ -99,7 +124,7 @@ class Settings(BaseSettings):
 
     @property
     def print_bed(self) -> tuple[float, float, float]:
-        """«250x210x220» → (250.0, 210.0, 220.0)."""
+        """«256x256x256» → (256.0, 256.0, 256.0)."""
         x, y, z = (float(v) for v in self.print_bed_mm.lower().split("x"))
         return (x, y, z)
 

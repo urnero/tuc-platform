@@ -13,6 +13,7 @@
 | `editor_build` | клиент нажал «Построить модель» в редакторе (B21) — ещё до загрузки, поэтому не шаг воронки и в сводке админки не показывается | — (`props.build_id`) | `editor_slug`, `build_id`, `params`, `cached` (true — такие параметры уже строили, OpenSCAD не запускался) |
 | `emboss_build` | клиент нажал «Нанести» на странице модели (B30) — тиснение надписи/логотипа; как и `editor_build`, не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `params` (kind, text, font, bold, size_mm, depth_mm, style, face, dx, dy, angle) |
 | `paint_build` | клиент нажал «Собрать модель в цветах» на странице модели (B31) — раскраска по частям; не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `parts` (сколько деталей), `colors` (сколько разных цветов) |
+| `material_request` | клиент оставил заявку «цена по запросу» — выбрал смолу (SLA) на странице модели (B44); не шаг воронки, оплаты нет | `upload_id` | `material`, `qty`, `lead_id` (контакты клиента — в таблице `leads`, не здесь; с 29.10, миграция 0008 перенесла старые) |
 | `account_login` | клиент вошёл в кабинет по коду из письма (B32); не шаг воронки, ключей нет — считаем только факт и время (кто вошёл — в `client_sessions`) | — | — |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty`, `payment_method` (`online` — карта через ЮKassa, `invoice` — по счёту), `b2b` (true — заказ от организации или ИП, B33) |
@@ -273,4 +274,25 @@ from orders
 where payment_method = 'invoice' and status = 'new'
   and created_at < now() - interval '5 days'
 order by created_at;
+```
+
+### Заявки «цена по запросу» (смолы, B44)
+
+Контакты — в таблице `leads` (в `events` их нет). То же самое видно в админке `/admin/leads`.
+Через 5 лет (`ANONYMIZE_ORDERS_DAYS`) имя, телефон, e-mail и комментарий стираются, `anonymized_at` заполнен.
+
+```sql
+select id, created_at at time zone 'Europe/Moscow' as msk,
+       material, qty, name, phone, email, comment, telegram_sent, upload_id
+from leads
+order by id desc;
+```
+
+Сколько заявок по материалам за 30 дней (без контактов — можно и из `events`):
+
+```sql
+select props->>'material' as material, count(*) as leads, sum((props->>'qty')::int) as qty
+from events
+where name = 'material_request' and created_at > now() - interval '30 days'
+group by 1 order by 2 desc;
 ```

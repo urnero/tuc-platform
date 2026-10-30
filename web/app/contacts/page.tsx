@@ -9,8 +9,8 @@ import { Doc, Facts, P, Section } from "@/components/Doc";
 import { COMPANY, phoneUrl, requisite, telegramUrl } from "@/lib/company";
 
 export const metadata: Metadata = {
-  title: "Контакты — ТУЦ",
-  description: "Как связаться со студией 3D-печати ТУЦ в Москве и где забрать заказ.",
+  title: "Контакты — BroPrint",
+  description: "Как связаться со мастерской 3D-печати BroPrint в Москве и где забрать заказ.",
   alternates: { canonical: "/contacts" },
 };
 
@@ -25,7 +25,7 @@ export default function ContactsPage() {
       {unfilled && (
         <p
           className="max-w-prose rounded-md border px-4 py-3 text-sm"
-          style={{ borderColor: "var(--accent)", color: "var(--muted)" }}
+          style={{ borderColor: "var(--filament-text)", color: "var(--ink-muted)" }}
           data-testid="contacts-unfilled"
         >
           Контакты заполняются. Пока студия работает в тестовом режиме — вопросы по заказу можно оставить в
@@ -70,7 +70,7 @@ export default function ContactsPage() {
           ]}
         />
         <P>
-          Пишите с номером заказа (вида ТУЦ-12) — так быстрее. Вопрос про модель до заказа — приложите файл или
+          Пишите с номером заказа (вида BP-12) — так быстрее. Вопрос про модель до заказа — приложите файл или
           ссылку на страницу загрузки.
         </P>
       </Section>

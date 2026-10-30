@@ -68,6 +68,29 @@ def _quote(client, delivery="pickup", qty=1) -> dict:
     return q.json()
 
 
+def test_quote_supports_markup_only_when_used(client, fake_slicer, pricing_file, monkeypatch):
+    """Наценка k_supports — только если слайсер реально поставил поддержки."""
+    quotes = {}
+    for name in ("box.stl", "flat.stl"):
+        if name == "flat.stl":
+            monkeypatch.setenv("FAKE_SLICER_FLAT", "1")  # модель без нависаний
+        r = client.post("/api/v1/uploads", files={"file": (name, box_stl(), "model/stl")})
+        upload_id = r.json()["id"]
+        s = client.post(
+            f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA", "supports": True}
+        )
+        assert s.json()["status"] == "done"
+        q = client.post(
+            f"/api/v1/uploads/{upload_id}/quote", json={"material": "PLA", "supports": True}
+        )
+        assert q.status_code == 201, q.text
+        quotes[name] = q.json()
+    assert quotes["box.stl"]["supports"] is True
+    assert quotes["box.stl"]["k_supports"] > 1
+    assert quotes["flat.stl"]["supports"] is False
+    assert quotes["flat.stl"]["k_supports"] == 1
+
+
 GOOD = {"name": "  Иван ", "phone": "8 999 123-45-67", "consent": True}
 
 
@@ -76,7 +99,7 @@ def test_create_order_pickup(client, pricing_file, fake_slicer, db):
     r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"], "comment": " срочно "})
     assert r.status_code == 201, r.text
     o = r.json()
-    assert o["id"] == 1 and o["number"] == "ТУЦ-1"
+    assert o["id"] == 1 and o["number"] == "BP-1"
     assert len(o["token"]) == 32
     assert o["status"] == "new"
     assert o["customer_name"] == "Иван"
@@ -261,6 +284,42 @@ def test_alembic_matches_models(tmp_path, monkeypatch):
     assert "orders" not in inspect(create_engine(url)).get_table_names()
 
 
+def test_migration_0008_moves_lead_contacts_out_of_events(tmp_path, monkeypatch):
+    """[ПДн] старые заявки B44 с контактами в events.props переезжают в таблицу leads."""
+    from sqlalchemy import text
+
+    url = f"sqlite:///{tmp_path / 'm.db'}"
+    monkeypatch.setattr(settings, "database_url", url)
+    cfg = Config(str(REPO_ROOT / "api" / "alembic.ini"))
+    cfg.set_main_option("script_location", str(REPO_ROOT / "api" / "alembic"))
+    command.upgrade(cfg, "0007")
+    engine = create_engine(url)
+    props = '{"material": "RESIN", "qty": 2, "name": "Аня", "phone": "+79991234567", '
+    props += '"email": null, "comment": "серый"}'
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "insert into events (created_at, name, upload_id, props) values "
+                "('2026-10-28 10:00:00', 'material_request', 'u1', :p), "
+                "('2026-10-28 11:00:00', 'upload', 'u1', '{\"ext\": \"stl\"}')"
+            ),
+            {"p": props},
+        )
+    command.upgrade(cfg, "head")
+    with engine.connect() as c:
+        lead = c.execute(
+            text(
+                "select id, upload_id, material, qty, name, phone, comment, "
+                "telegram_sent from leads"
+            )
+        ).one()
+        ev = c.execute(text("select props from events where name='material_request'")).scalar()
+        up = c.execute(text("select props from events where name='upload'")).scalar()
+    assert lead[1:] == ("u1", "RESIN", 2, "Аня", "+79991234567", "серый", 0)
+    assert json.loads(ev) == {"material": "RESIN", "qty": 2, "lead_id": lead[0]}
+    assert json.loads(up) == {"ext": "stl"}
+
+
 def test_create_order_after_units_change_404(client, pricing_file, fake_slicer, db):
     """[ДЕНЬГИ] расчёт цены сделан в мм, потом клиент переключил «файл в дюймах» —
     заказ по старому (в 16 000 раз заниженному) расчёту не оформить: его больше нет."""
@@ -270,3 +329,22 @@ def test_create_order_after_units_change_404(client, pricing_file, fake_slicer, 
     r = client.post("/api/v1/orders", json={**GOOD, "quote_id": quote["id"]})
     assert r.status_code == 404
     assert "заново" in r.json()["detail"]
+
+
+def test_order_number_uses_prefix_setting(monkeypatch):
+    from app.orders import order_number
+
+    assert order_number(12) == "BP-12"
+    monkeypatch.setattr(settings, "order_number_prefix", "ZZ")
+    assert order_number(12) == "ZZ-12"
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [("12", 12), ("BP-12", 12), ("bp 12", 12), ("№12", 12), ("#12", 12),
+     ("ТУЦ-12", 12), ("бп-12", 12), ("XX-12", None), ("", None), ("BP-", None)],
+)
+def test_parse_order_number(raw, expected):
+    from app.orders import parse_order_number
+
+    assert parse_order_number(raw) == expected

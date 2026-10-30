@@ -31,8 +31,8 @@ import {
 const ModelViewer = dynamic(() => import("@/components/ModelViewer"), { ssr: false });
 
 const POLL_MS = 2000;
-const BORDER = { borderColor: "var(--muted)" };
-const FIELD = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
+const BORDER = { borderColor: "var(--ink-muted)" };
+const FIELD = { borderColor: "var(--ink-muted)", background: "var(--surface)", color: "var(--ink)" };
 
 type Props = { uploadId: string };
 
@@ -144,7 +144,7 @@ export default function PaintPanel({ uploadId }: Props) {
     <section className="flex flex-col gap-4 rounded-lg border p-6" style={BORDER}>
       <div>
         <h2 className="text-lg font-semibold">Раскраска по частям</h2>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Если модель состоит из отдельных деталей (корпус и крышка, кольцо и брелок), каждую
           можно напечатать своим цветом пластика. Получится новая модель в формате 3MF, исходная
           останется как есть. Цена от количества цветов не зависит.
@@ -162,7 +162,7 @@ export default function PaintPanel({ uploadId }: Props) {
           >
             {loading ? "Разбираем…" : "Разобрать на детали"}
           </button>
-          <span className="text-sm" style={{ color: "var(--muted)" }}>
+          <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
             Сначала нанесите надпись или логотип, если нужно, — а раскрашивайте уже готовую модель.
           </span>
         </div>
@@ -179,7 +179,7 @@ export default function PaintPanel({ uploadId }: Props) {
             <span>{summaryLine(parts, colors)}</span>
             {parts.length > 1 && palette.length > 0 && (
               <label className="flex items-center gap-2">
-                <span style={{ color: "var(--muted)" }}>Всё одним цветом:</span>
+                <span style={{ color: "var(--ink-muted)" }}>Всё одним цветом:</span>
                 <select
                   className="rounded-md border px-2 py-1"
                   style={FIELD}
@@ -206,11 +206,11 @@ export default function PaintPanel({ uploadId }: Props) {
                   <span
                     aria-hidden
                     className="inline-block h-5 w-5 shrink-0 rounded-full border"
-                    style={{ background: chosen?.hex ?? "transparent", borderColor: "var(--muted)" }}
+                    style={{ background: chosen?.hex ?? "transparent", borderColor: "var(--ink-muted)" }}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="font-medium">{p.name}</span>
-                    <span className="ml-2" style={{ color: "var(--muted)" }}>
+                    <span className="ml-2" style={{ color: "var(--ink-muted)" }}>
                       {partCaption(p)}
                     </span>
                   </span>
@@ -234,13 +234,13 @@ export default function PaintPanel({ uploadId }: Props) {
           </ul>
 
           {parts.length === 1 && (
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
+            <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
               Модель цельная — одна деталь. Можно выбрать цвет всей модели; в несколько цветов
               печатаются только модели из отдельных деталей.
             </p>
           )}
           {parts.some((p) => p.merged > 0) && (
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
+            <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
               Деталей больше, чем мы показываем отдельно: самые мелкие собраны в строку «Мелкие
               детали» и красятся одним цветом.
             </p>
@@ -252,12 +252,12 @@ export default function PaintPanel({ uploadId }: Props) {
               onClick={() => void build()}
               disabled={working}
               className="rounded-md px-5 py-2.5 font-medium disabled:opacity-60"
-              style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+              style={{ background: "var(--filament)", color: "var(--on-filament)" }}
             >
               {working ? "Собираем…" : "Собрать модель в цветах"}
             </button>
             {job && job.status !== "done" && (
-              <span className="text-sm" aria-live="polite" style={{ color: "var(--muted)" }}>
+              <span className="text-sm" aria-live="polite" style={{ color: "var(--ink-muted)" }}>
                 {STATUS_TEXT[job.status]}
               </span>
             )}
@@ -281,11 +281,11 @@ export default function PaintPanel({ uploadId }: Props) {
           <Link
             href={`/upload/${job.result_upload_id}`}
             className="inline-block rounded-md px-4 py-2 font-medium"
-            style={{ background: "var(--accent)", color: "var(--bg, #fff)", width: "fit-content" }}
+            style={{ background: "var(--filament)", color: "var(--on-filament)", width: "fit-content" }}
           >
             Открыть модель в цветах →
           </Link>
-          <p style={{ color: "var(--muted)" }}>
+          <p style={{ color: "var(--ink-muted)" }}>
             Там же — 3D-просмотр, расчёт печати и заказ. Передумали — вернитесь сюда и выберите
             другие цвета.
           </p>

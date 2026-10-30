@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Upload } from "@/lib/mesh";
+import { buttonClass } from "@/lib/ui";
 
 type Props = {
   slug: string;
@@ -39,20 +40,18 @@ export default function CatalogOrderButton({ slug, size = "sm" }: Props) {
     }
   }
 
-  const padding = size === "lg" ? "px-5 py-2.5 text-base" : "px-3 py-1.5 text-sm";
   return (
     <div className="flex flex-col gap-1">
       <button
         type="button"
         onClick={() => void order()}
         disabled={busy}
-        className={`w-fit rounded-md font-medium disabled:opacity-60 ${padding}`}
-        style={{ background: "var(--accent)", color: "var(--bg, #fff)" }}
+        className={buttonClass("primary", size === "lg" ? "md" : "sm", "w-fit")}
       >
         {busy ? "Готовим…" : "Заказать"}
       </button>
       {error && (
-        <p role="alert" className="text-sm">
+        <p role="alert" className="text-sm" style={{ color: "var(--danger)" }}>
           {error}
         </p>
       )}

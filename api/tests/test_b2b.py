@@ -171,7 +171,7 @@ def test_order_card_shows_company(client, pricing_file, fake_slicer):
 
 
 def test_export_columns_end_with_company(client, pricing_file, fake_slicer):
-    assert COLUMNS[-3:] == ["company_name", "company_inn", "payment_method"]
+    assert COLUMNS[21:24] == ["company_name", "company_inn", "payment_method"]
     _order(client)
     with session_factory()() as s:
         row = order_row(s.scalar(select(Order)), None)
@@ -194,6 +194,6 @@ def test_admin_shows_company_and_finds_by_inn(client, pricing_file, fake_slicer,
     assert f"/order/{o['token']}/invoice" in page.text
 
     found = client.get("/admin/orders", params={"q": "7707083893"}, headers=auth)
-    assert found.text.count("ТУЦ-") >= 1 and "ТУЦ-2" not in found.text.split("<tbody>")[1]
+    assert found.text.count("BP-") >= 1 and "BP-2" not in found.text.split("<tbody>")[1]
     found = client.get("/admin/orders", params={"q": "ромашка"}, headers=auth)
     assert "по счёту" in found.text

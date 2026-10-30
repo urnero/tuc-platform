@@ -14,7 +14,7 @@ import type { Metadata, MetadataRoute } from "next";
 import type { EditorCheck, EditorParam, Editor } from "./editors";
 import { fmt } from "./editors";
 
-export const SITE_NAME = "ТУЦ";
+export const SITE_NAME = "BroPrint";
 const DEFAULT_SITE_URL = "http://localhost:8080";
 
 /** Внешний адрес сайта без завершающего слэша: «https://tuc.ru». Мусор в SITE_URL → localhost. */

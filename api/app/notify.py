@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 # В тестах ставят False — тогда отправка идёт сразу, в том же потоке.
 IN_BACKGROUND = True
 
-# Тема письма по статусу. {n} — номер заказа («ТУЦ-12»).
+# Тема письма по статусу. {n} — номер заказа («BP-12»).
 SUBJECTS = {
     "new": "Заказ {n} принят",
     "paid": "Заказ {n} оплачен",
@@ -44,6 +44,7 @@ BODIES = {
     "printing": "Модель уже на принтере. Напишем, когда заказ будет готов.",
     "ready_pickup": "Заказ готов — можно забирать в студии. Адрес и часы работы: {contacts}",
     "ready_courier": "Заказ готов — передаём курьеру, он свяжется с вами по телефону.",
+    "ready_cdek": "Заказ готов — отправляем СДЭК в выбранный пункт, номер отправления пришлём.",
     "done": "Заказ выдан. Спасибо, что печатаете с нами!",
     "cancelled": "Заказ отменён. Если это ошибка или остались вопросы — напишите нам: {contacts}",
 }
@@ -61,7 +62,8 @@ def status_text(order: dict) -> tuple[str, str] | None:
         return None
     key = status
     if status == "ready":
-        key = "ready_pickup" if order["delivery"] == "pickup" else "ready_courier"
+        by_delivery = {"pickup": "ready_pickup", "cdek": "ready_cdek"}
+        key = by_delivery.get(order["delivery"], "ready_courier")
     body = BODIES[key].format(contacts=f"{settings.site_url}/contacts")
     lines = [f"Здравствуйте, {order['customer_name']}!", "", body]
     if status == "new":
@@ -72,7 +74,7 @@ def status_text(order: dict) -> tuple[str, str] | None:
         f"{tg.fmt_money(order['total'])}.",
         f"Страница заказа: {order_url(order)}",
         "",
-        "Студия 3D-печати ТУЦ",
+        "Студия 3D-печати BroPrint (БроПринт)",
     ]
     return subject.format(n=order["number"]), "\n".join(lines)
 

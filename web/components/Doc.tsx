@@ -13,7 +13,7 @@ export function Doc({ title, subtitle, children }: { title: string; subtitle?: R
       <header className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold leading-tight">{title}</h1>
         {subtitle && (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
             {subtitle}
           </p>
         )}
@@ -54,7 +54,7 @@ export function Facts({ rows }: { rows: { label: string; value: ReactNode }[] })
     <dl className="grid max-w-prose grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       {rows.map((r) => (
         <div key={r.label} className="contents">
-          <dt style={{ color: "var(--muted)" }}>{r.label}</dt>
+          <dt style={{ color: "var(--ink-muted)" }}>{r.label}</dt>
           <dd>{r.value}</dd>
         </div>
       ))}
@@ -72,7 +72,7 @@ export function MissingRequisitesNote() {
   return (
     <p
       className="max-w-prose rounded-md border px-4 py-3 text-sm"
-      style={{ borderColor: "var(--accent)", color: "var(--muted)" }}
+      style={{ borderColor: "var(--filament-text)", color: "var(--ink-muted)" }}
       data-testid="missing-requisites"
     >
       Реквизиты исполнителя ({missing.join(", ")}) будут опубликованы до начала приёма оплат. Пока документ —

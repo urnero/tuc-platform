@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 /** Страницы заказа (форма и статус по личной ссылке) — не для поиска (B25). */
 export const metadata: Metadata = {
-  title: "Заказ — ТУЦ",
+  title: "Заказ — BroPrint",
   robots: { index: false, follow: false },
 };
 

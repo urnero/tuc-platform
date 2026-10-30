@@ -79,16 +79,30 @@ class FakeGoogle:
             return httpx.Response(200, json={"replies": [{}]})
         if rest.startswith("/values/"):
             rng = rest[len("/values/"):]
-            clear = rng.endswith(":clear")
-            tab = rng.removesuffix(":clear").strip("'")
+            action = ""
+            if rng.endswith((":clear", ":append")):
+                rng, action = rng.rsplit(":", 1)
+            tab, _, cells = rng.partition("!")
+            tab = tab.strip("'")
             if tab not in self.tabs:
                 return httpx.Response(400, json={"error": {"message": f"bad range: {tab}"}})
-            if clear:
+            values = self.values.setdefault(tab, [])
+            if action == "clear":
                 self.values[tab] = []
                 return httpx.Response(200, json={"clearedRange": rng})
+            if request.method == "GET":  # только колонка A:A — так её читает find_row
+                assert cells == "A:A"
+                # Google отдаёт значения текстом и обрезает пустой хвост
+                return httpx.Response(200, json={"values": [[str(r[0])] for r in values if r]})
             body = json.loads(request.content)
             assert request.url.params["valueInputOption"] == "RAW"
-            self.values[tab] = body["values"]
+            if action == "append":
+                values.extend(body["values"])
+            elif cells:  # PUT одной строки: 'лист'!A5
+                n = int(cells.removeprefix("A"))
+                values[n - 1] = body["values"][0]
+            else:
+                self.values[tab] = body["values"]
             return httpx.Response(200, json={"updatedRows": len(body["values"])})
         return httpx.Response(404, json={"error": {"message": f"unknown {request.method} {path}"}})
 
@@ -124,6 +138,8 @@ def google(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "google_sa_json_path", sa_path)
     monkeypatch.setattr(settings, "google_sheet_id", SHEET_ID)
     monkeypatch.setattr(settings, "google_sheet_tab", "Заказы (сайт)")
+    # живой лог (B47) включают его собственные тесты, чтобы не мешать проверкам ночной выгрузки
+    monkeypatch.setattr(settings, "google_sheet_live", False)
     return fake
 
 
@@ -165,7 +181,7 @@ def test_export_writes_header_and_rows(client, fake_slicer, pricing_file, google
     assert rows[0] == export.COLUMNS
     assert len(rows) == 3
     first = dict(zip(export.COLUMNS, rows[1], strict=True))
-    assert first["number"] == f"ТУЦ-{o1['id']}"
+    assert first["number"] == f"BP-{o1['id']}"
     assert first["customer_name"] == "Мария"
     assert first["phone"] == "+79991234567"  # текст, «+» на месте
     assert first["qty"] == 2 and first["total"] == o1["total"]
@@ -255,3 +271,90 @@ def test_empty_path_in_env_means_disabled(monkeypatch):
     monkeypatch.setenv("GOOGLE_SA_JSON_PATH", "")
     monkeypatch.setenv("GOOGLE_SHEET_ID", "x")
     assert Settings().google_sa_json_path is None
+
+
+# --- B47: живой лог заказов ------------------------------------------------------
+
+
+@pytest.fixture
+def live(google, monkeypatch):
+    monkeypatch.setattr(settings, "google_sheet_live", True)
+    return google
+
+
+def tab_rows(google) -> list[dict]:
+    rows = google.values["Заказы (сайт)"]
+    assert rows[0] == export.COLUMNS
+    return [dict(zip(export.COLUMNS, r, strict=True)) for r in rows[1:]]
+
+
+def test_live_new_order_appends_row_with_header(client, fake_slicer, pricing_file, live):
+    o = make_order(client, "Мария")
+    rows = tab_rows(live)
+    assert len(rows) == 1
+    assert rows[0]["id"] == o["id"] and rows[0]["status"] == "new"
+    assert rows[0]["admin_url"].endswith(f"/admin/orders/{o['id']}")
+    assert live.tabs[-1] == "Заказы (сайт)"  # лист создан сам
+
+
+def test_live_status_change_updates_same_row(client, fake_slicer, pricing_file, live):
+    from app.orders import change_status
+
+    o1 = make_order(client, "Мария")
+    o2 = make_order(client, "Пётр")
+    with Session(get_engine()) as db:
+        change_status(db, o1["id"], "printing")
+        change_status(db, o2["id"], "cancelled")
+    rows = tab_rows(live)
+    assert [r["customer_name"] for r in rows] == ["Мария", "Пётр"]  # без дублей
+    assert rows[0]["status"] == "printing" and rows[1]["status"] == "cancelled"
+
+
+def test_live_finds_row_after_nightly_rewrite(client, fake_slicer, pricing_file, live):
+    """Ночная выгрузка переставила строки — живой лог всё равно находит заказ по id."""
+    from app.orders import change_status
+
+    o1 = make_order(client, "Мария")
+    make_order(client, "Пётр")
+    live.values["Заказы (сайт)"] = [export.COLUMNS, ["999", "чужая строка"]]
+    with Session(get_engine()) as db:
+        sheets.export_orders(db)
+        change_status(db, o1["id"], "done")
+    rows = tab_rows(live)
+    assert len(rows) == 2 and rows[0]["status"] == "done"
+
+
+def test_live_off_by_setting(client, fake_slicer, pricing_file, google):
+    make_order(client)
+    assert "Заказы (сайт)" not in google.values  # GOOGLE_SHEET_LIVE=false — ждём ночи
+    assert not [r for r in google.requests if r.url.host == "oauth2.googleapis.com"]
+
+
+def test_live_without_keys_is_silent(client, fake_slicer, pricing_file, monkeypatch):
+    monkeypatch.setattr(settings, "google_sheet_id", "")
+    make_order(client)  # заказ оформляется, в сеть никто не ходит
+
+
+def test_live_google_error_does_not_break_order(client, fake_slicer, pricing_file, live):
+    live.forbid = True
+    o = make_order(client)  # 201, клиент ничего не заметил
+    assert o["status"] == "new"
+    assert sheets.sync_order_job(o["id"]) == "failed"
+
+
+def test_live_retries_then_succeeds(client, fake_slicer, pricing_file, live, monkeypatch):
+    o = make_order(client)
+    live.values.clear()
+    calls = {"n": 0}
+    real = sheets.upsert_row
+
+    def flaky(*args):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.ConnectError("сеть моргнула")
+        return real(*args)
+
+    monkeypatch.setattr(sheets, "upsert_row", flaky)
+    monkeypatch.setattr(sheets, "RETRY_DELAYS_S", (0,))
+    assert sheets.sync_order_job(o["id"]) == "appended"
+    assert calls["n"] == 2

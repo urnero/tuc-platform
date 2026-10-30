@@ -145,7 +145,7 @@ export default function ModelViewer(props: Props) {
   return (
     <div
       className="w-full overflow-hidden rounded-lg border"
-      style={{ borderColor: "var(--muted)", height: props.height ?? 420 }}
+      style={{ borderColor: "var(--ink-muted)", height: props.height ?? 420 }}
     >
       <Canvas camera={{ fov: 45, near: 0.1, far: 100000 }}>
         <color attach="background" args={["#1a2220"]} />

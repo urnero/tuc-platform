@@ -191,3 +191,44 @@ export const BUILD_STATUS_TEXT: Record<BuildStatus, string> = {
   done: "Готово",
   error: "Не удалось построить",
 };
+
+/**
+ * Через сколько миллисекунд после последнего изменения параметров модель пересобирается сама (B43).
+ * Меньше — лишние сборки на каждую цифру, больше — кажется, что превью «не слушается».
+ */
+export const AUTO_BUILD_MS = 900;
+
+/** Ползунок рядом с числом показываем, только если у параметра заданы обе границы. */
+export function hasSlider(p: EditorParam): boolean {
+  return p.type === "number" && p.min !== null && p.max !== null && p.max > p.min;
+}
+
+/** Шаг ползунка: из схемы; у целых — 1; иначе ~200 делений на диапазон, округлённые до 0,1 / 0,5 / 1. */
+export function sliderStep(p: EditorParam): number {
+  if (p.step) return p.step;
+  if (p.integer) return 1;
+  const span = (p.max ?? 0) - (p.min ?? 0);
+  if (span <= 20) return 0.1;
+  if (span <= 100) return 0.5;
+  return 1;
+}
+
+/** Подпись под полем: «от 4 до 200 мм · подсказка». Без границ — только подсказка. */
+export function rangeHint(p: EditorParam): string {
+  const u = p.unit ? ` ${p.unit}` : "";
+  let range = "";
+  if (p.type === "number") {
+    if (p.min !== null && p.max !== null) range = `от ${fmt(p.min)} до ${fmt(p.max)}${u}`;
+    else if (p.min !== null) range = `не меньше ${fmt(p.min)}${u}`;
+    else if (p.max !== null) range = `не больше ${fmt(p.max)}${u}`;
+  }
+  return [range, p.hint].filter(Boolean).join(" · ");
+}
+
+/** Одинаковые ли параметры (чтобы не пересобирать то, что уже построено). */
+export function sameParams(a: Record<string, unknown> | null | undefined, b: Record<string, unknown>): boolean {
+  if (!a) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) if (a[k] !== b[k]) return false;
+  return true;
+}

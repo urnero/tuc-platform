@@ -71,6 +71,24 @@ def notify_in_foreground(monkeypatch):
     monkeypatch.setattr(notify, "IN_BACKGROUND", False)
 
 
+@pytest.fixture(autouse=True)
+def sheets_in_foreground(monkeypatch):
+    """Живой лог в Google-таблицу (B47) в тестах — в том же потоке и без пауз между попытками."""
+    from app import sheets
+
+    monkeypatch.setattr(sheets, "IN_BACKGROUND", False)
+    monkeypatch.setattr(sheets, "RETRY_DELAYS_S", ())
+
+
+@pytest.fixture(autouse=True)
+def drive_in_foreground(monkeypatch):
+    """Копирование в Google Drive (B46) в тестах — в том же потоке и без пауз между попытками."""
+    from app import drive
+
+    monkeypatch.setattr(drive, "IN_BACKGROUND", False)
+    monkeypatch.setattr(drive, "RETRY_DELAYS_S", ())
+
+
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Каждый тест пишет файлы в свою временную папку."""
@@ -97,6 +115,14 @@ def client(data_dir, db):
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def materials_yaml(monkeypatch):
+    """Справочник материалов (B44) — настоящий config/materials.yaml из корня репо."""
+    monkeypatch.setattr(settings, "materials_path", REPO_ROOT / "config" / "materials.yaml")
+
+
 FAKE_SLICER = Path(__file__).resolve().parent / "fake_slicer.py"
 
 

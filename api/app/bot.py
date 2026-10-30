@@ -7,7 +7,8 @@
 - /start, /help      — подсказка;
 - /orders            — активные заказы (принят, оплачен, печатается, готов), новые сверху;
 - /orders all        — последние 20 заказов любых статусов;
-- /order 12          — карточка заказа ТУЦ-12 с кнопками статусов;
+- /today             — сводка за сегодня (МСК): новые заказы, сумма, сколько в работе;
+- /order 12          — карточка заказа BP-12 с кнопками статусов;
 - кнопки под карточкой — поставить статус (запись в таблицу orders), карточка обновляется.
 
 Уведомление о новом заказе шлёт не бот, а API (`app/telegram.py::notify_owner_new_order`),
@@ -23,41 +24,54 @@ chat_id клиента в заказ (`orders.link_telegram`), дальше ст
 import asyncio
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeChat,
+    BotCommandScopeDefault,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    Message,
+)
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import notify
 from app import telegram as tg
 from app.config import settings
 from app.db import session_factory
+from app.models import Order
 from app.orders import (
     StatusError,
     change_status,
     get_order_by_id,
     link_telegram,
     list_orders,
+    parse_order_number,
     unlink_telegram,
 )
 
 log = logging.getLogger(__name__)
 
 HELP = (
-    "<b>Бот студии ТУЦ</b>\n"
+    "<b>Бот студии BroPrint (БроПринт)</b>\n"
     "/orders — активные заказы\n"
     "/orders all — последние 20 заказов\n"
-    "/order 12 — карточка заказа ТУЦ-12\n"
+    "/today — заказы за сегодня и сумма\n"
+    "/order 12 — карточка заказа BP-12\n"
     "/stop — не получать сюда статусы заказов (для клиентов)\n"
     "Кнопки под карточкой меняют статус заказа."
 )
 NOT_OWNER = (
-    "Этот бот присылает статусы заказов студии ТУЦ. Чтобы подключить уведомления, нажмите "
-    "«Получать статусы в Telegram» на странице вашего заказа. Отписаться — /stop."
+    "Этот бот присылает статусы заказов студии BroPrint (БроПринт). "
+    "Чтобы подключить уведомления, нажмите «Получать статусы в Telegram» "
+    "на странице вашего заказа. Отписаться — /stop."
 )
 NOT_LINKED = "Такого заказа нет. Откройте страницу заказа на сайте и нажмите кнопку там ещё раз."
 
@@ -123,6 +137,24 @@ def status_reply(db: Session, order_id: int, status: str) -> tuple[str, dict, st
     return tg.order_card(data), tg.order_keyboard(data), toast
 
 
+def today_start_utc(now: datetime | None = None) -> datetime:
+    """Полночь сегодняшнего дня по Москве, в UTC (как хранится created_at)."""
+    now = (now or datetime.now(UTC)).astimezone(UTC)
+    msk = now + tg.MSK
+    return msk.replace(hour=0, minute=0, second=0, microsecond=0) - tg.MSK
+
+
+def today_reply(db: Session, now: datetime | None = None) -> tuple[str, dict]:
+    """/today: заказы, созданные сегодня (МСК), сумма без отменённых, сколько всего в работе."""
+    since = today_start_utc(now)
+    q = select(Order).where(Order.created_at >= since).order_by(Order.id.desc())
+    orders = [o.to_dict() for o in db.scalars(q)]
+    total = sum(o["total"] for o in orders if o["status"] != "cancelled")
+    active = len(list_orders(db, active_only=True, limit=1000))
+    title = f"Сегодня: {len(orders)} заказ(ов) на {tg.fmt_money(total)} · в работе {active}"
+    return tg.orders_list(orders, title=title)
+
+
 def link_reply(db: Session, token: str, chat_id: int) -> str:
     """Клиент пришёл по ссылке `/start <token>`: привязать Telegram к заказу, сказать статус."""
     order = link_telegram(db, token, chat_id)
@@ -176,12 +208,17 @@ async def cmd_orders(message: Message, command: CommandObject) -> None:
     await message.answer(text, reply_markup=kb(markup))
 
 
+async def cmd_today(message: Message) -> None:
+    text, markup = await in_db(lambda db: today_reply(db))
+    await message.answer(text, reply_markup=kb(markup))
+
+
 async def cmd_order(message: Message, command: CommandObject) -> None:
-    raw = (command.args or "").strip().upper().replace("ТУЦ-", "").replace("#", "")
-    if not raw.isdigit():
+    number = parse_order_number(command.args or "")
+    if number is None:
         await message.answer("Напишите номер: /order 12")
         return
-    text, markup = await in_db(lambda db: order_reply(db, int(raw)))
+    text, markup = await in_db(lambda db: order_reply(db, number))
     await message.answer(text, reply_markup=kb(markup))
 
 
@@ -229,6 +266,7 @@ def build_dispatcher() -> Dispatcher:
     owner.message.register(cmd_start, CommandStart())
     owner.message.register(cmd_start, Command("help"))
     owner.message.register(cmd_orders, Command("orders"))
+    owner.message.register(cmd_today, Command("today"))
     owner.message.register(cmd_order, Command("order"))
     owner.message.register(cmd_stop, Command("stop"))
     owner.callback_query.register(on_button)
@@ -244,6 +282,27 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(owner)
     dp.include_router(others)
     return dp
+
+
+# Меню команд (кнопка «/» в Telegram): владельцу — всё, клиентам — только /stop.
+OWNER_COMMANDS = [
+    BotCommand(command="orders", description="Активные заказы"),
+    BotCommand(command="today", description="Заказы за сегодня"),
+    BotCommand(command="order", description="Карточка заказа: /order 12"),
+    BotCommand(command="help", description="Подсказка"),
+]
+CLIENT_COMMANDS = [BotCommand(command="stop", description="Не получать статусы заказа")]
+
+
+async def setup_commands(bot: Bot) -> None:
+    """Прописать меню команд. Не получилось (сеть) — бот всё равно работает, только без меню."""
+    oid = owner_id()
+    try:
+        await bot.set_my_commands(CLIENT_COMMANDS, scope=BotCommandScopeDefault())
+        if oid is not None:
+            await bot.set_my_commands(OWNER_COMMANDS, scope=BotCommandScopeChat(chat_id=oid))
+    except Exception as e:  # noqa: BLE001 — меню не обязательно для работы
+        log.warning("не удалось задать меню команд: %s", e)
 
 
 def build_bot() -> Bot:
@@ -267,6 +326,7 @@ async def main() -> None:
     dp = build_dispatcher()
     me = await bot.get_me()
     log.info("бот @%s запущен, владелец chat_id=%s", me.username, owner_id())
+    await setup_commands(bot)
     await dp.start_polling(bot)
 
 

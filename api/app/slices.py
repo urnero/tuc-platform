@@ -6,7 +6,9 @@ POST /api/v1/uploads/{id}/slice        — body {material: "PLA", supports: fals
 GET  /api/v1/uploads/{id}/slice?material=PLA&supports=false
                                         — запись расчёта: status queued|running|done|error,
                                           result.print_time_s, result.filament_g, ...
-GET  /api/v1/materials                 — список материалов для формы.
+GET  /api/v1/materials                 — материалы для формы (B44): `materials` — ключи, которые
+                                          считает слайсер; `on_request` — смолы (цена по запросу);
+                                          `items` — справочник config/materials.yaml для карточек.
 
 Готовый расчёт не пересчитываем: тот же материал и поддержки → отдаём сохранённое.
 Исключение — единицы модели поменялись (PATCH /uploads/{id} {units}): запись для
@@ -20,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from app import jobs
+from app import jobs, materials
 from app.config import settings
 from app.slice_jobs import (
     load_record,
@@ -30,7 +32,7 @@ from app.slice_jobs import (
     save_record,
     slice_key,
 )
-from app.slicer import MATERIALS, SlicerError
+from app.slicer import SlicerError
 from app.uploads import load_meta
 
 router = APIRouter(prefix="/api/v1", tags=["slices"])
@@ -43,7 +45,11 @@ class SliceRequest(BaseModel):
 
 @router.get("/materials")
 def list_materials() -> dict:
-    return {"materials": list(MATERIALS)}
+    return {
+        "materials": list(materials.sliceable()),
+        "on_request": list(materials.on_request()),
+        "items": [m.to_dict() for m in materials.enabled()],
+    }
 
 
 async def _enqueue(
@@ -71,6 +77,11 @@ async def create_slice(upload_id: str, body: SliceRequest, request: Request) -> 
         key = slice_key(body.material, body.supports)
     except SlicerError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    # Деталь больше области печати материала — в очередь не ставим: слайсер упал бы
+    # или положил модель за край стола. Клиенту — понятный текст, что делать.
+    problem = materials.size_problem(materials.model_size_mm(meta), body.material.upper())
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
 
     record = _settle(upload_id, load_record(upload_id, key, units=units))
     if record and record["status"] in ("queued", "running", "done"):

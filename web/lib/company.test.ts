@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   COMPANY,
+  contactRows,
   formatDocumentsDate,
   LEGAL_NAME_PLACEHOLDER,
+  mapEmbedUrl,
   missingRequisites,
   phoneUrl,
   PLACEHOLDER,
@@ -22,7 +24,7 @@ const filled = {
 describe("requisite", () => {
   it("возвращает значение, если поле заполнено", () => {
     expect(requisite("legalName", filled)).toBe("ИП Иванов Иван Иванович");
-    expect(requisite("brand")).toBe("ТУЦ");
+    expect(requisite("brand")).toBe("BroPrint");
   });
   it("пустое поле или пробелы → заглушка «уточняется»", () => {
     expect(requisite("inn", { ...filled, inn: "" })).toBe(PLACEHOLDER);
@@ -68,5 +70,35 @@ describe("ссылки на контакты", () => {
   it("phone: оставляет только цифры и плюс, пусто → null", () => {
     expect(phoneUrl("+7 999 123-45-67")).toBe("tel:+79991234567");
     expect(phoneUrl("")).toBeNull();
+  });
+});
+
+describe("mapEmbedUrl (карта самовывоза, B41)", () => {
+  it("принимает виджет Яндекс Карт и 2ГИС по https", () => {
+    expect(mapEmbedUrl("https://yandex.ru/map-widget/v1/?um=constructor%3Aabc&source=constructor")).toBe(
+      "https://yandex.ru/map-widget/v1/?um=constructor%3Aabc&source=constructor",
+    );
+    expect(mapEmbedUrl(" https://widgets.2gis.ru/widget?data=1 ")).toBe("https://widgets.2gis.ru/widget?data=1");
+  });
+  it("пусто, не https, чужой сайт или просто адрес карты (не виджет) → null", () => {
+    expect(mapEmbedUrl("")).toBeNull();
+    expect(mapEmbedUrl("http://yandex.ru/map-widget/v1/?um=1")).toBeNull();
+    expect(mapEmbedUrl("https://example.com/map-widget/v1/")).toBeNull();
+    expect(mapEmbedUrl("https://yandex.ru/maps/213/moscow/")).toBeNull();
+    expect(mapEmbedUrl("<iframe src=\"https://yandex.ru/map-widget/v1/\">")).toBeNull();
+  });
+});
+
+describe("contactRows (главная: пустые контакты не показываем)", () => {
+  it("пустые поля пропускаются, «уточняется» не появляется", () => {
+    const rows = contactRows({ ...COMPANY, telegram: "", phone: "", email: "" });
+    expect(rows).toEqual([]);
+  });
+  it("заполненные идут по порядку Telegram, телефон, e-mail со ссылками", () => {
+    const rows = contactRows({ ...COMPANY, telegram: "@tuc", phone: "+7 999 123-45-67", email: "a@b.ru" });
+    expect(rows.map((r) => r.key)).toEqual(["telegram", "phone", "email"]);
+    expect(rows[0]).toMatchObject({ text: "@tuc", href: "https://t.me/tuc" });
+    expect(rows[1].href).toBe("tel:+79991234567");
+    expect(rows[2].href).toBe("mailto:a@b.ru");
   });
 });

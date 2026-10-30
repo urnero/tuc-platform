@@ -10,7 +10,7 @@
 
 export const COMPANY = {
   /** Торговое название студии. */
-  brand: "ТУЦ",
+  brand: "BroPrint",
   city: "Москва",
 
   // --- Юридические реквизиты (нужны в оферте и политике ПДн) ---
@@ -42,6 +42,13 @@ export const COMPANY = {
   telegram: "",
   /** Адрес самовывоза (улица, дом, как найти). */
   pickupAddress: "",
+  /**
+   * Карта самовывоза для главной и контактов (B41): адрес «виджета» Яндекс Карт.
+   * Как получить: yandex.ru/maps → найти адрес → «Поделиться» → «Виджет карты» → скопировать
+   * из кода значение src="https://yandex.ru/map-widget/v1/?..." (только адрес, без <iframe>).
+   * Пока пусто — вместо карты показывается плашка с адресом.
+   */
+  pickupMapUrl: "",
   /** Когда можно забрать заказ и когда отвечаем, например «пн–пт 11:00–20:00». */
   hours: "",
 
@@ -70,6 +77,7 @@ export const FIELD_LABELS: Record<CompanyField, string> = {
   phone: "телефон",
   telegram: "Telegram",
   pickupAddress: "адрес самовывоза",
+  pickupMapUrl: "карта самовывоза",
   hours: "часы работы",
   documentsDate: "дата документов",
 };
@@ -108,10 +116,42 @@ export function formatDocumentsDate(iso: string): string {
   return `${date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}`;
 }
 
+export type ContactRow = { key: "telegram" | "phone" | "email"; label: string; text: string; href: string };
+
+/** Заполненные способы связи для главной (Telegram, телефон, e-mail); пустые пропускаются. */
+export function contactRows(company: typeof COMPANY = COMPANY): ContactRow[] {
+  const rows: ContactRow[] = [];
+  const tg = telegramUrl(company.telegram);
+  if (tg) rows.push({ key: "telegram", label: "Telegram", text: `@${company.telegram.trim().replace(/^@/, "")}`, href: tg });
+  const tel = phoneUrl(company.phone);
+  if (tel) rows.push({ key: "phone", label: "Телефон", text: company.phone.trim(), href: tel });
+  const mail = company.email.trim();
+  if (mail) rows.push({ key: "email", label: "E-mail", text: mail, href: `mailto:${mail}` });
+  return rows;
+}
+
 /** Ссылка на Telegram из ника; пустой ник → null. */
 export function telegramUrl(nick: string): string | null {
   const clean = nick.trim().replace(/^@/, "");
   return clean === "" ? null : `https://t.me/${clean}`;
+}
+
+/**
+ * Адрес карты для <iframe>: принимаем только https-виджеты Яндекс Карт и 2ГИС,
+ * чтобы случайно вставленный «не тот» адрес не встроил на сайт чужую страницу. Иначе null.
+ */
+export function mapEmbedUrl(raw: string): string | null {
+  const value = raw.trim();
+  if (value === "") return null;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== "https:") return null;
+    const ok = u.hostname === "yandex.ru" && u.pathname.startsWith("/map-widget/");
+    const ok2gis = u.hostname.endsWith("2gis.ru") && u.pathname.includes("widget");
+    return ok || ok2gis ? u.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Телефон в ссылку tel: («+7 999 123-45-67» → «tel:+79991234567»); пусто → null. */

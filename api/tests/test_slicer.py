@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from conftest import REPO_ROOT, box_stl
 
-from app import slicer
+from app import materials, slicer
 from app.config import settings
 from app.slicer import SlicerError, build_command, parse_gcode, parse_time, slice_model
 
@@ -93,6 +93,12 @@ def test_build_command_mm(profiles):
     assert cmd[-1] == "m.stl"
 
 
+def test_build_command_centers_on_printer_ini_bed(profiles):
+    """Без print_bed центр — середина стола из profiles/printer.ini (256×256)."""
+    cmd = build_command(Path("m.stl"), Path("out.gcode"), "PLA")
+    assert cmd[cmd.index("--center") + 1] == "128,128"
+
+
 def test_build_command_inch_and_supports(profiles):
     cmd = build_command(Path("m.stl"), Path("o.gcode"), "PETG", units="inch", supports=True)
     assert cmd[cmd.index("--scale") + 1] == "25.4"
@@ -111,7 +117,7 @@ def test_build_command_missing_profile(monkeypatch, tmp_path):
 
 
 def test_all_materials_have_profiles(profiles):
-    for material in slicer.MATERIALS:
+    for material in materials.sliceable():
         assert slicer.profile_paths(material)
 
 
@@ -132,6 +138,17 @@ def test_slice_model_fake(fake_slicer, tmp_path):
     with_supports = slice_model(model, tmp_path / "slices", "PLA", supports=True)
     assert with_supports.filament_g > result.filament_g
     assert (tmp_path / "slices" / "PLA_supports.gcode").is_file()
+    assert with_supports.supports_used is True
+    assert result.supports_used is False
+
+
+def test_slice_model_supports_auto_not_needed(fake_slicer, tmp_path):
+    """«Решит мастерская»: поддержки включены, но нависаний нет — в G-code их нет."""
+    model = tmp_path / "flat.stl"
+    model.write_bytes(box_stl())
+    result = slice_model(model, tmp_path / "slices", "PLA", supports=True)
+    assert result.supports is True
+    assert result.supports_used is False
 
 
 def test_slice_model_inch_scales(fake_slicer, tmp_path):
@@ -160,14 +177,15 @@ def test_slice_model_no_binary(fake_slicer, monkeypatch, tmp_path):
 # --- API ---------------------------------------------------------------------
 
 
-def _upload(client) -> str:
-    r = client.post("/api/v1/uploads", files={"file": ("box.stl", box_stl(), "model/stl")})
+def _upload(client, data: bytes | None = None) -> str:
+    data = data or box_stl()
+    r = client.post("/api/v1/uploads", files={"file": ("box.stl", data, "model/stl")})
     assert r.status_code == 201
     return r.json()["id"]
 
 
 def test_materials_endpoint(client):
-    assert client.get("/api/v1/materials").json() == {"materials": ["PLA", "PETG", "ABS"]}
+    assert client.get("/api/v1/materials").json()["materials"][:3] == ["PLA", "PETG", "ABS"]
 
 
 def test_slice_api_sync(client, fake_slicer):
@@ -231,8 +249,9 @@ def test_slice_api_units_change_resets_record(client, fake_slicer):
 
     PATCH units удаляет папку slices/, а запись расчёта хранит units — повторный POST
     считает заново для дюймов, GET старую запись не отдаёт.
+    Коробка 2×3×4: в дюймах это 51×76×102 мм — влезает в принтер.
     """
-    upload_id = _upload(client)
+    upload_id = _upload(client, box_stl(2.0, 3.0, 4.0))
     mm = client.post(f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA"}).json()
     assert mm["status"] == "done" and mm["units"] == "mm"
     folder = settings.data_dir / "uploads" / upload_id

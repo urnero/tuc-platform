@@ -85,7 +85,7 @@ class ConfirmRequest(BaseModel):
 
 def code_letter(code: str) -> tuple[str, str]:
     """Тема и текст письма с кодом."""
-    subject = f"{code} — код для входа в кабинет ТУЦ"
+    subject = f"{code} — код для входа в кабинет BroPrint"
     text = (
         f"Код для входа в кабинет: {code}\n\n"
         f"Он действует {settings.login_code_ttl_min} минут. "

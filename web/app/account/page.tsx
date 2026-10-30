@@ -23,8 +23,8 @@ import { formatPrice } from "@/lib/format";
 import { formatDate, STATUS_LABELS } from "@/lib/order";
 import { DELIVERY_LABELS, POSTPROCESS_LABELS } from "@/lib/pricing";
 
-const fieldStyle = { borderColor: "var(--muted)", background: "var(--bg)", color: "var(--fg)" };
-const buttonStyle = { background: "var(--accent)", color: "var(--bg)" };
+const fieldStyle = { borderColor: "var(--ink-muted)", background: "var(--surface)", color: "var(--ink)" };
+const buttonStyle = { background: "var(--filament)", color: "var(--on-filament)" };
 
 export default function AccountPage() {
   const [account, setAccount] = useState<Account | null | undefined>(undefined); // undefined — ещё не знаем
@@ -93,15 +93,15 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: (a: Account) => void }) {
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-4 py-16">
       <h1 className="text-2xl font-bold leading-tight">Кабинет</h1>
-      <p className="text-sm" style={{ color: "var(--muted)" }}>
+      <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
         История заказов и повтор заказа в один клик. Пароль не нужен: укажите e-mail, который вводили
         при заказе, — пришлём код для входа.
       </p>
 
       {step === "email" ? (
-        <form onSubmit={(e) => void requestCode(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+        <form onSubmit={(e) => void requestCode(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
           <label className="flex flex-col gap-1 text-sm">
-            <span style={{ color: "var(--muted)" }}>E-mail</span>
+            <span style={{ color: "var(--ink-muted)" }}>E-mail</span>
             <input
               name="email"
               type="email"
@@ -119,12 +119,12 @@ function LoginForm({ onLoggedIn }: { onLoggedIn: (a: Account) => void }) {
           </button>
         </form>
       ) : (
-        <form onSubmit={(e) => void confirm(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+        <form onSubmit={(e) => void confirm(e)} noValidate className="flex flex-col gap-4 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
           <p className="text-sm">
             Письмо с кодом ушло на <b>{email.trim()}</b>. Код действует 15 минут; если письма нет — проверьте «Спам».
           </p>
           <label className="flex flex-col gap-1 text-sm">
-            <span style={{ color: "var(--muted)" }}>Код из письма</span>
+            <span style={{ color: "var(--ink-muted)" }}>Код из письма</span>
             <input
               name="code"
               inputMode="numeric"
@@ -183,7 +183,7 @@ function Orders({ account, onLoggedOut }: { account: Account; onLoggedOut: () =>
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h1 className="text-2xl font-bold leading-tight">Мои заказы</h1>
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
+        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           {account.email} ·{" "}
           <button type="button" onClick={() => void logout()} className="underline underline-offset-2">
             Выйти
@@ -195,9 +195,9 @@ function Orders({ account, onLoggedOut }: { account: Account; onLoggedOut: () =>
       {orders === null && !error && <p>Загружаем…</p>}
 
       {orders && orders.length === 0 && (
-        <div className="flex flex-col gap-3 rounded-lg border p-6" style={{ borderColor: "var(--muted)" }}>
+        <div className="flex flex-col gap-3 rounded-lg border p-6" style={{ borderColor: "var(--ink-muted)" }}>
           <p>Заказов с адресом {account.email} пока нет.</p>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
             Если заказ оформляли без e-mail — он есть по ссылке со страницы заказа. Новые заказы, оформленные
             после входа, попадут сюда сами.
           </p>
@@ -209,32 +209,32 @@ function Orders({ account, onLoggedOut }: { account: Account; onLoggedOut: () =>
 
       {orders && orders.length > 0 && (
         <>
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
             {ordersCountLabel(orders.length)}. «Повторить» открывает модель с теми же параметрами — цена
             считается заново по текущему прайсу.
           </p>
           <ul className="flex flex-col gap-4">
             {orders.map((o) => (
-              <li key={o.id} className="flex flex-col gap-3 rounded-lg border p-5" style={{ borderColor: "var(--muted)" }} data-testid="order">
+              <li key={o.id} className="flex flex-col gap-3 rounded-lg border p-5" style={{ borderColor: "var(--ink-muted)" }} data-testid="order">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <Link href={`/order/${o.token}`} className="text-lg font-semibold underline-offset-2 hover:underline">
                     {o.number}
                   </Link>
-                  <span className="text-sm" style={{ color: "var(--muted)" }}>
+                  <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
                     {formatDate(o.created_at)}
                   </span>
                 </div>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-                  <dt style={{ color: "var(--muted)" }}>Модель</dt>
+                  <dt style={{ color: "var(--ink-muted)" }}>Модель</dt>
                   <dd className="truncate">{o.original_name ?? o.upload_id}</dd>
-                  <dt style={{ color: "var(--muted)" }}>Параметры</dt>
+                  <dt style={{ color: "var(--ink-muted)" }}>Параметры</dt>
                   <dd>
                     {o.material}
                     {o.supports ? ", с поддержками" : ""}, {o.qty} шт,{" "}
                     {(POSTPROCESS_LABELS[o.postprocess] ?? o.postprocess).toLowerCase()},{" "}
                     {(DELIVERY_LABELS[o.delivery] ?? o.delivery).toLowerCase()}
                   </dd>
-                  <dt style={{ color: "var(--muted)" }}>Статус</dt>
+                  <dt style={{ color: "var(--ink-muted)" }}>Статус</dt>
                   <dd>{STATUS_LABELS[o.status] ?? o.status}</dd>
                 </dl>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -244,7 +244,7 @@ function Orders({ account, onLoggedOut }: { account: Account; onLoggedOut: () =>
                       Повторить
                     </Link>
                   ) : (
-                    <span className="text-sm" style={{ color: "var(--muted)" }} title="Файлы старых заказов удаляются по политике персональных данных">
+                    <span className="text-sm" style={{ color: "var(--ink-muted)" }} title="Файлы старых заказов удаляются по политике персональных данных">
                       Файл модели уже удалён —{" "}
                       <Link href="/upload" className="underline underline-offset-2">
                         загрузите заново

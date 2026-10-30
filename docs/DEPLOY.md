@@ -167,6 +167,24 @@ cd /srv/tuc/prod && docker compose up -d
   `docker system prune` для старых образов. Лимиты правятся в `.env` стенда (0 = выключить), затем `docker compose up -d`.
   Счётчик живёт в памяти api, перезапуск его обнуляет. Пачка 429 в `docker compose logs api` от одного адреса — чей-то скрипт,
   а не клиент; при желании такой IP можно закрыть в Caddy (`deploy/edge/site.caddy.tmpl`, директива `@blocked remote_ip …` + `respond 403`).
+- **Google Drive — файлы заказов** (B46): каждый заказ сам попадает в папку
+  «Заказы сайта/ГГГГ-ММ/BP-N — Имя» (модель, её исходник, `заказ.txt`), ссылка — в админке, таблице и Telegram.
+  Для обычного Gmail (сервисный аккаунт сюда не подходит: у него нет места на Диске):
+  1. console.cloud.google.com → тот же проект, что для таблицы → «APIs & Services → Library» → включить **Google Drive API**.
+  2. «OAuth consent screen»: тип External, имя приложения любое (BroPrint), ваш e-mail; scope добавлять не нужно.
+     Затем **Publish app → In production** (иначе токен перестанет работать через 7 дней; проверка Google
+     не нужна — права только `drive.file`, «к своим файлам»).
+  3. «Credentials → Create credentials → OAuth client ID», тип **Desktop app** → скопировать Client ID и Client secret.
+  4. На ноутбуке: `cd api && pip install -e . && python -m app.drive auth` → вставить ID и secret →
+     откроется браузер, войти своим Google-аккаунтом (на предупреждение «приложение не проверено» —
+     «Дополнительно → перейти»). Скрипт напечатает три строки `GOOGLE_DRIVE_*`.
+  5. Эти строки — в `/srv/tuc/prod/.env` (и staging, если нужно), `GOOGLE_DRIVE_FOLDER_ID` оставить пустым,
+     `docker compose up -d api worker`. Проверка: `docker compose exec api python -m app.drive check` —
+     напечатает ссылку на папку «Заказы сайта» в вашем Диске; оформить заказ — через минуту появится
+     его папка и сообщение «📁» в боте. Скопировать старый заказ руками: `python -m app.drive <id>`.
+  Google Workspace с общим диском: вместо OAuth — `GOOGLE_SA_JSON_PATH` (тот же ключ) и
+  `GOOGLE_DRIVE_FOLDER_ID=<id папки на общем диске>`, сервисный аккаунт — «Редактор» этой папки.
+  Что не дошло днём, worker докопирует ночью в 05:20 МСК (заказы за 30 дней).
 - **Добавить второй домен / сменить домен**: поправить `/srv/tuc/prod/deploy/edge/.env`
   и выполнить `bash /srv/tuc/prod/deploy/edge/render-sites.sh`.
 

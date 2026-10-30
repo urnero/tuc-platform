@@ -30,6 +30,8 @@ PAYMENT_STATUSES = ("pending", "waiting_for_capture", "succeeded", "canceled")
 # editor_build — не шаг воронки: клиент построил модель в редакторе (B21), это ещё до загрузки.
 # emboss_build / paint_build — тоже не шаги: клиент запустил тиснение (B30) / раскраску (B31).
 # account_login — клиент вошёл в кабинет по коду из письма (B32); не шаг воронки.
+# material_request — заявка «цена по запросу» (смолы, B44); в props только material, qty, lead_id —
+#   контакты клиента лежат в таблице `leads`, не здесь; не шаг воронки.
 EVENT_NAMES = (
     "upload",
     "quote",
@@ -40,6 +42,7 @@ EVENT_NAMES = (
     "emboss_build",
     "paint_build",
     "account_login",
+    "material_request",
 )
 
 
@@ -84,6 +87,9 @@ class Order(Base):
     # стирает имя, телефон, e-mail, адрес, комментарий, реквизиты и chat_id и ставит сюда дату.
     # NULL — данные клиента на месте. Суммы, материал, снимок расчёта остаются для аналитики.
     anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Google Drive (B46): папка «Заказы сайта/ГГГГ-ММ/BP-N — Имя» с файлами заказа.
+    # NULL — ещё не скопировали (Drive выключен, ошибка Google — ночью попробуем снова).
+    drive_folder_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Что печатаем: ссылки на файлы в DATA_DIR и ключевые поля расчёта (удобно для SQL)
     upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -99,9 +105,11 @@ class Order(Base):
     quote: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     def to_dict(self) -> dict:
+        from app.orders import order_number  # внутри: orders.py сам импортирует models
+
         return {
             "id": self.id,
-            "number": f"ТУЦ-{self.id}",
+            "number": order_number(self.id),
             "token": self.token,
             "status": self.status,
             "created_at": _iso(self.created_at),
@@ -116,6 +124,7 @@ class Order(Base):
             "payment_method": self.payment_method,
             "telegram_chat_id": self.telegram_chat_id,
             "anonymized_at": _iso(self.anonymized_at) if self.anonymized_at else None,
+            "drive_folder_url": self.drive_folder_url,
             "upload_id": self.upload_id,
             "quote_id": self.quote_id,
             "original_name": self.original_name,
@@ -248,6 +257,32 @@ class ClientSession(Base):
         DateTime(timezone=True), nullable=False, default=utcnow
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Lead(Base):
+    """Заявка «цена по запросу» (B44): смолы и всё, что слайсер не считает.
+
+    Контакты клиента живут здесь, а не в `events`: так они обезличиваются вместе с заказами
+    через ANONYMIZE_ORDERS_DAYS (app/anonymize.py) и видны владельцу в админке /admin/leads.
+    """
+
+    __tablename__ = "leads"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+    upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    material: Mapped[str] = mapped_column(String(32), nullable=False)  # ключ из materials.yaml
+    qty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    phone: Mapped[str] = mapped_column(String(32), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Ушла ли карточка владельцу в Telegram (False — бот не настроен, смотреть в админке).
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Дата обезличивания: имя и телефон стёрты, остальные контакты — NULL.
+    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 def _iso(dt: datetime) -> str:

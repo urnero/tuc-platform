@@ -9,6 +9,7 @@ GET  /admin/orders/{id}             — карточка: клиент, сост
 POST /admin/orders/{id}/status      — поставить статус (форма из карточки).
 GET  /admin/orders/{id}/file        — файл модели клиента (STL/3MF).
 GET  /admin/orders/{id}/gcode       — G-code, если расчёт печати делал настоящий слайсер.
+GET  /admin/leads                   — заявки «цена по запросу» (смолы, B44), новые сверху.
 
 Почему HTML из FastAPI, а не страница в Next: basic auth сам работает в браузере при
 переходе по ссылке (на скачивание файла тоже), не нужен ни вход, ни сессии, ни JS.
@@ -34,12 +35,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app import materials
 from app.config import settings
 from app.db import get_db
-from app.events import funnel
+from app.events import funnel, funnel_percents
 from app.export import COLUMNS, MSK, fmt_dt, order_rows, paid_at_by_order
-from app.models import ORDER_STATUSES, Order, Payment
-from app.orders import StatusError, change_status
+from app.models import ORDER_STATUSES, Lead, Order, Payment
+from app.orders import StatusError, change_status, order_number, parse_order_number
 from app.telegram import (
     ACTIVE_STATUSES,
     DELIVERY_LABELS,
@@ -53,6 +55,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 Db = Annotated[Session, Depends(get_db)]
 
 PAGE_SIZE = 50
+LEADS_LIMIT = 200  # сколько последних заявок показывать (старые — SQL из docs/ANALYTICS.md)
 FUNNEL_DAYS = 30  # за сколько дней показывать воронку (B12) над списком заказов
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -121,6 +124,7 @@ def fmt_phone(phone: str) -> str:
 templates.env.filters["dt"] = fmt_dt
 templates.env.filters["money"] = fmt_money
 templates.env.filters["phone"] = fmt_phone
+templates.env.filters["number"] = order_number  # {{ o.id|number }} → «BP-12»
 templates.env.globals.update(
     STATUS_LABELS=STATUS_LABELS,
     STATUS_ICONS=STATUS_ICONS,
@@ -179,8 +183,9 @@ def orders_query(status: str, q: str):
     if q:
         digits = re.sub(r"\D", "", q)
         conds = []
-        if re.fullmatch(r"(туц|tuc)?[-\s№]*\d+", q.lower()) and digits:
-            conds.append(Order.id == int(digits))  # «12», «ТУЦ-12», «№12»
+        number = parse_order_number(q)
+        if number is not None:
+            conds.append(Order.id == number)  # «12», «BP-12», «№12», старый «ТУЦ-12»
         if len(digits) >= 4:
             conds.append(Order.phone.like(f"%{digits}%"))  # хвост телефона
         like = f"%{q.lower()}%"
@@ -249,7 +254,8 @@ def orders_page(
             "total": total,
             "counts": counts,
             "active_count": sum(counts.get(s, 0) for s in ACTIVE_STATUSES),
-            "funnel": funnel(db, days=FUNNEL_DAYS),
+            "funnel": (fn := funnel(db, days=FUNNEL_DAYS)),
+            "funnel_pct": funnel_percents(fn),
             "funnel_days": FUNNEL_DAYS,
             "params": list_params(status, q),
             "prev_url": page_url(status, q, page - 1) if page > 1 else None,
@@ -353,7 +359,7 @@ def order_page(
 def set_status(_: Admin, db: Db, order_id: int, status: Annotated[str, Form()]) -> RedirectResponse:
     try:
         order = change_status(db, order_id, status)
-        msg = {"ok": f"ТУЦ-{order.id}: статус «{STATUS_LABELS[order.status]}»."}
+        msg = {"ok": f"{order_number(order.id)}: статус «{STATUS_LABELS[order.status]}»."}
     except StatusError as e:
         msg = {"err": str(e)}
     return RedirectResponse(f"/admin/orders/{order_id}?{urlencode(msg)}", status_code=303)
@@ -377,4 +383,17 @@ def download_gcode(_: Admin, db: Db, order_id: int) -> FileResponse:
         raise HTTPException(status_code=404, detail="G-code для этого заказа не сохранён.")
     return FileResponse(
         path, filename=f"TUC-{order.id}_{path.stem}.gcode", media_type="text/plain"
+    )
+
+
+@router.get("/leads", include_in_schema=False)
+def leads_page(request: Request, user: Admin, db: Db):
+    """Заявки «цена по запросу» (B44). Здесь они видны, даже если Telegram не настроен."""
+    leads = list(db.scalars(select(Lead).order_by(Lead.id.desc()).limit(LEADS_LIMIT)))
+    total = db.scalar(select(func.count()).select_from(Lead)) or 0
+    names = {key: m.name for key, m in materials.load_materials().items()}
+    return templates.TemplateResponse(
+        request,
+        "admin/leads.html",
+        {"user": user, "leads": leads, "total": total, "limit": LEADS_LIMIT, "names": names},
     )

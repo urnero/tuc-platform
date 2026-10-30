@@ -77,3 +77,50 @@ export function dimsText(model: CatalogModel): string | null {
 export function uploadNameFor(model: CatalogModel): string {
   return `${model.title}.${model.ext}`;
 }
+
+/** Фильтр каталога (B43): пустая строка = «все». */
+export type CatalogFilter = { category: string; material: string };
+
+export const NO_FILTER: CatalogFilter = { category: "", material: "" };
+
+/** Материалы, которые есть в каталоге, — для кнопок фильтра. Порядок — как встречаются в yaml. */
+export function materialsOf(models: CatalogModel[]): string[] {
+  return [...new Set(models.map((m) => m.material).filter(Boolean))];
+}
+
+/** Модели под выбранные категорию и материал. */
+export function filterModels(models: CatalogModel[], f: CatalogFilter): CatalogModel[] {
+  return models.filter((m) => (!f.category || m.category === f.category) && (!f.material || m.material === f.material));
+}
+
+/**
+ * Фильтр из адреса страницы (?cat=…&mat=…), чтобы ссылкой можно было поделиться.
+ * Незнакомые значения отбрасываем — покажем всё, а не пустую страницу.
+ */
+export function parseFilter(search: string, catalog: Catalog): CatalogFilter {
+  const q = new URLSearchParams(search);
+  const cat = q.get("cat") ?? "";
+  const mat = q.get("mat") ?? "";
+  return {
+    category: catalog.categories.some((c) => c.slug === cat) ? cat : "",
+    material: materialsOf(catalog.models).includes(mat) ? mat : "",
+  };
+}
+
+/** Фильтр → строка адреса: «?cat=home&mat=PETG», без фильтра — пусто. */
+export function filterQuery(f: CatalogFilter): string {
+  const q = new URLSearchParams();
+  if (f.category) q.set("cat", f.category);
+  if (f.material) q.set("mat", f.material);
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+/** Склонение для счётчика: 1 модель, 2 модели, 5 моделей. */
+export function modelsWord(n: number): string {
+  const d10 = n % 10;
+  const d100 = n % 100;
+  if (d10 === 1 && d100 !== 11) return "модель";
+  if (d10 >= 2 && d10 <= 4 && (d100 < 12 || d100 > 14)) return "модели";
+  return "моделей";
+}

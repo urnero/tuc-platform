@@ -8,7 +8,8 @@
 - paint_upload — собрать 3MF с деталями модели в выбранных цветах (B31): trimesh;
 - export_sheet — ночной экспорт заказов в Google-таблицу (B11), по расписанию cron;
 - cleanup_files — ночное удаление файлов моделей по срокам из политики ПДн (B15), cron;
-- anonymize_orders — ночное обезличивание заказов старше 5 лет (B35), cron.
+- anonymize_orders — ночное обезличивание заказов старше 5 лет (B35), cron;
+- drive_backfill — ночью докопировать в Google Drive заказы без папки (B46), cron.
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from arq.cron import cron
 
 from app.anonymize import anonymize_job
 from app.cleanup import cleanup_job
+from app.drive import backfill_job
 from app.editors import run_build
 from app.emboss import run_emboss
 from app.jobs import job_timeout_s, redis_settings
@@ -60,6 +62,11 @@ async def anonymize_orders(ctx: dict) -> dict:
     return await asyncio.to_thread(anonymize_job)
 
 
+async def drive_backfill(ctx: dict) -> dict | None:
+    """Заказы за 30 дней без папки в Google Drive — скопировать (app/drive.py)."""
+    return await asyncio.to_thread(backfill_job)
+
+
 class WorkerSettings:
     functions = [
         slice_upload,
@@ -69,14 +76,17 @@ class WorkerSettings:
         export_sheet,
         cleanup_files,
         anonymize_orders,
+        drive_backfill,
     ]
     # Время — по часам контейнера (UTC), ночью по МСК, когда заказов уже не оформляют:
     # 01:35 UTC = 04:35 МСК — чистка файлов; 01:50 UTC = 04:50 МСК — обезличивание заказов;
-    # 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу (уже без данных обезличенных заказов).
+    # 02:05 UTC = 05:05 МСК — экспорт в Google-таблицу (уже без данных обезличенных заказов);
+    # 02:20 UTC = 05:20 МСК — докопировать в Google Drive то, что не дошло днём.
     cron_jobs = [
         cron(cleanup_files, hour=1, minute=35, timeout=600),
         cron(anonymize_orders, hour=1, minute=50, timeout=300),
         cron(export_sheet, hour=2, minute=5, timeout=300),
+        cron(drive_backfill, hour=2, minute=20, timeout=1800),
     ]
     redis_settings = redis_settings()
     max_jobs = 1  # слайсер грузит процессор целиком — по одной модели за раз

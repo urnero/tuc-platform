@@ -30,7 +30,7 @@ export type Notifications = {
 /** GET /api/v1/orders/{token} и ответ POST /api/v1/orders. */
 export type Order = {
   id: number;
-  number: string; // «ТУЦ-12»
+  number: string; // «BP-12»
   token: string;
   status: OrderStatus;
   created_at: string;
@@ -266,4 +266,45 @@ export function quoteLoadError(status: number): string {
   if (status === 404) return "Расчёт не найден. Рассчитайте цену заново.";
   if (status === 410) return "Расчёт устарел — он действует 24 часа, цены могли измениться. Рассчитайте цену заново.";
   return `Ошибка ${status}.`;
+}
+
+/**
+ * Маска телефона на лету (B42): «89991234567» → «+7 999 123-45-67».
+ * Российский номер (начинается с 7, 8 или 9) собирается по мере ввода; разделители ставим
+ * только перед следующей цифрой — так Backspace в конце всегда стирает цифру, а не дефис.
+ * Иностранный номер («+» и не 7) не трогаем.
+ */
+export function maskPhone(raw: string): string {
+  const trimmed = raw.trimStart();
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return trimmed.startsWith("+") ? "+" : "";
+  if (trimmed.startsWith("+") && digits[0] !== "7") return trimmed; // иностранный
+  let national: string;
+  if (digits[0] === "7" || digits[0] === "8") national = digits.slice(1);
+  else if (digits[0] === "9") national = digits;
+  else return trimmed; // не похоже на российский — оставляем как ввели
+  national = national.slice(0, 10);
+  const parts = [national.slice(0, 3), national.slice(3, 6), national.slice(6, 8), national.slice(8, 10)];
+  let out = "+7";
+  if (parts[0]) out += " " + parts[0];
+  if (parts[1]) out += " " + parts[1];
+  if (parts[2]) out += "-" + parts[2];
+  if (parts[3]) out += "-" + parts[3];
+  return out;
+}
+
+/**
+ * Проверка одного поля на лету (B42): при уходе с поля показываем ошибку, только если
+ * клиент что-то ввёл (пустые обязательные поля ругаем при нажатии «Заказать»).
+ * `force` — поле уже было с ошибкой: перепроверяем при каждом вводе, чтобы ошибка ушла сразу.
+ */
+export function liveFieldError(
+  form: OrderForm,
+  delivery: string,
+  key: keyof OrderForm,
+  force = false,
+): string | undefined {
+  const value = form[key];
+  if (!force && typeof value === "string" && !value.trim()) return undefined;
+  return validateForm(form, delivery)[key];
 }

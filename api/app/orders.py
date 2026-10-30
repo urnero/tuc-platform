@@ -56,6 +56,21 @@ class PhoneError(ValueError):
     pass
 
 
+def order_number(order_id: int) -> str:
+    """Номер заказа для людей: «BP-12». Префикс — настройка ORDER_NUMBER_PREFIX."""
+    return f"{settings.order_number_prefix}-{order_id}"
+
+
+def parse_order_number(raw: str) -> int | None:
+    """«12», «BP-12», «bp 12», «№12», старый «ТУЦ-12» → 12; иначе None."""
+    text = (raw or "").strip().lower()
+    prefixes = {settings.order_number_prefix.lower(), "bp", "бп", "туц", "tuc"}
+    m = re.fullmatch(r"([a-zа-яё]*)[-\s№#]*(\d+)", text)
+    if not m or (m.group(1) and m.group(1) not in prefixes):
+        return None
+    return int(m.group(2))
+
+
 def normalize_phone(raw: str) -> str:
     """«8 (999) 123-45-67», «+7 999 1234567», «9991234567» → «+79991234567».
 
@@ -196,6 +211,8 @@ def create_order(
     # Владельцу — в Telegram, клиенту — письмо «принят» (B34); уже после ответа клиенту.
     background.add_task(notify_owner_new_order, data)
     background.add_task(notify.order_created, data)
+    background.add_task(_push_to_sheet, order.id)  # B47: строка в Google-таблице учёта
+    background.add_task(_push_to_drive, order.id)  # B46: файлы заказа в Google Drive
     return order_response(db, order)
 
 
@@ -273,13 +290,27 @@ def change_status(db: Session, order_id: int, status: str, notify_client: bool =
     if order is None:
         raise StatusError(f"Заказ № {order_id} не найден.")
     if order.status == status:
-        raise StatusError(f"ТУЦ-{order.id} уже в статусе «{STATUS_LABELS[status]}».")
+        raise StatusError(f"{order_number(order.id)} уже в статусе «{STATUS_LABELS[status]}».")
     order.status = status
     db.commit()
     db.refresh(order)
     if notify_client:
         notify.status_changed(order.to_dict())
+    _push_to_sheet(order.id)  # B47: обновить строку заказа в Google-таблице учёта
     return order
+
+
+def _push_to_sheet(order_id: int) -> None:
+    # Импорт здесь, а не наверху: app.sheets сам импортирует app.orders (через app.export).
+    from app import sheets
+
+    sheets.push_order(order_id)
+
+
+def _push_to_drive(order_id: int) -> None:
+    from app import drive  # импорт здесь по той же причине, что и sheets
+
+    drive.push_order(order_id)
 
 
 def link_telegram(db: Session, token: str, chat_id: int | str) -> Order | None:

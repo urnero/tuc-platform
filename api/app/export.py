@@ -12,7 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Order, Payment
-from app.telegram import STATUS_LABELS
+from app.orders import order_number
+from app.telegram import STATUS_LABELS, admin_order_url
 
 MSK = timedelta(hours=3)
 
@@ -23,6 +24,10 @@ COLUMNS = [
     "print_time_h", "material_g", "original_name", "comment", "paid_msk", "upload_id",
     # B33: добавлены в конец, чтобы формулы владельца на старые колонки не сдвинулись.
     "company_name", "company_inn", "payment_method",
+    # B47: ссылка на карточку заказа в админке (открывается с логином и паролем админки).
+    "admin_url",
+    # B46: папка заказа в Google Drive (пусто — ещё не скопировали).
+    "drive_folder_url",
 ]
 
 
@@ -51,14 +56,20 @@ def order_row(o: Order, paid_at: datetime | None) -> list:
     """Заказ → список значений в порядке COLUMNS."""
     quote = o.quote or {}
     return [
-        o.id, f"ТУЦ-{o.id}", fmt_dt(o.created_at), o.status, STATUS_LABELS[o.status],
+        o.id, order_number(o.id), fmt_dt(o.created_at), o.status, STATUS_LABELS[o.status],
         o.customer_name, o.phone, o.email or "", o.delivery, o.address or "",
         o.material, int(o.supports), o.qty, o.postprocess, o.total,
         round((quote.get("print_time_s") or 0) / 3600 * o.qty, 2),
         round((quote.get("material_g") or 0) * o.qty, 1),
         o.original_name or "", o.comment or "", fmt_dt(paid_at), o.upload_id,
         o.company_name or "", o.company_inn or "", o.payment_method,
+        admin_url(o.id), o.drive_folder_url or "",
     ]
+
+
+def admin_url(order_id: int) -> str:
+    """Карточка заказа в админке (B09) — чтобы из таблицы учёта открыть заказ одним кликом."""
+    return admin_order_url(order_id)
 
 
 def order_rows(db: Session, orders: list[Order]) -> list[list]:

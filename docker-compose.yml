@@ -15,6 +15,8 @@ services:
       args:
         # Адрес сайта попадает в HTML (canonical, sitemap.xml, robots.txt) — см. B25.
         SITE_URL: ${SITE_URL:-http://localhost:8080}
+        # Номер счётчика Яндекс.Метрики (B51) вшивается в сборку; пусто — счётчик выключен.
+        NEXT_PUBLIC_YM_ID: ${NEXT_PUBLIC_YM_ID:-}
     environment:
       API_INTERNAL_URL: http://api:8000
       SITE_URL: ${SITE_URL:-http://localhost:8080}

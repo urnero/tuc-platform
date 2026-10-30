@@ -12,8 +12,8 @@ import { Doc, Facts, Items, MissingRequisitesNote, P, Section } from "@/componen
 import { COMPANY, formatDocumentsDate, requisite } from "@/lib/company";
 
 export const metadata: Metadata = {
-  title: "Политика обработки персональных данных — ТУЦ",
-  description: "Какие данные собирает сайт студии ТУЦ, зачем, кому передаёт и как их удалить.",
+  title: "Политика обработки персональных данных — BroPrint",
+  description: "Какие данные собирает сайт мастерской BroPrint, зачем, кому передаёт и как их удалить.",
   alternates: { canonical: "/policy" },
 };
 

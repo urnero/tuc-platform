@@ -53,8 +53,12 @@ NEXT_STATUSES: dict[str, list[str]] = {
 # Заказы в этих статусах показываем в /orders как «активные».
 ACTIVE_STATUSES = ("new", "paid", "printing", "ready")
 
-DELIVERY_LABELS = {"pickup": "самовывоз", "courier_moscow": "курьер по Москве"}
-POSTPROCESS_LABELS = {"none": "нет", "sanding": "шлифовка"}
+DELIVERY_LABELS = {
+    "pickup": "самовывоз",
+    "courier_moscow": "курьер по Москве",
+    "cdek": "СДЭК до пункта выдачи",
+}
+POSTPROCESS_LABELS = {"none": "нет", "sanding": "шлифовка", "painting": "грунт и покраска"}
 
 MSK = timedelta(hours=3)
 
@@ -121,8 +125,29 @@ def order_card(order: dict, header: str | None = None) -> str:
     created = fmt_msk(order.get("created_at"))
     if created:
         lines.append(f"Создан: {created} МСК")
-    lines.append(f"{settings.site_url}/order/{order['token']}")
+    lines.append(order_links(order))
     return "\n".join(lines)
+
+
+def admin_order_url(order_id: int) -> str:
+    """Карточка заказа в админке (B09)."""
+    return f"{settings.site_url.rstrip('/')}/admin/orders/{order_id}"
+
+
+def order_links(order: dict) -> str:
+    """Последняя строка карточки (B48): ссылки одним касанием.
+
+    - «Страница заказа» — то, что видит клиент;
+    - «Админка» — только если админка включена (`ADMIN_PASSWORD` задан), иначе ссылка вела бы в 503;
+    - «Файлы в Drive» — если заказ уже скопирован в Google Drive (B46, `drive_folder_url`).
+    """
+    site = settings.site_url.rstrip("/")
+    links = [f'<a href="{esc(site)}/order/{esc(order["token"])}">Страница заказа</a>']
+    if settings.admin_user and settings.admin_password:
+        links.append(f'<a href="{esc(admin_order_url(order["id"]))}">Админка</a>')
+    if order.get("drive_folder_url"):
+        links.append(f'<a href="{esc(order["drive_folder_url"])}">Файлы в Drive</a>')
+    return " · ".join(links)
 
 
 def order_keyboard(order: dict) -> dict:
@@ -180,8 +205,29 @@ def telegram_enabled() -> bool:
     return bool(settings.telegram_bot_token and settings.telegram_owner_chat_id)
 
 
+# Повторы при сбоях сети (B48): после 1-й неудачи ждём 1 с, после 2-й — 3 с, потом сдаёмся.
+# Повторяем только то, что может пройти со второго раза: обрыв сети, 429 (Telegram просит
+# подождать — ждём сколько скажет, но не больше 10 с) и 5xx. 400/401/403 — ошибка в запросе
+# или токене, повтор не поможет.
+RETRY_DELAYS_S = (1, 3)
+MAX_RETRY_AFTER_S = 10
+
+
+def _retry_delay(r: httpx.Response | None, default: float) -> float | None:
+    """Сколько ждать перед повтором; None — повторять бессмысленно."""
+    if r is None or r.status_code >= 500:
+        return default
+    if r.status_code == 429:
+        try:
+            after = (r.json().get("parameters") or {}).get("retry_after") or default
+        except ValueError:
+            after = default
+        return min(float(after), MAX_RETRY_AFTER_S)
+    return None
+
+
 def send_message(chat_id: str | int, text: str, reply_markup: dict | None = None) -> bool:
-    """Один вызов sendMessage. Ошибки не роняют вызывающий код — только пишем в лог."""
+    """sendMessage с повторами при сбоях сети. Ошибки не роняют вызывающий код — только лог."""
     payload = {
         "chat_id": chat_id,
         "text": text,
@@ -191,15 +237,22 @@ def send_message(chat_id: str | int, text: str, reply_markup: dict | None = None
     if reply_markup is not None:
         payload["reply_markup"] = reply_markup
     url = f"{TG_API}/bot{settings.telegram_bot_token}/sendMessage"
-    try:
-        r = httpx.post(url, json=payload, timeout=10)
-        if r.status_code != 200:
+    for attempt in range(len(RETRY_DELAYS_S) + 1):
+        r: httpx.Response | None = None
+        try:
+            r = httpx.post(url, json=payload, timeout=10)
+            if r.status_code == 200:
+                return True
             log.warning("telegram sendMessage %s: %s", r.status_code, r.text[:200])
-            return False
-        return True
-    except httpx.HTTPError as e:
-        log.warning("telegram sendMessage failed: %s", e)
-        return False
+        except httpx.HTTPError as e:
+            log.warning("telegram sendMessage failed: %s", e)
+        if attempt == len(RETRY_DELAYS_S):
+            break
+        delay = _retry_delay(r, RETRY_DELAYS_S[attempt])
+        if delay is None:
+            break
+        time.sleep(delay)
+    return False
 
 
 # Имя бота (@username) для ссылки «Получать статусы в Telegram» (B34): спрашиваем у Telegram

@@ -50,12 +50,30 @@ export type Quote = {
 export const POSTPROCESS_LABELS: Record<string, string> = {
   none: "Без обработки",
   sanding: "Шлифовка",
+  painting: "Грунт и покраска в один цвет",
 };
 
 export const DELIVERY_LABELS: Record<string, string> = {
   pickup: "Самовывоз (Москва)",
   courier_moscow: "Курьер по Москве",
+  cdek: "СДЭК до пункта выдачи (Россия)",
 };
+
+/**
+ * Цена грамма для клиента — материал с наценкой: price_per_g × (1 + margin), до 0,1 ₽.
+ * Без часа принтера, поэтому на сайте пишем «от …» (B45: раньше показывали число без наценки).
+ */
+export function clientPerGram(pricing: Pricing, material: string): number | null {
+  const m = pricing.materials[material];
+  if (!m) return null;
+  return Math.round(m.price_per_g * (1 + pricing.margin) * 10) / 10;
+}
+
+/** 5.4 → «5,4 ₽», 12 → «12 ₽» — цена за грамм без лишних нулей. */
+export function formatPerGram(rub: number): string {
+  const rounded = Math.round(rub * 100) / 100;
+  return `${String(rounded).replace(".", ",")} ₽`;
+}
 
 /** Подпись варианта с ценой: «Шлифовка (+150 ₽/шт)», «Самовывоз (Москва)» при 0 ₽. */
 export function optionLabel(labels: Record<string, string>, key: string, price: number, perItem: boolean): string {

@@ -1,0 +1,39 @@
+{% extends "admin/base.html" %}
+{% block title %}Заявки{% endblock %}
+{% block content %}
+<h1>Заявки «цена по запросу» <span class="muted">({{ total }})</span></h1>
+{# Смолы и всё, что слайсер не считает (B44). Позвонить клиенту, посмотреть модель, назвать цену. #}
+<p class="muted">Клиент выбрал материал без автоматического расчёта и оставил контакты. Посмотрите модель и назовите цену.
+  {% if total > limit %}Показаны последние {{ limit }} — остальные SQL из docs/ANALYTICS.md.{% endif %}</p>
+
+{% if not leads %}
+<p class="muted">Заявок нет.</p>
+{% else %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>№</th><th>Создана (МСК)</th><th>Материал</th><th>Клиент</th><th>Комментарий</th><th>Модель</th><th>Telegram</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for l in leads %}
+    <tr>
+      <td><b>{{ l.id }}</b></td>
+      <td>{{ l.created_at|dt }}</td>
+      <td>{{ names.get(l.material, l.material) }} × {{ l.qty }} шт</td>
+      {% if l.anonymized_at %}
+      <td class="muted">обезличено {{ l.anonymized_at|dt }}</td><td></td>
+      {% else %}
+      <td class="wrap">{{ l.name }}<br><a href="tel:{{ l.phone }}">{{ l.phone|phone }}</a>{% if l.email %}<br><a href="mailto:{{ l.email }}">{{ l.email }}</a>{% endif %}</td>
+      <td class="wrap">{{ l.comment or '' }}</td>
+      {% endif %}
+      <td><a href="/upload/{{ l.upload_id }}" target="_blank" rel="noopener">3D-просмотр ↗</a></td>
+      <td>{% if l.telegram_sent %}✓ отправлена{% else %}<span class="muted" title="Бот не настроен (TELEGRAM_BOT_TOKEN) — заявка есть только здесь">—</span>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

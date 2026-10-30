@@ -9,6 +9,7 @@ from app.catalog import router as catalog_router
 from app.config import settings
 from app.editors import router as editors_router
 from app.emboss import router as emboss_router
+from app.leads import router as leads_router
 from app.orders import router as orders_router
 from app.paint import router as paint_router
 from app.payments import router as payments_router
@@ -16,7 +17,7 @@ from app.quotes import router as quotes_router
 from app.slices import router as slices_router
 from app.uploads import router as uploads_router
 
-app = FastAPI(title="ТУЦ API", version="0.1.0")
+app = FastAPI(title="BroPrint API", version="0.1.0")
 app.include_router(uploads_router)
 app.include_router(slices_router)
 app.include_router(quotes_router)
@@ -28,6 +29,7 @@ app.include_router(editors_router)
 app.include_router(emboss_router)
 app.include_router(paint_router)
 app.include_router(account_router)
+app.include_router(leads_router)
 
 
 @app.get("/health")
