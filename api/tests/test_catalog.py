@@ -39,6 +39,7 @@ def catalog_dir(tmp_path, monkeypatch, data_dir):
     (folder / "catalog.yaml").write_text(YAML_OK, "utf-8")
     (folder / "models" / "cube.stl").write_bytes(box_stl())
     monkeypatch.setattr(settings, "catalog_dir", folder)
+    monkeypatch.setattr(settings, "pricing_path", REPO_ROOT / "config" / "pricing.yaml")
     cat.reload_catalog()
     yield folder
     cat.reload_catalog()
@@ -228,3 +229,34 @@ def test_render_png_draws_something():
 def test_render_empty_mesh():
     png = render_png(trimesh.Trimesh(), size=32)
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+# --- ориентир цены в карточке (UX «цена до загрузки») ----------------------------------
+
+def test_card_has_price_hint(client, catalog_dir):
+    data = client.get("/api/v1/catalog").json()
+    cube = next(m for m in data["models"] if m["slug"] == "cube")
+    # куб 20×30×40 в PETG — маленький, одна штука упирается в минимальный заказ
+    from app.pricing import load_pricing
+
+    min_order = round(load_pricing().min_order)
+    assert cube["price"] == {"total": min_order, "material": "PETG", "min_order": True}
+    missing = next(m for m in data["models"] if m["slug"] == "no-file")
+    assert missing["price"] is None
+
+
+def test_price_hint_falls_back_to_pla_and_survives_bad_pricing(monkeypatch):
+    monkeypatch.setattr(settings, "pricing_path", REPO_ROOT / "config" / "pricing.yaml")
+    from app.meshcheck import MeshInfo
+    from app.pricing import PricingError
+
+    info = MeshInfo(12, 8, {"x": 100, "y": 100, "z": 100}, 1000.0, 600.0, True, False, "mm")
+    model = cat.Model("big", "Куб", "home", "", "big.stl", "RESIN", "")
+    hint = cat.price_hint(model, info)
+    assert hint["material"] == "PLA" and hint["min_order"] is False and hint["total"] > 0
+
+    def broken():
+        raise PricingError("битый прайс")
+
+    monkeypatch.setattr(cat, "load_pricing", broken)
+    assert cat.price_hint(model, info) is None

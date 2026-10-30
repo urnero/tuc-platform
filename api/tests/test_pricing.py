@@ -312,3 +312,31 @@ def test_api_quote_units_change_invalidates(client, pricing_file, fake_slicer):
     assert q2["units"] == "inch"
     assert q2["material_g"] > q["material_g"]
     assert q2["total"] >= q["total"]
+
+
+# --- ориентир до слайсера -----------------------------------------------------------------
+
+def test_estimate_print_cube_20mm():
+    from app.pricing import estimate_print
+
+    # калибровочный куб 20 мм: объём 8 см³, площадь 24 см² → оболочка 2,4 + 15 % от 5,6
+    grams, seconds = estimate_print(8.0, 24.0)
+    assert grams == round((2.4 + 5.6 * 0.15) * 1.24, 1)
+    assert 15 * 60 < seconds < 30 * 60  # реальный слайсер даёт ~20–25 минут
+
+
+def test_estimate_print_thin_part_shell_not_bigger_than_volume():
+    from app.pricing import estimate_print
+
+    grams, _ = estimate_print(1.0, 500.0)  # тонкая пластина: «оболочка» больше объёма
+    assert grams == round(1.0 * 1.24, 1)
+    assert estimate_print(-1, -1) == (0.0, 0)
+
+
+def test_estimate_price_uses_calc_price():
+    from app.pricing import calc_price, estimate_price, estimate_print
+
+    p = parse_pricing(SIMPLE)
+    grams, seconds = estimate_print(500.0, 600.0)
+    q = estimate_price(p, material="PLA", volume_cm3=500.0, surface_cm2=600.0)
+    assert q.total == calc_price(p, material="PLA", material_g=grams, print_time_s=seconds).total

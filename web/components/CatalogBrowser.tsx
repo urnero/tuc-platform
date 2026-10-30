@@ -23,6 +23,7 @@ import {
   modelsWord,
   NO_FILTER,
   parseFilter,
+  priceText,
 } from "@/lib/catalog";
 
 export default function CatalogBrowser({ catalog }: { catalog: Catalog }) {
@@ -154,6 +155,7 @@ function ModelGrid({ models }: { models: CatalogModel[] }) {
 
 function ModelCard({ model }: { model: CatalogModel }) {
   const dims = dimsText(model);
+  const price = priceText(model);
   return (
     <li className="card flex flex-col gap-0 overflow-hidden !p-0">
       <Link href={`/catalog/${model.slug}`} className="relative block aspect-[4/3]" style={{ background: "var(--sand)" }} tabIndex={-1} aria-hidden>
@@ -179,8 +181,13 @@ function ModelCard({ model }: { model: CatalogModel }) {
           </p>
         )}
         <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-          <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
-            {dims ?? "Габариты уточняются"}
+          <span className="flex flex-col text-sm">
+            {price && (
+              <span className="font-semibold" data-testid="catalog-price" title={`Ориентир за 1 шт. в ${model.price?.material}, точная цена — после расчёта`}>
+                {price}
+              </span>
+            )}
+            <span style={{ color: "var(--ink-muted)" }}>{dims ?? "Габариты уточняются"}</span>
           </span>
           <CatalogOrderButton slug={model.slug} />
         </div>

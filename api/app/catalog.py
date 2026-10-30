@@ -37,6 +37,7 @@ from app.config import settings
 from app.events import track
 from app.limits import uploads_guard
 from app.meshcheck import ALLOWED_EXT, MeshError, MeshInfo, inspect_file
+from app.pricing import PricingError, estimate_price, load_pricing
 from app.render import render_png
 from app.uploads import _save_meta, upload_dir
 
@@ -214,10 +215,32 @@ def model_card(model: Model) -> dict:
         "mesh": None,
     }
     try:
-        card["mesh"] = mesh_info(model).to_dict()
+        info = mesh_info(model)
     except (CatalogError, MeshError):
-        pass
+        info = None
+    card["mesh"] = info.to_dict() if info else None
+    card["price"] = price_hint(model, info) if info else None
     return card
+
+
+def price_hint(model: Model, info: MeshInfo) -> dict | None:
+    """Ориентир цены для карточки (UX: цена видна до загрузки файла).
+
+    Считает pricing.estimate_price по объёму сетки в материале модели; материала нет
+    в прайсе (смола, «по запросу») — берём PLA. `min_order: true` — одна штука упирается
+    в минимальный заказ, сайт пишет «от N ₽». Прайс сломан — карточка просто без цены.
+    """
+    try:
+        pricing = load_pricing()
+        material = model.material if model.material in pricing.materials else "PLA"
+        if material not in pricing.materials:
+            return None
+        q = estimate_price(
+            pricing, material=material, volume_cm3=info.volume_cm3, surface_cm2=info.surface_cm2
+        )
+    except (PricingError, OSError, yaml.YAMLError):
+        return None
+    return {"total": q.total, "material": material, "min_order": q.min_order_applied}
 
 
 def _catalog_or_500() -> Catalog:

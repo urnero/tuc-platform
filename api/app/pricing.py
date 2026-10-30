@@ -239,3 +239,35 @@ def calc_price(
         delivery_cost=r2(delivery_cost),
         total=total,
     )
+
+
+# --- ориентир до слайсера (цена в карточках каталога) -------------------------------------
+#
+# Точную цену даёт только слайсер (граммы и часы из G-code). Для карточки каталога слайсить
+# каждую модель при открытии страницы дорого, поэтому показываем ОРИЕНТИР «≈ N ₽»:
+# граммы и часы прикидываем по объёму и площади поверхности сетки, а деньги считает та же
+# calc_price. Числа ниже — под профиль profiles/print.ini (2 периметра, заполнение 15 %).
+# Решение и проверка — docs/DECISIONS.md, запись 2026-10-31 «Ориентир цены в каталоге».
+
+EST_SHELL_CM = 0.1  # толщина «оболочки» (периметры + сплошные слои сверху/снизу), см
+EST_INFILL = 0.15  # заполнение внутри — как fill_density в print.ini
+# плотность пластика: PLA 1,24 (PETG 1,27, ABS 1,04 — разница меньше погрешности прикидки)
+EST_DENSITY_G_CM3 = 1.24
+EST_GRAMS_PER_HOUR = 12.0  # сколько граммов в час кладёт принтер на обычной детали
+
+
+def estimate_print(volume_cm3: float, surface_cm2: float) -> tuple[float, int]:
+    """Граммы и секунды печати на одно изделие — грубо, без слайсера."""
+    volume = max(volume_cm3, 0.0)
+    shell = min(max(surface_cm2, 0.0) * EST_SHELL_CM, volume)
+    grams = (shell + (volume - shell) * EST_INFILL) * EST_DENSITY_G_CM3
+    seconds = int(grams / EST_GRAMS_PER_HOUR * 3600)
+    return round(grams, 1), seconds
+
+
+def estimate_price(
+    pricing: Pricing, *, material: str, volume_cm3: float, surface_cm2: float
+) -> Quote:
+    """Ориентир цены одной штуки (самовывоз, без постобработки и поддержек) по габаритам сетки."""
+    grams, seconds = estimate_print(volume_cm3, surface_cm2)
+    return calc_price(pricing, material=material, material_g=grams, print_time_s=seconds)

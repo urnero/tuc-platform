@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Catalog, type CatalogModel, dimsText, groupByCategory, loadCatalogModel, uploadNameFor } from "./catalog";
+import {
+  type Catalog,
+  type CatalogModel,
+  dimsText,
+  groupByCategory,
+  loadCatalogModel,
+  priceExample,
+  priceText,
+  uploadNameFor,
+} from "./catalog";
 
 const model = (slug: string, category: string, extra: Partial<CatalogModel> = {}): CatalogModel => ({
   slug,
@@ -70,5 +79,28 @@ describe("loadCatalogModel", () => {
     const body = JSON.stringify(model("cube", "home"));
     vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 200 })));
     expect((await loadCatalogModel("cube"))?.slug).toBe("cube");
+  });
+});
+
+describe("ориентир цены в каталоге", () => {
+  it("«от» — если упёрлись в минимальный заказ, «≈» — иначе, без цены — null", () => {
+    expect(priceText(model("a", "home", { price: { total: 400, material: "PLA", min_order: true } }))).toBe("от 400 ₽");
+    expect(priceText(model("b", "home", { price: { total: 1580, material: "PETG", min_order: false } }))).toBe("≈ 1 580 ₽");
+    expect(priceText(model("c", "home", { price: null }))).toBeNull();
+    expect(priceText(model("d", "home"))).toBeNull();
+  });
+
+  it("пример для главной — самая дешёвая модель с ценой", () => {
+    const cat: Catalog = {
+      categories: [],
+      models: [
+        model("tray", "home", { title: "Лоток", price: { total: 581, material: "PLA", min_order: false } }),
+        model("none", "home", { title: "Без цены" }),
+        model("coaster", "home", { title: "Подставка", price: { total: 400, material: "PLA", min_order: true } }),
+      ],
+    };
+    expect(priceExample(cat)).toEqual({ slug: "coaster", text: "Подставка — от 400 ₽" });
+    expect(priceExample(null)).toBeNull();
+    expect(priceExample({ categories: [], models: [model("x", "home")] })).toBeNull();
   });
 });

@@ -13,6 +13,7 @@ import Image from "next/image";
 import Link from "next/link";
 import UploadDropzone from "@/components/UploadDropzone";
 import { Button } from "@/components/ui";
+import { loadCatalog, priceExample } from "@/lib/catalog";
 import { COMPANY, contactRows, mapEmbedUrl } from "@/lib/company";
 import { FACTS, FAQ, faqJsonLd, loadMaterials, loadPricing, materialCards, minOrderText, STEPS, STUDIO } from "@/lib/landing";
 import { WORKS, workImageUrl, worksTitle } from "@/lib/works";
@@ -44,7 +45,8 @@ function SectionTitle({ id, title, subtitle }: { id?: string; title: string; sub
 }
 
 export default async function Home() {
-  const [pricing, materialItems] = await Promise.all([loadPricing(), loadMaterials()]);
+  const [pricing, materialItems, catalog] = await Promise.all([loadPricing(), loadMaterials(), loadCatalog()]);
+  const example = priceExample(catalog);
   const materials = materialCards(pricing, materialItems);
   const minOrder = minOrderText(pricing);
   const map = mapEmbedUrl(COMPANY.pickupMapUrl);
@@ -60,6 +62,14 @@ export default async function Home() {
             Цена — за минуту: загрузите STL или 3MF, сервер посчитает печать и покажет сумму до заказа. Оплата картой
             или по счёту, статус заказа по ссылке.{minOrder && <> {minOrder}.</>}
           </p>
+          {example && (
+            <p className="text-sm" data-testid="price-example">
+              Например:{" "}
+              <Link href={`/catalog/${example.slug}`} className="font-semibold underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
+                {example.text}
+              </Link>
+            </p>
+          )}
           <ul className="t-caption flex flex-wrap gap-x-5 gap-y-2" style={{ color: "var(--ink-muted)" }} aria-label="Коротко о мастерской">
             <li>Москва · своя мастерская</li>
             <li>PLA, PETG, нейлон, карбон, смолы</li>
