@@ -45,6 +45,10 @@ import {
   MATERIAL_LABELS,
   type SliceRecord,
   sliceSteps,
+  SUPPORTS_AUTO_TEXT,
+  SUPPORTS_DEFAULT,
+  SUPPORTS_OFF_TEXT,
+  supportsNote,
 } from "@/lib/slice";
 
 const POLL_MS = 2000;
@@ -63,7 +67,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
   const [catalog, setCatalog] = useState<MaterialsResponse>(FALLBACK_MATERIALS);
   const [pricing, setPricing] = useState<Pricing | null>(null);
   const [material, setMaterial] = useState(preset?.material ?? defaultMaterial);
-  const [supports, setSupports] = useState(preset?.supports ?? false);
+  const [supports, setSupports] = useState(preset?.supports ?? SUPPORTS_DEFAULT);
   const [qty, setQty] = useState(preset?.qty ?? 1);
   const [postprocess, setPostprocess] = useState(preset?.postprocess ?? "none");
   const [delivery, setDelivery] = useState(preset?.delivery ?? "pickup");
@@ -278,10 +282,15 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
 
       {!onRequest && (
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="flex items-center gap-2 py-2">
-            <input type="checkbox" checked={supports} onChange={(e) => setSupports(e.target.checked)} />
-            Нужны поддержки
-          </label>
+          <details className="w-full" style={{ color: "var(--ink-muted)" }}>
+            <summary className="cursor-pointer py-2">
+              {supports ? SUPPORTS_AUTO_TEXT : SUPPORTS_OFF_TEXT} · для опытных
+            </summary>
+            <label className="flex items-center gap-2 py-2" style={{ color: "var(--ink)" }}>
+              <input type="checkbox" checked={!supports} onChange={(e) => setSupports(!e.target.checked)} />
+              Печатать без поддержек (я знаю, что нависаний нет)
+            </label>
+          </details>
           <button
             type="button"
             onClick={() => void calculate()}
@@ -315,7 +324,7 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
               <dt style={{ color: "var(--ink-muted)" }}>Материал</dt>
               <dd>
                 {res.material}
-                {res.supports ? ", с поддержками" : ""}
+                {supportsNote(res)}
               </dd>
               <dt style={{ color: "var(--ink-muted)" }}>Время печати</dt>
               <dd>{formatDuration(res.print_time_s)}</dd>

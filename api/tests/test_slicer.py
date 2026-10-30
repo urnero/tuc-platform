@@ -138,6 +138,17 @@ def test_slice_model_fake(fake_slicer, tmp_path):
     with_supports = slice_model(model, tmp_path / "slices", "PLA", supports=True)
     assert with_supports.filament_g > result.filament_g
     assert (tmp_path / "slices" / "PLA_supports.gcode").is_file()
+    assert with_supports.supports_used is True
+    assert result.supports_used is False
+
+
+def test_slice_model_supports_auto_not_needed(fake_slicer, tmp_path):
+    """«Решит мастерская»: поддержки включены, но нависаний нет — в G-code их нет."""
+    model = tmp_path / "flat.stl"
+    model.write_bytes(box_stl())
+    result = slice_model(model, tmp_path / "slices", "PLA", supports=True)
+    assert result.supports is True
+    assert result.supports_used is False
 
 
 def test_slice_model_inch_scales(fake_slicer, tmp_path):

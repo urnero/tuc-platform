@@ -11,7 +11,25 @@ export type SliceResult = {
   filament_mm: number;
   layer_height_mm: number | null;
   slicer_version: string;
+  /** Поддержки реально есть в G-code (слайсер ставит их только под нависания). У старых расчётов нет. */
+  supports_used?: boolean;
 };
+
+/**
+ * Поддержки: по умолчанию «решит мастерская» — слайсер сам ставит их только под нависания,
+ * а наценка за поддержки берётся, только если они понадобились. Новичку решать не нужно;
+ * опытный клиент может выключить поддержки в «Для опытных».
+ */
+export const SUPPORTS_DEFAULT = true;
+export const SUPPORTS_AUTO_TEXT = "Поддержки — решит мастерская: только где есть нависания";
+export const SUPPORTS_OFF_TEXT = "Без поддержек";
+
+/** Хвост к названию материала в итогах расчёта: «, с поддержками» / «, поддержки не нужны» / «». */
+export function supportsNote(r: Pick<SliceResult, "supports" | "supports_used">): string {
+  if (!r.supports) return "";
+  if (r.supports_used === false) return ", поддержки не нужны";
+  return ", с поддержками";
+}
 
 export type SliceRecord = {
   upload_id: string;

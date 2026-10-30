@@ -127,13 +127,16 @@ def create_quote(upload_id: str, body: QuoteRequest) -> dict:
             f"Статус расчёта: {status}.",
         )
 
+    # «Поддержки — решит мастерская»: слайсер ставит их только под нависания. Если в G-code
+    # их не оказалось — наценку за поддержки не берём. Старые расчёты без поля — как раньше.
+    supports = body.supports and bool(record["result"].get("supports_used", True))
     try:
         quote = calc_price(
             load_pricing(),
             material=body.material,
             material_g=float(record["result"]["filament_g"]),
             print_time_s=int(record["result"]["print_time_s"]),
-            supports=body.supports,
+            supports=supports,
             qty=body.qty,
             postprocess=body.postprocess,
             delivery=body.delivery,

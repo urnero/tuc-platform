@@ -68,6 +68,29 @@ def _quote(client, delivery="pickup", qty=1) -> dict:
     return q.json()
 
 
+def test_quote_supports_markup_only_when_used(client, fake_slicer, pricing_file, monkeypatch):
+    """Наценка k_supports — только если слайсер реально поставил поддержки."""
+    quotes = {}
+    for name in ("box.stl", "flat.stl"):
+        if name == "flat.stl":
+            monkeypatch.setenv("FAKE_SLICER_FLAT", "1")  # модель без нависаний
+        r = client.post("/api/v1/uploads", files={"file": (name, box_stl(), "model/stl")})
+        upload_id = r.json()["id"]
+        s = client.post(
+            f"/api/v1/uploads/{upload_id}/slice", json={"material": "PLA", "supports": True}
+        )
+        assert s.json()["status"] == "done"
+        q = client.post(
+            f"/api/v1/uploads/{upload_id}/quote", json={"material": "PLA", "supports": True}
+        )
+        assert q.status_code == 201, q.text
+        quotes[name] = q.json()
+    assert quotes["box.stl"]["supports"] is True
+    assert quotes["box.stl"]["k_supports"] > 1
+    assert quotes["flat.stl"]["supports"] is False
+    assert quotes["flat.stl"]["k_supports"] == 1
+
+
 GOOD = {"name": "  Иван ", "phone": "8 999 123-45-67", "consent": True}
 
 
