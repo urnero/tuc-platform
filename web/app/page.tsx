@@ -65,7 +65,7 @@ export default async function Home() {
           </p>
           <ul className="t-caption flex flex-wrap gap-x-5 gap-y-2" style={{ color: "var(--ink-muted)" }} aria-label="Коротко о мастерской">
             <li>Москва · своя мастерская</li>
-            <li>PLA · PETG · ABS</li>
+            <li>PLA, PETG, нейлон, карбон, смолы</li>
             <li>до 256 мм</li>
             <li>самовывоз или курьер</li>
           </ul>
