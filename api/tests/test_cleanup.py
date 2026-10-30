@@ -213,4 +213,5 @@ def test_cli_and_cron(data_dir, db, capsys):
         "cron:cleanup_files",
         "cron:anonymize_orders",
         "cron:export_sheet",
+        "cron:drive_backfill",
     ]

@@ -26,6 +26,8 @@ COLUMNS = [
     "company_name", "company_inn", "payment_method",
     # B47: ссылка на карточку заказа в админке (открывается с логином и паролем админки).
     "admin_url",
+    # B46: папка заказа в Google Drive (пусто — ещё не скопировали).
+    "drive_folder_url",
 ]
 
 
@@ -61,7 +63,7 @@ def order_row(o: Order, paid_at: datetime | None) -> list:
         round((quote.get("material_g") or 0) * o.qty, 1),
         o.original_name or "", o.comment or "", fmt_dt(paid_at), o.upload_id,
         o.company_name or "", o.company_inn or "", o.payment_method,
-        admin_url(o.id),
+        admin_url(o.id), o.drive_folder_url or "",
     ]
 
 

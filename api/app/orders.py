@@ -212,6 +212,7 @@ def create_order(
     background.add_task(notify_owner_new_order, data)
     background.add_task(notify.order_created, data)
     background.add_task(_push_to_sheet, order.id)  # B47: строка в Google-таблице учёта
+    background.add_task(_push_to_drive, order.id)  # B46: файлы заказа в Google Drive
     return order_response(db, order)
 
 
@@ -304,6 +305,12 @@ def _push_to_sheet(order_id: int) -> None:
     from app import sheets
 
     sheets.push_order(order_id)
+
+
+def _push_to_drive(order_id: int) -> None:
+    from app import drive  # импорт здесь по той же причине, что и sheets
+
+    drive.push_order(order_id)
 
 
 def link_telegram(db: Session, token: str, chat_id: int | str) -> Order | None:

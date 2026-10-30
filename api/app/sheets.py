@@ -82,12 +82,13 @@ def load_service_account() -> dict:
     return data
 
 
-def access_token(client: httpx.Client, sa: dict) -> str:
-    """OAuth2-токен на час: подписываем JWT ключом сервисного аккаунта и меняем на токен."""
+def access_token(client: httpx.Client, sa: dict, scope: str = SCOPE) -> str:
+    """OAuth2-токен на час: подписываем JWT ключом сервисного аккаунта и меняем на токен.
+    `scope` — к чему доступ: таблицы (по умолчанию) или Диск (app/drive.py, B46)."""
     now = int(time.time())
     token_url = sa.get("token_uri") or TOKEN_URL
     claims = {
-        "iss": sa["client_email"], "scope": SCOPE, "aud": token_url, "iat": now, "exp": now + 3600,
+        "iss": sa["client_email"], "scope": scope, "aud": token_url, "iat": now, "exp": now + 3600,
     }
     assertion = jwt.encode(claims, sa["private_key"], algorithm="RS256")
     r = client.post(

@@ -80,6 +80,15 @@ def sheets_in_foreground(monkeypatch):
     monkeypatch.setattr(sheets, "RETRY_DELAYS_S", ())
 
 
+@pytest.fixture(autouse=True)
+def drive_in_foreground(monkeypatch):
+    """Копирование в Google Drive (B46) в тестах — в том же потоке и без пауз между попытками."""
+    from app import drive
+
+    monkeypatch.setattr(drive, "IN_BACKGROUND", False)
+    monkeypatch.setattr(drive, "RETRY_DELAYS_S", ())
+
+
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
     """Каждый тест пишет файлы в свою временную папку."""
