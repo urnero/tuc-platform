@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COMPANY,
+  contactRows,
   formatDocumentsDate,
   LEGAL_NAME_PLACEHOLDER,
   mapEmbedUrl,
@@ -85,5 +86,19 @@ describe("mapEmbedUrl (карта самовывоза, B41)", () => {
     expect(mapEmbedUrl("https://example.com/map-widget/v1/")).toBeNull();
     expect(mapEmbedUrl("https://yandex.ru/maps/213/moscow/")).toBeNull();
     expect(mapEmbedUrl("<iframe src=\"https://yandex.ru/map-widget/v1/\">")).toBeNull();
+  });
+});
+
+describe("contactRows (главная: пустые контакты не показываем)", () => {
+  it("пустые поля пропускаются, «уточняется» не появляется", () => {
+    const rows = contactRows({ ...COMPANY, telegram: "", phone: "", email: "" });
+    expect(rows).toEqual([]);
+  });
+  it("заполненные идут по порядку Telegram, телефон, e-mail со ссылками", () => {
+    const rows = contactRows({ ...COMPANY, telegram: "@tuc", phone: "+7 999 123-45-67", email: "a@b.ru" });
+    expect(rows.map((r) => r.key)).toEqual(["telegram", "phone", "email"]);
+    expect(rows[0]).toMatchObject({ text: "@tuc", href: "https://t.me/tuc" });
+    expect(rows[1].href).toBe("tel:+79991234567");
+    expect(rows[2].href).toBe("mailto:a@b.ru");
   });
 });

@@ -13,7 +13,7 @@ import Image from "next/image";
 import Link from "next/link";
 import UploadDropzone from "@/components/UploadDropzone";
 import { Button } from "@/components/ui";
-import { COMPANY, mapEmbedUrl, phoneUrl, requisite, telegramUrl } from "@/lib/company";
+import { COMPANY, contactRows, mapEmbedUrl } from "@/lib/company";
 import { FACTS, FAQ, faqJsonLd, loadMaterials, loadPricing, materialCards, minOrderText, STEPS, STUDIO } from "@/lib/landing";
 import { WORKS, workImageUrl, worksTitle } from "@/lib/works";
 
@@ -47,9 +47,6 @@ export default async function Home() {
   const [pricing, materialItems] = await Promise.all([loadPricing(), loadMaterials()]);
   const materials = materialCards(pricing, materialItems);
   const minOrder = minOrderText(pricing);
-  const tg = telegramUrl(COMPANY.telegram);
-  const tel = phoneUrl(COMPANY.phone);
-  const mail = COMPANY.email.trim();
   const map = mapEmbedUrl(COMPANY.pickupMapUrl);
 
   return (
@@ -234,59 +231,38 @@ export default async function Home() {
         <div className="grid gap-4 md:grid-cols-[1fr_1.4fr]">
           <div className="card flex flex-col gap-4">
             <dl className="flex flex-col gap-4">
-            <div>
-              <dt className="t-caption" style={{ color: "var(--ink-muted)" }}>
-                Telegram
-              </dt>
-              <dd>
-                {tg ? (
-                  <a href={tg} className="underline underline-offset-2" rel="noopener">
-                    @{COMPANY.telegram.replace(/^@/, "")}
-                  </a>
-                ) : (
-                  requisite("telegram")
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="t-caption" style={{ color: "var(--ink-muted)" }}>
-                Телефон
-              </dt>
-              <dd>
-                {tel ? (
-                  <a href={tel} className="underline underline-offset-2">
-                    {COMPANY.phone}
-                  </a>
-                ) : (
-                  requisite("phone")
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="t-caption" style={{ color: "var(--ink-muted)" }}>
-                E-mail
-              </dt>
-              <dd>
-                {mail ? (
-                  <a href={`mailto:${mail}`} className="underline underline-offset-2">
-                    {mail}
-                  </a>
-                ) : (
-                  requisite("email")
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="t-caption" style={{ color: "var(--ink-muted)" }}>
-                Самовывоз
-              </dt>
-              <dd>
-                {COMPANY.city}, {requisite("pickupAddress")}
-              </dd>
-              <dd className="text-sm" style={{ color: "var(--ink-muted)" }}>
-                {requisite("hours")}
-              </dd>
-            </div>
+              {/* Пустые контакты не показываем вовсе: «уточняется» на главной выглядит как однодневка. */}
+              {contactRows().map((r) => (
+                <div key={r.key}>
+                  <dt className="t-caption" style={{ color: "var(--ink-muted)" }}>
+                    {r.label}
+                  </dt>
+                  <dd>
+                    {r.href ? (
+                      <a href={r.href} className="underline underline-offset-2" rel="noopener">
+                        {r.text}
+                      </a>
+                    ) : (
+                      r.text
+                    )}
+                  </dd>
+                </div>
+              ))}
+              {COMPANY.pickupAddress.trim() !== "" && (
+                <div>
+                  <dt className="t-caption" style={{ color: "var(--ink-muted)" }}>
+                    Самовывоз
+                  </dt>
+                  <dd>
+                    {COMPANY.city}, {COMPANY.pickupAddress.trim()}
+                  </dd>
+                  {COMPANY.hours.trim() !== "" && (
+                    <dd className="text-sm" style={{ color: "var(--ink-muted)" }}>
+                      {COMPANY.hours.trim()}
+                    </dd>
+                  )}
+                </div>
+              )}
             </dl>
             <Link href="/contacts" className="text-sm underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
               Все контакты и реквизиты →

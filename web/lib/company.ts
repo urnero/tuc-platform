@@ -116,6 +116,20 @@ export function formatDocumentsDate(iso: string): string {
   return `${date.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}`;
 }
 
+export type ContactRow = { key: "telegram" | "phone" | "email"; label: string; text: string; href: string };
+
+/** Заполненные способы связи для главной (Telegram, телефон, e-mail); пустые пропускаются. */
+export function contactRows(company: typeof COMPANY = COMPANY): ContactRow[] {
+  const rows: ContactRow[] = [];
+  const tg = telegramUrl(company.telegram);
+  if (tg) rows.push({ key: "telegram", label: "Telegram", text: `@${company.telegram.trim().replace(/^@/, "")}`, href: tg });
+  const tel = phoneUrl(company.phone);
+  if (tel) rows.push({ key: "phone", label: "Телефон", text: company.phone.trim(), href: tel });
+  const mail = company.email.trim();
+  if (mail) rows.push({ key: "email", label: "E-mail", text: mail, href: `mailto:${mail}` });
+  return rows;
+}
+
 /** Ссылка на Telegram из ника; пустой ник → null. */
 export function telegramUrl(nick: string): string | null {
   const clean = nick.trim().replace(/^@/, "");
