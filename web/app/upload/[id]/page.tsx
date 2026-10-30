@@ -3,9 +3,9 @@
 /**
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
- * блок «Надпись или логотип на модели» (B30, components/EmbossPanel.tsx),
- * блок «Раскраска по частям» (B31, components/PaintPanel.tsx),
- * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx).
+ * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx) — сразу под габаритами,
+ * ниже свёрнутое «Дополнительно»: надпись или логотип (B30, components/EmbossPanel.tsx)
+ * и раскраска по частям (B31, components/PaintPanel.tsx).
  * Повтор заказа из кабинета (B32): параметры прошлого заказа приходят в адресе
  * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
  */
@@ -237,27 +237,9 @@ export default function ModelPage() {
         )}
 
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-          Номер загрузки: <code>{upload.id}</code>. Цена — в блоке ниже.
+          Номер загрузки: <code>{upload.id}</code>.
         </p>
       </section>
-
-      {/* Раскрашенную модель (3MF с цветами) не тисним и не красим заново: тиснение склеило бы
-          детали в одну и потеряло цвета. Хотите иначе — вернитесь к исходной модели. */}
-      {fromPaint ? (
-        <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-          Изменить цвета или добавить надпись можно на{" "}
-          <Link href={`/upload/${upload.paint!.parent_id}`} style={{ color: "var(--filament-text)" }}>
-            исходной модели
-          </Link>
-          .
-        </p>
-      ) : (
-        <>
-          <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
-          {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
-          <PaintPanel key={upload.units} uploadId={upload.id} />
-        </>
-      )}
 
       {/* key: после смены «мм → дюймы» сервер удаляет старые расчёты печати и цены —
           перерисовываем калькулятор с нуля, чтобы не показывать цену для старых единиц. */}
@@ -275,6 +257,36 @@ export default function ModelPage() {
         }
         preset={preset}
       />
+      {/* Тиснение и раскраска — дополнительные услуги, свёрнуты под расчётом (фокус-группа:
+          новичок пришёл за ценой, длинная форма надписи сверху уводила его со страницы). */}
+      <details
+        className="rounded-lg border p-4 sm:p-6"
+        style={{ borderColor: "var(--ink-muted)" }}
+        data-testid="extras"
+      >
+        <summary className="cursor-pointer text-lg font-semibold">
+          Дополнительно: надпись, логотип, раскраска
+        </summary>
+        <div className="mt-4 flex flex-col gap-6">
+          {/* Раскрашенную модель (3MF с цветами) не тисним и не красим заново: тиснение склеило бы
+              детали в одну и потеряло цвета. Хотите иначе — вернитесь к исходной модели. */}
+          {fromPaint ? (
+            <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+              Изменить цвета или добавить надпись можно на{" "}
+              <Link href={`/upload/${upload.paint!.parent_id}`} style={{ color: "var(--filament-text)" }}>
+                исходной модели
+              </Link>
+              .
+            </p>
+          ) : (
+            <>
+              <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
+              {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
+              <PaintPanel key={upload.units} uploadId={upload.id} />
+            </>
+          )}
+        </div>
+      </details>
     </main>
   );
 }
