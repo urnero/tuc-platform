@@ -19,6 +19,11 @@
 Заодно удаляются сборки параметрических редакторов (B21, DATA_DIR/editors/<slug>/<id>/) старше
 CLEANUP_UPLOADS_DAYS: это просмотры, а не заказы — у заказа своя копия STL в загрузках.
 
+Копии файлов в Google Drive (B46, `orders.drive_folder_url`) живут по тому же сроку: у
+закрытых заказов старше CLEANUP_ORDER_FILES_DAYS папка заказа в Drive удаляется насовсем,
+ссылка стирается (`app/drive.delete_folders`). Без доступа к Drive — тихо пропуск, ссылка
+остаётся, удалим в ночь, когда доступ появится.
+
 Запуск: cron в worker каждую ночь (app/worker.py) и руками —
 `python -m app.cleanup` (посмотреть, что удалится: `python -m app.cleanup --dry-run`).
 Значение 0 у любого срока выключает это правило.
@@ -36,6 +41,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import drive
 from app.config import settings
 from app.db import session_factory
 from app.editors import cleanup_builds
@@ -67,6 +73,8 @@ class CleanupReport:
     dry_run: bool = False
     # Сборки редакторов (B21): {"checked", "deleted", "freed_bytes"} из editors.cleanup_builds.
     builds: dict = field(default_factory=lambda: {"checked": 0, "deleted": 0, "freed_bytes": 0})
+    # Папки в Google Drive (B46b): {"deleted", "failed", "skipped"} из drive.delete_folders.
+    drive: dict = field(default_factory=lambda: {"deleted": 0, "failed": 0, "skipped": 0})
 
     @property
     def freed_bytes(self) -> int:
@@ -80,6 +88,7 @@ class CleanupReport:
             "no_order": sum(1 for c in self.deleted if c.reason == "no_order"),
             "orders_closed": sum(1 for c in self.deleted if c.reason == "orders_closed"),
             "editor_builds": self.builds["deleted"],
+            "drive_folders": self.drive["deleted"],
             "errors": self.errors,
             "dry_run": self.dry_run,
         }
@@ -168,6 +177,21 @@ def find_candidates(db: Session, now: datetime | None = None) -> tuple[list[Cand
     return candidates, checked
 
 
+def drive_candidates(db: Session, now: datetime | None = None) -> list[int]:
+    """Заказы, чью папку в Drive пора удалить: закрыты дольше CLEANUP_ORDER_FILES_DAYS
+    и ссылка на папку ещё есть. Не зависит от того, осталась ли папка загрузки на диске."""
+    if settings.cleanup_order_files_days <= 0:
+        return []
+    now = now or datetime.now(UTC)
+    deadline = now - timedelta(days=settings.cleanup_order_files_days)
+    rows = db.execute(
+        select(Order.id, Order.updated_at)
+        .where(Order.status.in_(CLOSED_STATUSES), Order.drive_folder_url.is_not(None))
+        .order_by(Order.id)
+    ).all()
+    return [order_id for order_id, updated_at in rows if _as_utc(updated_at) <= deadline]
+
+
 def run_cleanup(db: Session, now: datetime | None = None, dry_run: bool = False) -> CleanupReport:
     """Удалить всё, чей срок вышел. dry_run=True — только перечислить."""
     candidates, checked = find_candidates(db, now)
@@ -190,13 +214,15 @@ def run_cleanup(db: Session, now: datetime | None = None, dry_run: bool = False)
             c.size_bytes / (1024 * 1024),
         )
     report.builds = cleanup_builds(settings.cleanup_uploads_days, now=now, dry_run=dry_run)
+    report.drive = drive.delete_folders(db, drive_candidates(db, now), dry_run=dry_run)
     log.info(
         "Очистка файлов: просмотрено %d, удалено %d, освобождено %.1f МБ; сборок редакторов "
-        "удалено %d%s",
+        "удалено %d; папок в Google Drive — %d%s",
         report.checked,
         len(report.deleted),
         report.freed_bytes / (1024 * 1024),
         report.builds["deleted"],
+        report.drive["deleted"],
         " (пробный прогон)" if dry_run else "",
     )
     return report
@@ -217,7 +243,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"Просмотрено папок: {result['checked']}, {verb}: {result['deleted']} "
         f"(без заказа — {result['no_order']}, по закрытым заказам — {result['orders_closed']}), "
-        f"{result['freed_mb']} МБ; сборок редакторов — {result['editor_builds']}."
+        f"{result['freed_mb']} МБ; сборок редакторов — {result['editor_builds']}, "
+        f"папок в Google Drive — {result['drive_folders']}."
     )
     for err in result["errors"]:
         print(f"Ошибка: {err}", file=sys.stderr)

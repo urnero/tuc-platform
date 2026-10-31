@@ -31,6 +31,7 @@
 
 import json
 import logging
+import re
 import sys
 import threading
 import time
@@ -39,7 +40,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app import sheets
@@ -388,6 +389,95 @@ def backfill_job() -> dict | None:
                 log.warning("Google Drive: ночью заказ %s не скопирован: %s", order_id, e)
     log.info("Google Drive: ночью скопировано %s, ошибок %s", copied, failed)
     return {"copied": copied, "failed": failed}
+
+
+# --- удаление по срокам ПДн (B46b) -----------------------------------------------------------
+# Политика ПДн обещает удалить файлы закрытого заказа через год (app/cleanup.py) и обезличить
+# заказ через 5 лет (app/anonymize.py). Копия в Drive должна уйти вместе с ними.
+
+FOLDER_ID_RE = re.compile(r"/folders/([A-Za-z0-9_-]+)")
+
+
+def folder_id_from_url(url: str | None) -> str | None:
+    """id папки из ссылки вида https://drive.google.com/drive/folders/<id>?usp=…"""
+    m = FOLDER_ID_RE.search(url or "")
+    return m.group(1) if m else None
+
+
+def _find_order_folder(client: httpx.Client, headers: dict, order: Order) -> str | None:
+    """Ссылки нет или она без id — ищем папку по имени «BP-N — Имя» в месячной папке.
+    Корень и месяц только ищем, не создаём."""
+    if not order.customer_name:
+        return None  # уже обезличен — имени папки не восстановить
+    root = settings.google_drive_folder_id
+    if not root:
+        found = find_folder(client, headers, settings.google_drive_root_name, "root")
+        if not found:
+            return None
+        root = found["id"]
+    month = find_folder(client, headers, month_name(order), root)
+    if not month:
+        return None
+    folder = find_folder(client, headers, folder_name(order), month["id"])
+    return folder["id"] if folder else None
+
+
+def delete_order_folder(client: httpx.Client, headers: dict, order: Order) -> bool:
+    """Удалить папку заказа в Drive насовсем (не в корзину). True — папки больше нет
+    (удалили или её уже не было). Ошибка Google → DriveError."""
+    folder_id = folder_id_from_url(order.drive_folder_url) or _find_order_folder(
+        client, headers, order
+    )
+    if not folder_id:
+        return True  # искать нечего — считаем, что копии нет
+    r = client.delete(f"{FILES_URL}/{folder_id}", params=ALL_DRIVES, headers=headers)
+    if r.status_code == 404:
+        return True  # уже удалили руками
+    _check(r, f"Удаление папки заказа {order.id}")
+    return True
+
+
+def delete_folders(db: Session, order_ids: list[int], dry_run: bool = False) -> dict:
+    """Удалить папки Drive у этих заказов и стереть `drive_folder_url`.
+    Drive выключен → {"skipped": N}: ссылки оставляем, чтобы удалить позже, когда доступ будет.
+    Ошибка у одного заказа не мешает остальным."""
+    result = {"deleted": 0, "failed": 0, "skipped": 0}
+    if not order_ids:
+        return result
+    if dry_run:
+        result["deleted"] = len(order_ids)
+        return result
+    if not enabled():
+        result["skipped"] = len(order_ids)
+        log.info("Google Drive: выключено — %d папок заказов не удалены", len(order_ids))
+        return result
+    try:
+        with _LOCK, _client() as client:
+            headers = {"Authorization": f"Bearer {access_token(client)}"}
+            for order_id in order_ids:
+                order = db.get(Order, order_id)
+                if order is None:
+                    continue
+                try:
+                    delete_order_folder(client, headers, order)
+                except (DriveError, httpx.HTTPError) as e:
+                    result["failed"] += 1
+                    log.warning("Google Drive: папка заказа %s не удалена: %s", order_id, e)
+                    continue
+                # Core-UPDATE: `updated_at` (дата закрытия заказа) не сдвигается.
+                db.execute(
+                    update(Order)
+                    .where(Order.id == order_id)
+                    .values(drive_folder_url=None, updated_at=Order.updated_at)
+                )
+                db.commit()
+                result["deleted"] += 1
+    except (DriveError, httpx.HTTPError) as e:  # не дали токен — попробуем следующей ночью
+        result["failed"] = len(order_ids) - result["deleted"]
+        log.warning("Google Drive: удаление папок не удалось: %s", e)
+    log.info("Google Drive: удалено папок заказов %d, ошибок %d", result["deleted"],
+             result["failed"])
+    return result
 
 
 # --- командная строка --------------------------------------------------------------------
