@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type EditorParam, hasSlider, rangeHint, sameParams, sliderStep } from "./editors";
+import { AUTO_BUILD_MS, type EditorParam, hasSlider, rangeHint, sameParams, sliderStep, valueWithUnit } from "./editors";
 
 const num = (extra: Partial<EditorParam> = {}): EditorParam => ({
   name: "d",
@@ -46,5 +46,18 @@ describe("подписи и ползунки редактора (B43)", () => {
     expect(sameParams({ d: 10 }, { d: 11 })).toBe(false);
     expect(sameParams({ d: 10 }, { d: 10, h: 1 })).toBe(false);
     expect(sameParams(null, { d: 10 })).toBe(false);
+  });
+});
+
+describe("живое превью (B67)", () => {
+  it("пересборка через 300 мс после правки", () => {
+    expect(AUTO_BUILD_MS).toBe(300);
+  });
+
+  it("valueWithUnit — число с единицей, запятая, пусто — прочерк", () => {
+    expect(valueWithUnit(num(), "20")).toBe("20 мм");
+    expect(valueWithUnit(num(), "12.5")).toBe("12,5 мм");
+    expect(valueWithUnit(num({ unit: "" }), "3")).toBe("3");
+    expect(valueWithUnit(num(), "")).toBe("—");
   });
 });

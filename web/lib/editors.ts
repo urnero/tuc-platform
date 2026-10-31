@@ -193,10 +193,11 @@ export const BUILD_STATUS_TEXT: Record<BuildStatus, string> = {
 };
 
 /**
- * Через сколько миллисекунд после последнего изменения параметров модель пересобирается сама (B43).
- * Меньше — лишние сборки на каждую цифру, больше — кажется, что превью «не слушается».
+ * Через сколько миллисекунд после последнего изменения параметров модель пересобирается сама
+ * (B43: было 900 мс; B67: 300 мс — превью «живое»). Пока ползунок тянут, таймер сбрасывается,
+ * так что сборка уходит одна — когда палец остановился. Прошлый запрос при этом отменяется.
  */
-export const AUTO_BUILD_MS = 900;
+export const AUTO_BUILD_MS = 300;
 
 /** Ползунок рядом с числом показываем, только если у параметра заданы обе границы. */
 export function hasSlider(p: EditorParam): boolean {
@@ -223,6 +224,13 @@ export function rangeHint(p: EditorParam): string {
     else if (p.max !== null) range = `не больше ${fmt(p.max)}${u}`;
   }
   return [range, p.hint].filter(Boolean).join(" · ");
+}
+
+/** Значение с единицей для подписи у ползунка и экранного диктора: «20 мм», «3 шт», «12,5». */
+export function valueWithUnit(p: EditorParam, value: string | boolean | undefined): string {
+  const n = parseNumber(String(value ?? ""));
+  if (!Number.isFinite(n)) return "—";
+  return p.unit ? `${fmt(n)} ${p.unit}` : fmt(n);
 }
 
 /** Одинаковые ли параметры (чтобы не пересобирать то, что уже построено). */

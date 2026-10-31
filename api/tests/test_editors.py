@@ -874,3 +874,15 @@ def test_label_with_real_openscad(client, real_editors, monkeypatch):
     # Кавычки и слэш в надписи не ломают запуск OpenSCAD.
     m = build({"text": 'Ёжик "в" \\ тумане', "font": "serif", "bold": False})
     assert m["bbox_mm"]["z"] == 3.0
+
+
+def test_repo_editors_explain_every_param():
+    """B67: у каждого параметра настоящих редакторов есть подсказка «зачем он» (hint)."""
+    root = REPO_ROOT / "editors"
+    slugs = sorted(p.name for p in root.iterdir() if (p / "editor.yaml").is_file())
+    assert slugs
+    for slug in slugs:
+        raw = yaml.safe_load((root / slug / "editor.yaml").read_text("utf-8"))
+        editor = parse_editor(slug, raw)
+        missing = [p.name for p in editor.params if not p.hint]
+        assert not missing, f"{slug}: нет hint у {missing}"

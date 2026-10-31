@@ -46,6 +46,7 @@ params:
       - { value: serif, label: С засечками }
       - { value: mono, label: Моноширинный }
     default: sans
+    hint: Как будут выглядеть буквы. Без засечек читается лучше на мелком размере.
   - name: bold
     label: Жирный
     type: bool
@@ -76,6 +77,7 @@ params:
     max: 6
     step: 0.5
     default: 2
+    hint: Толщина основы под буквами. 2 мм — для наклейки на скотч, 3 мм и больше — чтобы не гнулась.
   - name: width
     label: Ширина таблички
     type: number
@@ -102,6 +104,7 @@ params:
     max: 20
     step: 0.5
     default: 4
+    hint: Отступ от края таблички до букв.
   - name: corner_r
     label: Скругление углов
     type: number
@@ -110,6 +113,7 @@ params:
     max: 20
     step: 0.5
     default: 3
+    hint: 0 — прямые углы.
   - name: frame
     label: Рамка по краю
     type: bool
@@ -133,6 +137,7 @@ params:
     step: 0.5
     default: 4
 
+    hint: Под шнурок — 3 мм, под кольцо для ключей — 4–5 мм, под винт М4 — 4,5 мм.
 checks:
   - rule: text_h < thickness
     message: Высота / глубина букв должна быть меньше толщины таблички (углублённый текст иначе прорежет её насквозь).
