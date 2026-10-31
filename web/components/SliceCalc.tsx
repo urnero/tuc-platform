@@ -218,6 +218,12 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
               {materialItem?.needs_enclosure ? " Печатаем в закрытой камере." : ""}
             </span>
           )}
+          <span className="text-xs leading-snug" style={{ color: "var(--ink-muted)" }} data-testid="tolerance-hint">
+            Точность размеров FDM — около ±0,3 мм.{" "}
+            <a href="/about" className="underline">
+              Подробнее
+            </a>
+          </span>
         </label>
 
         <label className="flex min-w-0 max-w-full flex-col gap-1">
