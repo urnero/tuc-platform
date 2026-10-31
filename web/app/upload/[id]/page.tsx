@@ -45,8 +45,7 @@ export default function ModelPage() {
   const { id } = useParams<{ id: string }>();
   const [upload, setUpload] = useState<Upload | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showUnits, setShowUnits] = useState<Units>("mm"); // в чём показывать габариты
-  const [saving, setSaving] = useState(false);
+    const [saving, setSaving] = useState(false);
   const [preset, setPreset] = useState<Preset | null>(null); // повтор заказа (B32)
 
   useEffect(() => {
@@ -190,14 +189,8 @@ export default function ModelPage() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">
-            Габариты: {formatDims(m.bbox_mm, showUnits)}
+            Габариты: {formatDims(m.bbox_mm, "mm")}
           </h2>
-          <Toggle
-            value={showUnits}
-            onChange={setShowUnits}
-            labels={{ mm: "мм", inch: "дюймы" }}
-            title="Показывать в"
-          />
         </div>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -215,7 +208,9 @@ export default function ModelPage() {
 
         {!knownUnits && (
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span style={{ color: "var(--ink-muted)" }}>Единицы в файле:</span>
+            <span style={{ color: "var(--ink-muted)" }}>
+              В каких единицах сделан файл? Если модель кажется крошечной — выберите «дюймы»:
+            </span>
             <Toggle
               value={upload.units}
               onChange={(u) => void setFileUnits(u)}
@@ -237,7 +232,7 @@ export default function ModelPage() {
         )}
 
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-          Номер загрузки: <code>{upload.id}</code>.
+          Номер загрузки: <code>{upload.id.slice(0, 8)}</code>.
         </p>
       </section>
 
