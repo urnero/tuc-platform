@@ -6,12 +6,13 @@
  * модель отцентрирована и стоит на полу. Размер сцены подстраивается под модель.
  * Раскраска по частям (B31): partColors красит диапазоны треугольников STL своими цветами,
  * keepMaterials оставляет цвета деталей из 3MF (результат раскраски).
+ * Инструмент «Цвет» (B63): onFaceHover / onFaceClick — номер треугольника под курсором и клик по нему.
  *
  * Только на клиенте: в page.tsx подключать через next/dynamic с ssr: false.
  */
 
 import { OrbitControls, Grid } from "@react-three/drei";
-import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { Canvas, type ThreeEvent, useLoader, useThree } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -30,6 +31,10 @@ type Props = {
   /** Только для 3MF: оставить цвета из файла (basematerials), а не красить всё одним. */
   keepMaterials?: boolean;
   height?: number;
+  /** Только с partColors (B63): треугольник под курсором (null — курсор ушёл с модели). */
+  onFaceHover?: (face: number | null) => void;
+  /** Только с partColors (B63): клик/тап по треугольнику; x, y — точка в пикселях внутри окна просмотра. */
+  onFaceClick?: (face: number, x: number, y: number) => void;
 };
 
 const MATERIAL = new THREE.MeshStandardMaterial({
@@ -70,7 +75,7 @@ export function applyPartColors(geometry: THREE.BufferGeometry, parts: PartColor
 }
 
 /** Загружает модель, центрирует её и ставит на «пол» (z = 0 → y = 0 в сцене). */
-function Model({ url, ext, scale = 1, partColors, keepMaterials }: Props) {
+function Model({ url, ext, scale = 1, partColors, keepMaterials, onFaceHover, onFaceClick }: Props) {
   // STL → геометрия, 3MF → группа объектов. Приводим к одному виду: Object3D.
   const loaded = useLoader(ext === "stl" ? STLLoader : ThreeMFLoader, url);
   const painted = Boolean(partColors && loaded instanceof THREE.BufferGeometry);
@@ -78,8 +83,6 @@ function Model({ url, ext, scale = 1, partColors, keepMaterials }: Props) {
   const { object, size } = useMemo(() => {
     let obj: THREE.Object3D;
     if (loaded instanceof THREE.BufferGeometry) {
-      // Перекраска: геометрия та же, меняется только атрибут цвета.
-      if (painted && partColors) applyPartColors(loaded, partColors);
       obj = new THREE.Mesh(loaded, painted ? PAINTED : MATERIAL);
     } else {
       obj = loaded as THREE.Group;
@@ -101,12 +104,37 @@ function Model({ url, ext, scale = 1, partColors, keepMaterials }: Props) {
     // Центр в ноль по X/Z, нижняя грань на y = 0.
     wrapper.position.set(-center.x, -box.min.y, -center.z);
     return { object: wrapper, size: sz };
-  }, [loaded, scale, painted, partColors, keepMaterials]);
+  }, [loaded, scale, painted, keepMaterials]);
+
+  // Перекраска: объект тот же, меняется только атрибут цвета — поэтому подсветка под
+  // курсором не пересобирает сцену и не сбивает камеру.
+  useMemo(() => {
+    if (painted && partColors && loaded instanceof THREE.BufferGeometry) applyPartColors(loaded, partColors);
+  }, [loaded, painted, partColors]);
+
+  const interactive = painted && (onFaceHover || onFaceClick);
 
   const longest = Math.max(size.x, size.y, size.z, 1);
   return (
     <>
-      <primitive object={object} />
+      {interactive ? (
+        <primitive
+          object={object}
+          onPointerMove={(e: ThreeEvent<PointerEvent>) => {
+            e.stopPropagation();
+            onFaceHover?.(e.faceIndex ?? null);
+          }}
+          onPointerOut={() => onFaceHover?.(null)}
+          onClick={(e: ThreeEvent<MouseEvent>) => {
+            // Поворот камеры мышью — не клик: пропускаем, если курсор сдвинулся.
+            if (e.delta > 5 || e.faceIndex === undefined || e.faceIndex === null) return;
+            e.stopPropagation();
+            onFaceClick?.(e.faceIndex, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+          }}
+        />
+      ) : (
+        <primitive object={object} />
+      )}
       <Grid
         args={[longest * 4, longest * 4]}
         cellSize={longest > 100 ? 50 : longest > 20 ? 10 : 1}
