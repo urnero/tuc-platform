@@ -35,6 +35,7 @@ import {
   transportUp,
   type Vec3,
 } from "@/lib/editor/math";
+import { gizmoSize, useIsPhone } from "@/lib/editor/phone";
 import { type EditorStore, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
 
 type Props = {
@@ -122,6 +123,8 @@ function SelectedOverlay({
   /** Внутренняя группа: поворот плашки на новой грани во время перетаскивания (B60a). */
   const inner = useRef<THREE.Group>(null!);
   const gizmo = useEditor(store, (s) => s.gizmo);
+  /** На телефоне гизмо крупнее — под палец (B60b). */
+  const phone = useIsPhone();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const lastSnap = useRef<Placement | null>(null);
 
@@ -246,7 +249,7 @@ function SelectedOverlay({
         object={group}
         mode={gizmo}
         space="local"
-        size={0.8}
+        size={gizmoSize(phone)}
         showZ={gizmo !== "translate"}
         showX={gizmo !== "rotate"}
         showY={gizmo !== "rotate"}

@@ -14,6 +14,7 @@ import { Button, Field, Select } from "@/components/ui";
 import { type EmbossJob, FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/emboss";
 import { fmt } from "@/lib/emboss";
 import { upAngle, rotateUp } from "@/lib/editor/math";
+import { useIsPhone } from "@/lib/editor/phone";
 import {
   activeDraft,
   type EditorStore,
@@ -38,6 +39,8 @@ type Props = { uploadId: string; store: EditorStore };
 export default function TextToolPanel({ uploadId, store }: Props) {
   const router = useRouter();
   const selected = useEditor(store, selectedOverlay);
+  /** На телефоне кнопки крупнее — под палец (B60b). */
+  const btn = useIsPhone() ? "md" : "sm";
   const draft = useEditor(store, activeDraft);
   const gizmo = useEditor(store, (s) => s.gizmo);
   const count = useEditor(store, (s) => s.overlays.length);
@@ -133,6 +136,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
       <Range id="ed-depth" label={draft.mode === "engraved" ? "Глубина" : "Высота"} unit="мм" value={draft.depth_mm} min={LIMITS.depth.min} max={5} step={0.1} onChange={(v) => set({ depth_mm: v })} />
 
       <Segmented
+        size={btn}
         label="Как наносим"
         value={draft.mode}
         options={[
@@ -144,20 +148,20 @@ export default function TextToolPanel({ uploadId, store }: Props) {
 
       {selected && (
         <>
-          <Segmented label="Гизмо" value={gizmo} options={GIZMOS} onChange={(v) => store.dispatch({ type: "gizmo", gizmo: v as Gizmo })} />
+          <Segmented size={btn} label="Гизмо" value={gizmo} options={GIZMOS} onChange={(v) => store.dispatch({ type: "gizmo", gizmo: v as Gizmo })} />
           <div className="flex items-center gap-2 text-sm">
             <span style={{ color: "var(--ink-muted)" }}>Поворот {angleDeg}°</span>
-            <Button variant="ghost" size="sm" onClick={() => rotateBy(-15)} aria-label="Повернуть на 15° по часовой">
+            <Button variant="ghost" size={btn} onClick={() => rotateBy(-15)} aria-label="Повернуть на 15° по часовой">
               ↻ 15°
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => rotateBy(15)} aria-label="Повернуть на 15° против часовой">
+            <Button variant="ghost" size={btn} onClick={() => rotateBy(15)} aria-label="Повернуть на 15° против часовой">
               ↺ 15°
             </Button>
           </div>
           <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
             Точка: {selected.placement.point.map((v) => fmt(v)).join(", ")} мм
           </p>
-          <Button variant="ghost" size="sm" onClick={() => store.dispatch({ type: "remove", id: selected.id })}>
+          <Button variant="ghost" size={btn} onClick={() => store.dispatch({ type: "remove", id: selected.id })}>
             Убрать надпись
           </Button>
         </>
@@ -199,13 +203,25 @@ function Range({ id, label, unit, value, min, max, step, onChange }: { id: strin
   );
 }
 
-function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  size = "sm",
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+  size?: "sm" | "md";
+}) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-sm font-semibold">{label}</span>
-      <div className="flex gap-1" role="radiogroup" aria-label={label}>
+      <div className="flex flex-wrap gap-1" role="radiogroup" aria-label={label}>
         {options.map((o) => (
-          <Button key={o.value} size="sm" variant={o.value === value ? "primary" : "secondary"} role="radio" aria-checked={o.value === value} onClick={() => onChange(o.value)}>
+          <Button key={o.value} size={size} variant={o.value === value ? "primary" : "secondary"} role="radio" aria-checked={o.value === value} onClick={() => onChange(o.value)}>
             {o.label}
           </Button>
         ))}

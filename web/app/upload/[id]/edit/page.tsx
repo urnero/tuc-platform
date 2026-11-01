@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
 import { Button } from "@/components/ui";
+import { gizmoHint } from "@/lib/editor/phone";
 import { createEditorStore, type Tool, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import { UNIT_SCALE, type Upload } from "@/lib/mesh";
@@ -36,6 +37,8 @@ export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const store = useMemo(() => createEditorStore(), []);
   const tool = useEditor(store, (s) => s.tool);
+  const hasSelection = useEditor(store, (s) => s.selectedId !== null);
+  const gizmo = useEditor(store, (s) => s.gizmo);
   const [upload, setUpload] = useState<Upload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,6 +139,16 @@ export default function EditorPage() {
           <div className="h-full">
             <EditorCanvas url={`/api/v1/uploads/${upload.id}/file`} ext={upload.ext} scale={UNIT_SCALE[upload.units]} store={store} />
           </div>
+        )}
+        {/* Подсказка на телефоне (B60b): наведения пальцем нет, поэтому говорим, что делать. */}
+        {upload && tool === "text" && (
+          <p
+            className="pointer-events-none absolute bottom-2 left-2 right-2 z-10 rounded-lg px-3 py-1.5 text-center text-xs md:hidden"
+            style={{ background: "rgba(0,0,0,.55)", color: "#f3efe7" }}
+            data-testid="editor-phone-hint"
+          >
+            {hasSelection ? gizmoHint(gizmo) : "Коснитесь модели, чтобы поставить надпись"}
+          </p>
         )}
       </section>
 
