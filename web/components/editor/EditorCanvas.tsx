@@ -10,6 +10,7 @@
  *  - клик / тап по модели → наложение ставится в эту точку (действие place);
  *  - выбранное наложение держит гизмо TransformControls: «двигать» — в касательной плоскости,
  *    после каждого сдвига плашка снова прилипает к поверхности (raycast вдоль нормали);
+ *    за краем грани — переезжает на соседнюю грань под курсором (B60a «за угол»);
  *    «повернуть» — только вокруг нормали (меняется вектор «верх»); «размер» — меняет size_mm.
  *
  * Плашка — пока прямоугольник по размеру надписи; живой 3D-текст и логотип придут в B61/B62.
@@ -31,6 +32,7 @@ import {
   sceneDirToModel,
   sceneToModel,
   textWidthMm,
+  transportUp,
   type Vec3,
 } from "@/lib/editor/math";
 import { type EditorStore, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
@@ -133,27 +135,46 @@ function SelectedOverlay({
   );
   useLayoutEffect(() => applyPlacement(overlay.placement), [overlay.placement, applyPlacement]);
 
-  /** Где поверхность под текущим положением группы: луч вдоль нормали туда и обратно. */
+  const { camera, pointer } = useThree();
+
+  /**
+   * Где поверхность под текущим положением группы.
+   * 1) Луч вдоль нормали (той, что была в начале перетаскивания) туда и обратно — обычный
+   *    сдвиг по грани.
+   * 2) Не попал — плашку вытащили за край грани (B60a «за угол»): луч из камеры через курсор,
+   *    ближайшее попадание по модели. Так надпись переезжает на соседнюю грань, а «верх»
+   *    перегибается через ребро (transportUp) и буквы не переворачиваются.
+   */
   const snap = useCallback((): Placement | null => {
     const pos = group.current.position;
-    const n = v3(modelDirToScene(overlay.placement.normal));
+    const start = overlay.placement;
+    const n = v3(modelDirToScene(start.normal));
+    const far = longest * 4;
     const tryDir = (origin: THREE.Vector3, dir: THREE.Vector3) => {
       raycaster.set(origin, dir);
-      raycaster.far = longest * 4;
+      raycaster.far = far;
       const hit = raycaster.intersectObject(target, true)[0];
-      return hit ? hitToPlacement(hit.point, hit.face, hit.object, fit, overlay.placement.up) : null;
+      return hit ? hitToPlacement(hit.point, hit.face, hit.object, fit, start.up) : null;
     };
     const lift = longest * 2;
-    return (
+    const along =
       tryDir(pos.clone().addScaledVector(n, lift), n.clone().negate()) ??
-      tryDir(pos.clone().addScaledVector(n, -lift), n)
-    );
-  }, [fit, longest, overlay.placement, raycaster, target]);
+      tryDir(pos.clone().addScaledVector(n, -lift), n);
+    if (along) return along;
+
+    raycaster.setFromCamera(pointer, camera);
+    raycaster.far = Infinity;
+    const hit = raycaster.intersectObject(target, true)[0];
+    const p = hit ? hitToPlacement(hit.point, hit.face, hit.object, fit) : null;
+    if (!p) return null;
+    const prev = lastSnap.current ?? start;
+    return makePlacement(p.point, p.normal, transportUp(prev.up, prev.normal, p.normal));
+  }, [camera, fit, longest, overlay.placement, pointer, raycaster, target]);
 
   const onChange = () => {
     // Во время перетаскивания плашка не отрывается от поверхности: каждый сдвиг — прилипание.
     if (gizmo !== "translate") return;
-    // Курсор ушёл за край грани — плашка остаётся на последней точке поверхности.
+    // Курсор ушёл с модели совсем — плашка остаётся на последней точке поверхности.
     const p = snap() ?? lastSnap.current;
     if (p) {
       lastSnap.current = p;

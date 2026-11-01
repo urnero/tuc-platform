@@ -14,6 +14,7 @@ import {
   sceneToModel,
   tangentFrame,
   textWidthMm,
+  transportUp,
   upAngle,
   type Vec3,
 } from "./math";
@@ -100,5 +101,36 @@ describe("мелочи", () => {
   it("textWidthMm растёт с длиной текста, но не меньше размера", () => {
     expect(textWidthMm("", 10)).toBe(10);
     expect(textWidthMm("ТУЦ", 10)).toBeCloseTo(18.6, 6);
+  });
+});
+
+describe("переход за угол (B60a)", () => {
+  it("с передней грани на боковую верх остаётся вверх", () => {
+    // Передняя грань куба смотрит в −Y, боковая — в +X; верх букв — +Z.
+    const up = transportUp([0, 0, 1], [0, -1, 0], [1, 0, 0]);
+    expect(close(up, [0, 0, 1])).toBe(true);
+  });
+
+  it("с передней грани на крышку: верх был ровно в новую нормаль — буквы «ложатся» от зрителя", () => {
+    const up = transportUp([0, 0, 1], [0, -1, 0], [0, 0, 1]);
+    expect(close(up, [0, 1, 0])).toBe(true);
+    // Ровно та же система, что при перегибе через ребро: right не меняется.
+    const before = tangentFrame([0, -1, 0], [0, 0, 1]);
+    const after = tangentFrame([0, 0, 1], up);
+    expect(close(before.right, after.right)).toBe(true);
+  });
+
+  it("повёрнутый верх сохраняет угол к ребру", () => {
+    const s = Math.SQRT1_2;
+    const up = transportUp([s, 0, s], [0, -1, 0], [1, 0, 0]);
+    // Ребро вдоль Z: составляющая вдоль ребра сохраняется, остальное уходит в новую плоскость.
+    expect(close(up, [0, s, s])).toBe(true);
+    expect(dot(up, [1, 0, 0])).toBeCloseTo(0, 9);
+    expect(length(up)).toBeCloseTo(1, 9);
+  });
+
+  it("та же грань или грань напротив — верх как был", () => {
+    expect(close(transportUp([0, 0, 1], [0, -1, 0], [0, -1, 0]), [0, 0, 1])).toBe(true);
+    expect(close(transportUp([0, 0, 1], [0, -1, 0], [0, 1, 0]), [0, 0, 1])).toBe(true);
   });
 });

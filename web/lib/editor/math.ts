@@ -83,6 +83,24 @@ export function rotateAround(v: Vec3, axis: Vec3, angle: number): Vec3 {
   return add(add(scale(v, c), scale(cross(k, v), s)), scale(k, dot(k, v) * (1 - c)));
 }
 
+/**
+ * Переход «за угол» (B60a): надпись переезжает с грани с нормалью fromNormal на грань с
+ * нормалью toNormal. «Верх» поворачиваем тем же наименьшим поворотом, который переводит
+ * старую нормаль в новую (как если бы плашку перегнули через ребро), — тогда буквы
+ * не переворачиваются и не крутятся, даже если старый верх смотрел ровно в новую нормаль
+ * (переезд с передней грани на крышку). Возвращает «верх», уже лежащий в новой плоскости.
+ */
+export function transportUp(up: Vec3, fromNormal: Vec3, toNormal: Vec3): Vec3 {
+  const a = normalize(fromNormal);
+  const b = normalize(toNormal);
+  const axis = cross(a, b);
+  const s = length(axis);
+  const c = dot(a, b);
+  // Грани почти параллельны — поворачивать нечего (или грань «напротив»: держим старый верх).
+  const turned = s < EPS ? up : rotateAround(up, axis, Math.atan2(s, c));
+  return tangentFrame(b, turned).up;
+}
+
 /** Повернуть «верх» наложения вокруг нормали на угол (радианы, против часовой, если смотреть снаружи). */
 export function rotateUp(p: Placement, angle: number): Placement {
   return makePlacement(p.point, p.normal, rotateAround(p.up, p.normal, angle));
