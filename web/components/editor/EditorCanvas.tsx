@@ -119,17 +119,32 @@ function SelectedOverlay({
   dragging: MutableRefObject<boolean>;
 }) {
   const group = useRef<THREE.Group>(null!);
+  /** Внутренняя группа: поворот плашки на новой грани во время перетаскивания (B60a). */
+  const inner = useRef<THREE.Group>(null!);
   const gizmo = useEditor(store, (s) => s.gizmo);
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const lastSnap = useRef<Placement | null>(null);
 
   // Группа стоит там, где размещение; после каждого изменения размещения — заново.
+  // Во время перетаскивания (duringDrag) саму группу не трогаем: её двигает TransformControls,
+  // и от её положения он считает плоскость перетаскивания — если переставить группу на другую
+  // грань (B60a «за угол»), гизмо начнёт прыгать. Поэтому плашку на поверхность ставит
+  // внутренняя группа (inner = группа⁻¹ × размещение), а группа догоняет её на отпускании.
   const applyPlacement = useCallback(
-    (p: Placement) => {
+    (p: Placement, duringDrag = false) => {
       const m = new THREE.Matrix4().fromArray(placementSceneMatrix(p, fit));
+      if (duringDrag) {
+        group.current.updateMatrix();
+        const local = group.current.matrix.clone().invert().multiply(m);
+        local.decompose(inner.current.position, inner.current.quaternion, inner.current.scale);
+        return;
+      }
       group.current.position.setFromMatrixPosition(m);
       group.current.quaternion.setFromRotationMatrix(m);
       group.current.scale.setScalar(1);
+      inner.current.position.set(0, 0, 0);
+      inner.current.quaternion.identity();
+      inner.current.scale.setScalar(1);
     },
     [fit],
   );
@@ -161,8 +176,7 @@ function SelectedOverlay({
    *    ближайшее попадание по модели. Так надпись переезжает на соседнюю грань, а «верх»
    *    перегибается через ребро (transportUp) и буквы не переворачиваются.
    */
-  const snap = useCallback((): Placement | null => {
-    const pos = group.current.position;
+  const snap = useCallback((pos: THREE.Vector3): Placement | null => {
     const start = overlay.placement;
     const n = v3(modelDirToScene(start.normal));
     const far = longest * 4;
@@ -190,11 +204,12 @@ function SelectedOverlay({
   const onChange = () => {
     // Во время перетаскивания плашка не отрывается от поверхности: каждый сдвиг — прилипание.
     if (gizmo !== "translate") return;
-    // Курсор ушёл с модели совсем — плашка остаётся на последней точке поверхности.
-    const p = snap() ?? lastSnap.current;
+    // Позиция группы — та, что посчитал гизмо: сдвиг в касательной плоскости начала
+    // перетаскивания. Курсор ушёл с модели совсем — плашка остаётся на последней точке.
+    const p = snap(group.current.position.clone()) ?? lastSnap.current;
     if (p) {
       lastSnap.current = p;
-      applyPlacement(p);
+      applyPlacement(p, true);
     }
   };
 
@@ -203,7 +218,8 @@ function SelectedOverlay({
     setTimeout(() => (dragging.current = false), 0);
     const g = group.current;
     if (gizmo === "translate") {
-      const p = snap() ?? lastSnap.current ?? overlay.placement;
+      // Последнее прилипание во время перетаскивания и есть итог.
+      const p = lastSnap.current ?? overlay.placement;
       applyPlacement(p);
       store.dispatch({ type: "move", id: overlay.id, placement: p });
     } else if (gizmo === "rotate") {
@@ -222,7 +238,9 @@ function SelectedOverlay({
   return (
     <>
       <group ref={group}>
-        <Plaque draft={overlay} material={SELECTED} />
+        <group ref={inner}>
+          <Plaque draft={overlay} material={SELECTED} />
+        </group>
       </group>
       <TransformControls
         object={group}
