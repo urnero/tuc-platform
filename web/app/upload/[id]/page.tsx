@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import EmbossPanel from "@/components/EmbossPanel";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
+import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
@@ -275,6 +276,16 @@ export default function ModelPage() {
             </p>
           ) : (
             <>
+              {/* Интерактивный редактор (B60): надпись ставится мышью прямо на поверхность. */}
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
+                <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+                  Новый редактор: надпись ставится мышью или пальцем прямо на поверхность модели и
+                  двигается по ней.
+                </p>
+                <Button href={`/upload/${upload.id}/edit`} variant="secondary" size="sm">
+                  Открыть редактор
+                </Button>
+              </div>
               <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
               {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
               <PaintPanel key={upload.units} uploadId={upload.id} />

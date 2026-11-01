@@ -429,3 +429,125 @@ def test_emboss_with_real_openscad(client, monkeypatch):
     assert after["watertight"] is True
     assert after["volume_cm3"] < before["volume_cm3"]
     assert after["bbox_mm"] == before["bbox_mm"]
+
+
+# --- размещение из интерактивного редактора (B60) ----------------------------------------
+
+
+def test_tangent_frame_and_placement_transform():
+    """Нормаль → ось Z фигуры, проекция up → ось Y, right = up × normal; всё единичное."""
+    x, y, z = em.tangent_frame(np.array([0, 0, 2.0]), np.array([0, 1.0, 0]))
+    assert np.allclose(z, [0, 0, 1]) and np.allclose(y, [0, 1, 0]) and np.allclose(x, [1, 0, 0])
+    # up не перпендикулярен нормали — берём его проекцию на касательную плоскость
+    x, y, z = em.tangent_frame(np.array([0, -1.0, 0]), np.array([0, 1.0, 1.0]))
+    assert np.allclose(y, [0, 0, 1]) and np.allclose(x, [1, 0, 0])
+    # up параллелен нормали → мировой Z; на горизонтальной грани → мировой Y
+    _x, y, _z = em.tangent_frame(np.array([1.0, 0, 0]), np.array([-1.0, 0, 0]))
+    assert np.allclose(y, [0, 0, 1])
+    _x, y, _z = em.tangent_frame(np.array([0, 0, -1.0]), np.array([0, 0, 1.0]))
+    assert np.allclose(y, [0, 1, 0])
+    # На верхней грани в центре матрица совпадает с face_transform "top"
+    bounds = np.array([[0.0, 0.0, 0.0], [10.0, 20.0, 30.0]])
+    m = em.placement_transform((5, 10, 30), (0, 0, 1), (0, 1, 0))
+    assert np.allclose(m, face_transform(bounds, "top", 0, 0))
+    # Наклонная грань: ось Z матрицы — нормаль, точка — точка, базис ортонормированный
+    n = np.array([1.0, 1.0, 1.0]) / math.sqrt(3)
+    m = em.placement_transform((1, 2, 3), n, (0, 0, 1))
+    assert np.allclose(m[:3, 2], n) and np.allclose(m[:3, 3], [1, 2, 3])
+    assert np.allclose(m[:3, :3] @ m[:3, :3].T, np.eye(3))
+    assert np.isclose(np.linalg.det(m[:3, :3]), 1.0)  # правая тройка, без зеркала
+
+
+def test_validate_placement():
+    raw = {
+        "point": [1, 2, 3],
+        "normal": [0, 0, 5],
+        "up": ["0", "1,0", 0],
+        "mode": "engraved",
+        "size_mm": 12,
+    }
+    clean, errors = validate_params({"kind": "text", "text": "A", "placement": raw}, has_logo=False)
+    assert errors == {}
+    assert clean["placement"] == {
+        "point": [1, 2, 3],
+        "normal": [0, 0, 1],
+        "up": [0, 1, 0],
+        "mode": "engraved",
+        "size_mm": 12,
+    }
+    assert clean["style"] == "engraved" and clean["size_mm"] == 12  # перекрыли параметры снаружи
+    # без размещения — как раньше
+    clean, errors = validate_params({"kind": "text", "text": "A"}, has_logo=False)
+    assert errors == {} and clean["placement"] is None
+
+    _clean, errors = validate_params(
+        {
+            "kind": "text",
+            "text": "A",
+            "placement": {"point": [1, 2], "normal": [0, 0, 0], "up": "x", "foo": 1, "mode": "x"},
+        },
+        has_logo=False,
+    )
+    assert set(errors) == {
+        "placement.point",
+        "placement.normal",
+        "placement.up",
+        "placement.foo",
+        "placement.mode",
+    }
+    _clean, errors = validate_params({"kind": "text", "text": "A", "placement": 5}, has_logo=False)
+    assert errors == {"placement": "Ожидался словарь размещения."}
+    assert "по размещению в редакторе (точка 1, 2, 3 мм)" in describe(
+        {
+            **DEFAULTS,
+            "text": "A",
+            "placement": {"point": [1, 2, 3], "normal": [0, 0, 1], "up": [0, 1, 0]},
+        }
+    )
+
+
+def test_emboss_by_placement(client, fake_openscad):
+    """Точка на правой грани коробки 40×30×20 вокруг нуля (x = 20): куб торчит наружу по +X."""
+    uid = _upload(client)
+    placement = {
+        "point": [20, 0, 0],
+        "normal": [1, 0, 0],
+        "up": [0, 0, 1],
+        "size_mm": 8,
+        "depth_mm": 1,
+        "mode": "raised",
+    }
+    r = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={"params": {"kind": "text", "text": "ТУЦ", "placement": placement}},
+    )
+    assert r.status_code == 202, r.text
+    job = r.json()
+    assert job["status"] == "done", job
+    meta = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()
+    assert meta["mesh"]["bbox_mm"] == {"x": 45, "y": 30, "z": 20}
+    assert "по размещению в редакторе" in meta["emboss"]["summary"]
+    # то же размещение, записанное иначе (нормаль не единичная) → та же сборка
+    again = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={
+            "params": {
+                "kind": "text",
+                "text": "ТУЦ",
+                "placement": {**placement, "normal": [3, 0, 0]},
+            }
+        },
+    )
+    assert again.json()["id"] == job["id"]
+    # ошибка размещения → 422 с ключом placement.*
+    bad = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={
+            "params": {
+                "kind": "text",
+                "text": "ТУЦ",
+                "placement": {"point": [0, 0, 0], "normal": [0, 0, 0], "up": [0, 0, 1]},
+            }
+        },
+    )
+    assert bad.status_code == 422 and "placement.normal" in bad.json()["detail"]["errors"]
