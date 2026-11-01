@@ -109,6 +109,9 @@ DEFAULTS = {
 }
 PLACEMENT_KEYS = ("point", "normal", "up", "size_mm", "depth_mm", "mode")
 COORD_MAX = 10_000.0  # мм: координаты точки размещения по модулю
+# B64: точка размещения должна лежать на поверхности модели с таким допуском (мм) — запас
+# overlap в emboss.scad 0,3 мм плюс погрешность округления и «толщина» грубой сетки клиента.
+CONTACT_TOL_MM = 1.0
 
 
 class EmbossError(ValueError):
@@ -322,10 +325,16 @@ def validate_placement(raw: object) -> tuple[dict | None, dict[str, str]]:
     if errors:
         return None, errors
     _x, up, normal = tangent_frame(np.array(vectors["normal"]), np.array(vectors["up"]))
-    clean["point"] = [round(v, 3) for v in vectors["point"]]
-    clean["normal"] = [round(float(v), 6) for v in normal]
-    clean["up"] = [round(float(v), 6) for v in up]
+    clean["point"] = _round_vec(vectors["point"], 3)
+    clean["normal"] = _round_vec(normal, 6)
+    clean["up"] = _round_vec(up, 6)
     return clean, {}
+
+
+def _round_vec(vec, digits: int) -> list[float]:
+    """Округление координат; «−0.0» становится «0.0», чтобы одинаковые размещения совпадали
+    и в JSON (от этого зависит job_id)."""
+    return [round(float(v), digits) + 0.0 for v in vec]
 
 
 def tangent_frame(normal: np.ndarray, up: np.ndarray | None = None) -> tuple[np.ndarray, ...]:
@@ -363,6 +372,61 @@ def placement_transform(point, normal, up) -> np.ndarray:
     m[:3, 0], m[:3, 1], m[:3, 2] = x, y, z
     m[:3, 3] = np.asarray(point, dtype=float)
     return m
+
+
+def surface_distance(mesh: trimesh.Trimesh, point) -> tuple[float, int]:
+    """Расстояние от точки до поверхности сетки и номер ближайшего треугольника.
+
+    Без rtree (его нет в зависимостях): считаем ближайшую точку на КАЖДОМ треугольнике
+    разом через numpy (trimesh.triangles.closest_point) — для 500 тыс. треугольников это
+    доли секунды и ~40 МБ памяти, зато точно и без индексов.
+    """
+    p = np.asarray(point, dtype=float)
+    tris = mesh.triangles
+    if len(tris) == 0:
+        return math.inf, -1
+    closest = trimesh.triangles.closest_point(tris, np.repeat(p[None, :], len(tris), axis=0))
+    dist = np.linalg.norm(closest - p, axis=1)
+    i = int(np.argmin(dist))
+    return float(dist[i]), i
+
+
+def check_contact(mesh: trimesh.Trimesh, placement: dict) -> tuple[dict, list[str]]:
+    """B64: размещение из редактора касается поверхности? Иначе EmbossError (→ 422).
+
+    Точка дальше CONTACT_TOL_MM от сетки — надпись «висит в воздухе» (клиент тянул гизмо за
+    край или модель поменяли после размещения). Нормаль, смотрящая внутрь (сетка с
+    вывернутыми треугольниками), разворачиваем наружу — выпуклая надпись должна торчать
+    наружу, врезанная — уходить внутрь; об этом предупреждение «normal_flipped».
+    """
+    dist, face = surface_distance(mesh, placement["point"])
+    if dist > CONTACT_TOL_MM:
+        raise EmbossError(
+            f"Надпись не касается поверхности модели (до неё {dist:.1f} мм) — "
+            "поставьте её на модель заново."
+        )
+    warnings: list[str] = []
+    face_normal = mesh.face_normals[face]
+    if float(np.dot(face_normal, placement["normal"])) < 0:
+        x, up, normal = tangent_frame(-np.asarray(placement["normal"]), np.asarray(placement["up"]))
+        placement = {**placement, "normal": _round_vec(normal, 6), "up": _round_vec(up, 6)}
+        warnings.append("normal_flipped")
+    return placement, warnings
+
+
+def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, list[str]]:
+    """Проверка касания для запроса из редактора (до постановки в очередь).
+
+    Загружает модель клиента целиком — так же, как inspect_file при загрузке; для файлов до
+    100 МБ это секунды, зато клиент получает 422 сразу, а не ошибку сборки через минуту.
+    """
+    placement = params.get("placement")
+    if not placement:
+        return params, []
+    model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
+    mesh = load_model(model_file, meta.get("units", "mm"))
+    fixed, warnings = check_contact(mesh, placement)
+    return {**params, "placement": fixed}, warnings
 
 
 def _fmt(value: float) -> str:
@@ -594,7 +658,10 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
         else:
             matrix = face_transform(model.bounds, params["face"], params["dx"], params["dy"])
         dec.apply_transform(matrix)
-        result, warnings = merge(model, dec, params["style"])
+        result, merge_warnings = merge(model, dec, params["style"])
+        warnings = [
+            w for w in record.get("warnings", []) if w != "merged_without_boolean"
+        ] + merge_warnings
 
         # Результат — новая загрузка: своя папка, meta.json, событие воронки.
         new_id = uuid.uuid4().hex
@@ -690,6 +757,12 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
     params, errors = validate_params(body.params, has_logo=logo_path(upload_id).is_file())
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors})
+    try:
+        params, contact_warnings = await run_in_threadpool(check_placement, upload_id, meta, params)
+    except EmbossError as e:
+        raise HTTPException(
+            status_code=422, detail={"errors": {"placement.point": str(e)}}
+        ) from None
 
     job_id = job_id_for(upload_id, meta, params)
     record = jobs.settle(load_job(upload_id, job_id), save_job)  # брошенная → error
@@ -701,11 +774,13 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
         props={"job_id": job_id, "cached": cached, "params": params},
     )
     if cached:
-        return record
+        # Та же сборка уже есть; предупреждение о развороте нормали — только в этом ответе.
+        return {**record, "warnings": list(dict.fromkeys([*contact_warnings, *record["warnings"]]))}
 
     attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
     record = new_job(upload_id, job_id, params)
     record["attempt"] = attempt
+    record["warnings"] = contact_warnings  # «normal_flipped» — дополнится при сборке
     save_job(record)
     if settings.redis_url:
         try:

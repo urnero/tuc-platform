@@ -103,6 +103,7 @@ export const STATUS_TEXT: Record<EmbossStatus, string> = {
 export const WARNING_TEXT: Record<string, string> = {
   merged_without_boolean:
     "Сетка модели не замкнута, поэтому надпись просто приложена к ней — слайсер соединит их при печати.",
+  normal_flipped: "Поверхность модели в этой точке «вывернута»; надпись развернули наружу.",
 };
 
 /** «12,5» → 12.5; пусто → NaN. */
