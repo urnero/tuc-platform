@@ -10,7 +10,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import CatalogOrderButton from "@/components/CatalogOrderButton";
 import ModelGallery from "@/components/ModelGallery";
-import { type CatalogModel, dimsText, loadCatalog, loadCatalogModel } from "@/lib/catalog";
+import { type CatalogModel, dimsText, loadCatalog, loadCatalogModel, priceText } from "@/lib/catalog";
 import { warningText } from "@/lib/mesh";
 import { metaDescription, pageMetadata } from "@/lib/seo";
 
@@ -35,6 +35,7 @@ export default async function CatalogModelPage({ params }: Params) {
   if (!model) notFound();
 
   const dims = dimsText(model);
+  const price = priceText(model);
   const m = model.mesh;
 
   // Соседи по категории — до трёх, чтобы было куда пойти дальше, если эта модель не подошла.
@@ -67,6 +68,14 @@ export default async function CatalogModelPage({ params }: Params) {
           <div className="flex flex-col gap-2">
             <span className="badge badge-neutral w-fit">{model.material}</span>
             <h1 className="text-2xl font-bold leading-tight">{model.title}</h1>
+            {price && (
+              <p data-testid="catalog-price">
+                <span className="text-xl font-bold">{price}</span>{" "}
+                <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
+                  за 1 шт. в {model.price?.material} — ориентир, точную цену покажет расчёт
+                </span>
+              </p>
+            )}
           </div>
           {model.text && <p className="leading-relaxed">{model.text}</p>}
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">

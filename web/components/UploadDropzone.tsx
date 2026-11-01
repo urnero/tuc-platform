@@ -62,9 +62,14 @@ export default function UploadDropzone({ idleText, cta }: Props) {
       <div
         role="button"
         tabIndex={0}
-        aria-label={cta ? `${cta}: выбрать файл STL или 3MF` : "Загрузить файл модели"}
+        // Без aria-label: доступное имя берётся из видимого текста (WCAG 2.5.3, Lighthouse label-content-name-mismatch).
         onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);

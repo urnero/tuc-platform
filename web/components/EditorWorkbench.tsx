@@ -6,9 +6,10 @@
  * габариты и «Заказать» (POST …/builds/<id>/upload → /upload/<id>).
  *
  * При открытии строим модель с параметрами по умолчанию, чтобы клиент сразу что-то увидел.
- * Дальше превью пересобирается само через AUTO_BUILD_MS после правки (B43); пока строится
- * новая версия, видна прошлая с плашкой «Обновляем превью…». Ответы по устаревшим сборкам
- * отбрасываем (seqRef), «Заказать» доступна только когда превью совпадает с формой.
+ * Дальше превью пересобирается само через AUTO_BUILD_MS (300 мс) после правки — без кнопки (B67);
+ * пока строится новая версия, видна прошлая с плашкой «Обновляем превью…». Новая правка
+ * отменяет прошлый запрос (AbortController) и отбрасывает ответы по устаревшим сборкам (seqRef).
+ * «Заказать» доступна только когда превью совпадает с формой.
  * Ошибки полей показываем до запроса (та же логика, что на сервере, lib/editors.ts);
  * ошибки сервера (422) раскладываем по тем же полям.
  */
@@ -32,6 +33,7 @@ import {
   sliderStep,
   toRequestParams,
   validateValues,
+  valueWithUnit,
 } from "@/lib/editors";
 import { formatDims, type Upload, warningText } from "@/lib/mesh";
 import { buttonClass } from "@/lib/ui";
@@ -44,6 +46,11 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
 });
 
 const POLL_MS = 1500;
+
+/** Ошибка от abort() — мы сами отменили устаревший запрос. */
+function isAbort(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
 function ViewerBox({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-[420px] items-center justify-center rounded-[var(--radius-md)] p-6 text-center" style={{ background: "var(--sand)", color: "var(--ink-muted)" }}>
@@ -66,10 +73,21 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
   const startedRef = useRef(false); // первую сборку запускаем один раз
   const seqRef = useRef(0); // номер последней сборки: ответы по старым сборкам игнорируем
   const requestedRef = useRef<RequestParams | null>(null); // с чем просили последнюю сборку
+  const abortRef = useRef<AbortController | null>(null); // текущий запрос к серверу — отменяем при новой правке
 
+  /** Останавливаем опрос и обрываем запрос, который ещё в пути (его ответ уже не нужен). */
   const stopPolling = () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
     pollTimer.current = null;
+    abortRef.current?.abort();
+    abortRef.current = null;
+  };
+
+  /** Новый «пульт отмены» для очередного запроса. */
+  const nextSignal = () => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    return abortRef.current.signal;
   };
 
   /** Сборка закончилась (готово или ошибка) — показываем, если она всё ещё последняя. */
@@ -84,15 +102,15 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
       stopPolling();
       pollTimer.current = setTimeout(async () => {
         try {
-          const r = await fetch(`/api/v1/editors/${editor.slug}/builds/${record.id}`);
+          const r = await fetch(`/api/v1/editors/${editor.slug}/builds/${record.id}`, { signal: nextSignal() });
           if (!r.ok) throw new Error(`Ошибка ${r.status}.`);
           const next = (await r.json()) as Build;
           if (seq !== seqRef.current) return; // параметры уже поменяли — эта сборка не нужна
           setBuild(next);
           if (next.status === "queued" || next.status === "running") poll(next, params, seq);
           else finish(next, params);
-        } catch {
-          if (seq !== seqRef.current) return;
+        } catch (e) {
+          if (seq !== seqRef.current || isAbort(e)) return; // запрос отменили сами — это не ошибка
           setNetError("Не удалось узнать состояние сборки. Попробуйте ещё раз.");
           setBusy(false);
         }
@@ -117,6 +135,7 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ params }),
+          signal: nextSignal(),
         });
         if (seq !== seqRef.current) return;
         if (r.status === 422) {
@@ -136,8 +155,8 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
         setBuild(record);
         if (record.status === "queued" || record.status === "running") poll(record, params, seq);
         else finish(record, params);
-      } catch {
-        if (seq !== seqRef.current) return;
+      } catch (e) {
+        if (seq !== seqRef.current || isAbort(e)) return; // запрос отменили сами — это не ошибка
         setNetError("Не удалось связаться с сервером. Попробуйте ещё раз.");
         setBusy(false);
       }
@@ -151,11 +170,14 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
       startedRef.current = true;
       void startBuild(defaultValues(editor));
     }
-    return stopPolling;
+    return () => {
+      stopPolling();
+      startedRef.current = false; // при повторном монтировании (dev-режим React) — строим заново
+    };
   }, [editor, startBuild]);
 
   // Превью обновляется само: через AUTO_BUILD_MS после последней правки, если поля в порядке
-  // и с такими параметрами ещё не строили. Кнопка «Обновить сейчас» — для нетерпеливых.
+  // и с такими параметрами ещё не строили. Кнопки «Обновить» нет (B67).
   useEffect(() => {
     if (!startedRef.current || !editor.scad_ready) return;
     if (Object.keys(validateValues(editor, values)).length > 0) return;
@@ -205,18 +227,11 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
       {/* --- форма --- */}
-      <form
-        className="card flex flex-col gap-5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void startBuild(values);
-        }}
-        noValidate
-      >
+      <form className="card flex flex-col gap-5" onSubmit={(e) => e.preventDefault()} noValidate>
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold">Параметры</h2>
           <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-            Размеры в миллиметрах. Меняйте — превью обновится само через секунду.
+            Двигайте ползунки — модель справа меняется сразу.
           </p>
         </div>
         {editor.params.map((p) => (
@@ -228,9 +243,6 @@ export default function EditorWorkbench({ editor }: { editor: Editor }) {
           </p>
         )}
         <div className="flex flex-wrap items-center gap-3">
-          <button type="submit" disabled={busy || hasErrors || !editor.scad_ready} className={buttonClass("secondary", "sm")}>
-            {busy ? BUILD_STATUS_TEXT[build?.status ?? "queued"] : "Обновить сейчас"}
-          </button>
           <button
             type="button"
             className={buttonClass("ghost", "sm")}
@@ -337,6 +349,7 @@ function ParamField({
   onChange: (v: string | boolean) => void;
 }) {
   const id = `param-${param.name}`;
+  // Диапазон и зачем параметр (hint из editor.yaml): «от 1 до 195 мм · Под винт М8 обычно 8,5 мм.»
   const hint = rangeHint(param);
   const noteId = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
   const common = {
@@ -408,6 +421,7 @@ function ParamField({
             <input
               type="range"
               aria-label={`${param.label} — ползунок`}
+              aria-valuetext={valueWithUnit(param, value)}
               className="min-w-0 flex-1 accent-[var(--filament)]"
               min={param.min as number}
               max={param.max as number}
@@ -427,6 +441,11 @@ function ParamField({
             step={param.step ?? (param.integer ? 1 : "any")}
             onChange={(e) => onChange(e.target.value)}
           />
+          {param.unit && (
+            <span aria-hidden className="w-6 shrink-0 text-sm" style={{ color: "var(--ink-muted)" }}>
+              {param.unit}
+            </span>
+          )}
         </div>
         {note}
       </div>

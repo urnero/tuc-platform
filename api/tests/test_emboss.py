@@ -429,3 +429,229 @@ def test_emboss_with_real_openscad(client, monkeypatch):
     assert after["watertight"] is True
     assert after["volume_cm3"] < before["volume_cm3"]
     assert after["bbox_mm"] == before["bbox_mm"]
+
+
+# --- размещение из интерактивного редактора (B60) ----------------------------------------
+
+
+def test_tangent_frame_and_placement_transform():
+    """Нормаль → ось Z фигуры, проекция up → ось Y, right = up × normal; всё единичное."""
+    x, y, z = em.tangent_frame(np.array([0, 0, 2.0]), np.array([0, 1.0, 0]))
+    assert np.allclose(z, [0, 0, 1]) and np.allclose(y, [0, 1, 0]) and np.allclose(x, [1, 0, 0])
+    # up не перпендикулярен нормали — берём его проекцию на касательную плоскость
+    x, y, z = em.tangent_frame(np.array([0, -1.0, 0]), np.array([0, 1.0, 1.0]))
+    assert np.allclose(y, [0, 0, 1]) and np.allclose(x, [1, 0, 0])
+    # up параллелен нормали → мировой Z; на горизонтальной грани → мировой Y
+    _x, y, _z = em.tangent_frame(np.array([1.0, 0, 0]), np.array([-1.0, 0, 0]))
+    assert np.allclose(y, [0, 0, 1])
+    _x, y, _z = em.tangent_frame(np.array([0, 0, -1.0]), np.array([0, 0, 1.0]))
+    assert np.allclose(y, [0, 1, 0])
+    # На верхней грани в центре матрица совпадает с face_transform "top"
+    bounds = np.array([[0.0, 0.0, 0.0], [10.0, 20.0, 30.0]])
+    m = em.placement_transform((5, 10, 30), (0, 0, 1), (0, 1, 0))
+    assert np.allclose(m, face_transform(bounds, "top", 0, 0))
+    # Наклонная грань: ось Z матрицы — нормаль, точка — точка, базис ортонормированный
+    n = np.array([1.0, 1.0, 1.0]) / math.sqrt(3)
+    m = em.placement_transform((1, 2, 3), n, (0, 0, 1))
+    assert np.allclose(m[:3, 2], n) and np.allclose(m[:3, 3], [1, 2, 3])
+    assert np.allclose(m[:3, :3] @ m[:3, :3].T, np.eye(3))
+    assert np.isclose(np.linalg.det(m[:3, :3]), 1.0)  # правая тройка, без зеркала
+
+
+def test_validate_placement():
+    raw = {
+        "point": [1, 2, 3],
+        "normal": [0, 0, 5],
+        "up": ["0", "1,0", 0],
+        "mode": "engraved",
+        "size_mm": 12,
+    }
+    clean, errors = validate_params({"kind": "text", "text": "A", "placement": raw}, has_logo=False)
+    assert errors == {}
+    assert clean["placement"] == {
+        "point": [1, 2, 3],
+        "normal": [0, 0, 1],
+        "up": [0, 1, 0],
+        "mode": "engraved",
+        "size_mm": 12,
+    }
+    assert clean["style"] == "engraved" and clean["size_mm"] == 12  # перекрыли параметры снаружи
+    # без размещения — как раньше
+    clean, errors = validate_params({"kind": "text", "text": "A"}, has_logo=False)
+    assert errors == {} and clean["placement"] is None
+
+    _clean, errors = validate_params(
+        {
+            "kind": "text",
+            "text": "A",
+            "placement": {"point": [1, 2], "normal": [0, 0, 0], "up": "x", "foo": 1, "mode": "x"},
+        },
+        has_logo=False,
+    )
+    assert set(errors) == {
+        "placement.point",
+        "placement.normal",
+        "placement.up",
+        "placement.foo",
+        "placement.mode",
+    }
+    _clean, errors = validate_params({"kind": "text", "text": "A", "placement": 5}, has_logo=False)
+    assert errors == {"placement": "Ожидался словарь размещения."}
+    assert "по размещению в редакторе (точка 1, 2, 3 мм)" in describe(
+        {
+            **DEFAULTS,
+            "text": "A",
+            "placement": {"point": [1, 2, 3], "normal": [0, 0, 1], "up": [0, 1, 0]},
+        }
+    )
+
+
+def test_emboss_by_placement(client, fake_openscad):
+    """Точка на правой грани коробки 40×30×20 вокруг нуля (x = 20): куб торчит наружу по +X."""
+    uid = _upload(client)
+    placement = {
+        "point": [20, 0, 0],
+        "normal": [1, 0, 0],
+        "up": [0, 0, 1],
+        "size_mm": 8,
+        "depth_mm": 1,
+        "mode": "raised",
+    }
+    r = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={"params": {"kind": "text", "text": "ТУЦ", "placement": placement}},
+    )
+    assert r.status_code == 202, r.text
+    job = r.json()
+    assert job["status"] == "done", job
+    meta = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()
+    assert meta["mesh"]["bbox_mm"] == {"x": 45, "y": 30, "z": 20}
+    assert "по размещению в редакторе" in meta["emboss"]["summary"]
+    # то же размещение, записанное иначе (нормаль не единичная) → та же сборка
+    again = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={
+            "params": {
+                "kind": "text",
+                "text": "ТУЦ",
+                "placement": {**placement, "normal": [3, 0, 0]},
+            }
+        },
+    )
+    assert again.json()["id"] == job["id"]
+    # ошибка размещения → 422 с ключом placement.*
+    bad = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={
+            "params": {
+                "kind": "text",
+                "text": "ТУЦ",
+                "placement": {"point": [0, 0, 0], "normal": [0, 0, 0], "up": [0, 0, 1]},
+            }
+        },
+    )
+    assert bad.status_code == 422 and "placement.normal" in bad.json()["detail"]["errors"]
+
+
+# --- B64: касание поверхности ------------------------------------------------------------
+
+
+def _sphere_stl(radius=20.0, subdivisions=3) -> bytes:
+    data = trimesh.creation.icosphere(subdivisions=subdivisions, radius=radius).export(
+        file_type="stl"
+    )
+    return data.encode() if isinstance(data, str) else data
+
+
+def test_surface_distance_and_contact_on_cube():
+    cube = trimesh.creation.box(extents=(40, 30, 20))
+    assert em.surface_distance(cube, [20, 0, 0])[0] == pytest.approx(0.0)
+    assert em.surface_distance(cube, [20, 14, 9])[0] == pytest.approx(0.0)  # у угла грани
+    assert em.surface_distance(cube, [25, 0, 0])[0] == pytest.approx(5.0)
+    assert em.surface_distance(cube, [0, 0, 0])[0] == pytest.approx(
+        10.0
+    )  # внутри — до ближней грани
+    ok = {"point": [20, 0, 0], "normal": [1, 0, 0], "up": [0, 0, 1]}
+    assert em.check_contact(cube, ok) == (ok, [])
+    # в пределах допуска — проходит
+    near = {**ok, "point": [20.5, 0, 0]}
+    assert em.check_contact(cube, near)[1] == []
+    with pytest.raises(EmbossError, match="не касается поверхности .*5.0 мм"):
+        em.check_contact(cube, {**ok, "point": [25, 0, 0]})
+    # нормаль внутрь → разворачиваем наружу, верх сохраняем, предупреждение
+    flipped, warnings = em.check_contact(cube, {**ok, "normal": [-1, 0, 0]})
+    assert warnings == ["normal_flipped"]
+    assert flipped["normal"] == [1, 0, 0] and flipped["up"] == [0, 0, 1]
+
+
+def test_contact_check_is_fast_on_big_sphere():
+    """Проверка касания на ~330 тыс. треугольников — доли секунды (без rtree, чистый numpy)."""
+    import time
+
+    sphere = trimesh.creation.icosphere(subdivisions=7, radius=30)
+    assert len(sphere.faces) > 300_000
+    t = time.perf_counter()
+    dist, _face = em.surface_distance(sphere, [0, 0, 30])
+    assert time.perf_counter() - t < 2.0
+    assert dist == pytest.approx(0.0, abs=0.05)  # вершина сферы лежит на сетке
+
+
+def test_emboss_by_placement_on_sphere(client, fake_openscad):
+    """Сфера r=20: тиснение на «экваторе» торчит наружу по +X; врезанное уменьшает объём;
+    нормаль внутрь разворачивается с предупреждением."""
+    uid = _upload(client, _sphere_stl(), name="ball.stl")
+    before = client.get(f"/api/v1/uploads/{uid}").json()["mesh"]
+    # Точка на поверхности сферы (вершина икосаэдра лежит ровно на сфере: (0,0,20)).
+    placement = {"point": [0, 0, 20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    body = {"params": {"kind": "text", "text": "ТУЦ", "placement": placement}}
+    job = client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()
+    assert job["status"] == "done", job
+    assert job["warnings"] == []
+    after = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()["mesh"]
+    assert after["bbox_mm"]["z"] == pytest.approx(before["bbox_mm"]["z"] + 5, abs=0.2)
+
+    engraved = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={
+            "params": {
+                "kind": "text",
+                "text": "ТУЦ",
+                "placement": {**placement, "mode": "engraved"},
+            }
+        },
+    ).json()
+    assert engraved["status"] == "done", engraved
+    cut = client.get(f"/api/v1/uploads/{engraved['result_upload_id']}").json()["mesh"]
+    assert cut["volume_cm3"] < before["volume_cm3"]
+    # подделка OpenSCAD режет кубом 10 мм вокруг нуля: срезана «шапка» сферы, ничего не торчит
+    assert before["bbox_mm"]["z"] - 5.5 < cut["bbox_mm"]["z"] < before["bbox_mm"]["z"]
+
+    inward = client.post(
+        f"/api/v1/uploads/{uid}/embosses",
+        json={
+            "params": {
+                "kind": "text",
+                "text": "ТУЦ",
+                "placement": {**placement, "normal": [0, 0, -1]},
+            }
+        },
+    ).json()
+    assert inward["status"] == "done", inward
+    assert inward["warnings"] == ["normal_flipped"]
+    assert inward["params"]["placement"]["normal"] == [0, 0, 1]
+    assert inward["id"] == job["id"]  # после разворота — то же размещение, та же сборка
+
+
+def test_emboss_placement_off_surface_422(client, fake_openscad):
+    uid = _upload(client)
+    body = {
+        "params": {
+            "kind": "text",
+            "text": "ТУЦ",
+            "placement": {"point": [30, 0, 0], "normal": [1, 0, 0], "up": [0, 0, 1]},
+        }
+    }
+    r = client.post(f"/api/v1/uploads/{uid}/embosses", json=body)
+    assert r.status_code == 422, r.text
+    assert "не касается поверхности" in r.json()["detail"]["errors"]["placement.point"]
+    assert not list(em.jobs_dir(uid).glob("*.json"))  # сборка не создавалась

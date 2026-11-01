@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs
 
 import httpx
@@ -9,7 +10,7 @@ import pytest
 from conftest import REPO_ROOT, box_stl
 from sqlalchemy.orm import Session
 
-from app import drive, export
+from app import anonymize, cleanup, drive, export
 from app import telegram as tg
 from app.config import settings
 from app.db import get_engine
@@ -27,6 +28,7 @@ class FakeDrive:
         self.requests: list[httpx.Request] = []
         self.token = "ya29.drive-token"
         self.fail = False  # Google «лежит» → 500
+        self.deleted: list[str] = []  # id папок, удалённых через DELETE (B46b)
 
     def _new_id(self) -> str:
         return f"id{len(self.files) + len(self.uploads) + 1}"
@@ -71,6 +73,14 @@ class FakeDrive:
             fid = self._new_id()
             self.files[fid] = {**meta, "mime": "file", "data": request.content}
             return httpx.Response(200, json={"id": fid})
+        if path.startswith("/drive/v3/files/") and request.method == "DELETE":
+            assert params["supportsAllDrives"] == "true"
+            fid = path.rsplit("/", 1)[1]
+            if fid not in self.files:
+                return httpx.Response(404, json={"error": {"message": "File not found"}})
+            self.files.pop(fid)
+            self.deleted.append(fid)
+            return httpx.Response(204)
         return httpx.Response(404, json={"error": {"message": f"нет {path}"}})
 
     def by_name(self, name: str) -> list[dict]:
@@ -245,3 +255,88 @@ def test_storage_quota_hint():
 def test_names_are_safe():
     assert drive._clean("a/b\nc") == "a_b_c"
     assert drive._q("O'Brien \\") == "O\\'Brien \\\\"
+
+
+# --- B46b: удаление копий в Drive по срокам ПДн ----------------------------------------------
+
+
+def close_order(order_id: int, days_ago: float, status: str = "done", **extra) -> None:
+    """Заказ выдан days_ago дней назад (updated_at — дата закрытия)."""
+    with Session(get_engine()) as s:
+        o = s.get(Order, order_id)
+        o.status = status
+        for k, v in extra.items():
+            setattr(o, k, v)
+        s.commit()
+        when = datetime.now(UTC) - timedelta(days=days_ago)
+        s.execute(Order.__table__.update().where(Order.id == order_id).values(updated_at=when))
+        s.commit()
+
+
+def test_cleanup_deletes_drive_folder_after_a_year(client, fake_slicer, pricing_file, gdrive):
+    old, fresh, active = make_order(client), make_order(client), make_order(client)
+    old_folder = order_folder(gdrive, old["number"])
+    close_order(old["id"], days_ago=400)
+    close_order(fresh["id"], days_ago=10)  # закрыт недавно — рано
+    with Session(get_engine()) as s:  # active — ещё в работе, не трогаем
+        s.execute(Order.__table__.update().where(Order.id == active["id"])
+                  .values(updated_at=datetime.now(UTC) - timedelta(days=900)))
+        s.commit()
+        report = cleanup.run_cleanup(s, dry_run=True)
+    assert report.drive["deleted"] == 1 and gdrive.deleted == []  # пробный прогон ничего не трогает
+    with Session(get_engine()) as s:
+        report = cleanup.run_cleanup(s)
+    assert report.to_dict()["drive_folders"] == 1
+    assert gdrive.deleted == [old_folder["id"]]  # по имени: у фейка ссылка без /folders/<id>
+    assert order_row(old["id"]).drive_folder_url is None
+    assert order_row(fresh["id"]).drive_folder_url and order_row(active["id"]).drive_folder_url
+    assert order_row(old["id"]).updated_at.year == (datetime.now(UTC) - timedelta(days=400)).year
+    with Session(get_engine()) as s:  # второй раз — нечего
+        assert cleanup.run_cleanup(s).drive["deleted"] == 0
+
+
+def test_delete_by_folder_id_in_url_and_already_gone(client, fake_slicer, pricing_file, gdrive):
+    a, b = make_order(client), make_order(client)
+    folder_a = order_folder(gdrive, a["number"])
+    url = f"https://drive.google.com/drive/folders/{folder_a['id']}?usp=drivesdk"
+    close_order(a["id"], days_ago=400, drive_folder_url=url, customer_name="")  # имени нет
+    close_order(b["id"], days_ago=400, status="cancelled",
+                drive_folder_url="https://drive.google.com/drive/folders/gone")  # удалена руками
+    assert drive.folder_id_from_url(url) == folder_a["id"]
+    with Session(get_engine()) as s:
+        assert drive.delete_folders(s, [a["id"], b["id"]]) == {
+            "deleted": 2, "failed": 0, "skipped": 0}
+    assert gdrive.deleted == [folder_a["id"]]
+    assert order_row(b["id"]).drive_folder_url is None
+
+
+def test_drive_error_keeps_link_for_next_night(client, fake_slicer, pricing_file, gdrive):
+    o = make_order(client)
+    close_order(o["id"], days_ago=400)
+    gdrive.fail = True
+    with Session(get_engine()) as s:
+        assert cleanup.run_cleanup(s).drive == {"deleted": 0, "failed": 1, "skipped": 0}
+    assert order_row(o["id"]).drive_folder_url  # попробуем следующей ночью
+
+
+def test_drive_off_skips_quietly(client, fake_slicer, pricing_file, gdrive, monkeypatch):
+    o = make_order(client)
+    close_order(o["id"], days_ago=400)
+    monkeypatch.setattr(settings, "google_drive_refresh_token", "")
+    with Session(get_engine()) as s:
+        assert cleanup.run_cleanup(s).drive == {"deleted": 0, "failed": 0, "skipped": 1}
+    assert order_row(o["id"]).drive_folder_url and gdrive.deleted == []
+
+
+def test_anonymize_deletes_leftover_folder_first(client, fake_slicer, pricing_file, gdrive,
+                                                 monkeypatch):
+    """Папка пережила cleanup (Drive был выключен) — удаляем по имени до того, как имя сотрут."""
+    o = make_order(client)
+    folder = order_folder(gdrive, o["number"])
+    close_order(o["id"], days_ago=5 * 365 + 10)
+    with Session(get_engine()) as s:
+        report = anonymize.anonymize_orders(s)
+    assert report.to_dict()["drive_folders"] == 1
+    assert gdrive.deleted == [folder["id"]]
+    row = order_row(o["id"])
+    assert row.anonymized_at and row.drive_folder_url is None and row.customer_name == ""

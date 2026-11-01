@@ -73,11 +73,13 @@ function NewOrder() {
 
   // Клиент в кабинете — заполняем контакты из прошлого заказа (пустые поля, пока ничего не ввели).
   useEffect(() => {
+    // Без расчёта форма не откроется — незачем звать кабинет (гостю он отвечает 401 в консоль).
+    if (!quoteId) return;
     fetch("/api/v1/account")
       .then(async (r) => (r.ok ? ((await r.json()) as Account) : null))
       .then((a) => a && setForm((f) => prefillForm(f, a)))
       .catch(() => {});
-  }, []);
+  }, [quoteId]);
 
   const delivery = quote?.delivery ?? "pickup";
 
@@ -126,6 +128,7 @@ function NewOrder() {
     const uploadId = uploadIdFromQuote(quoteId);
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
+        <h1 className="mb-4 text-2xl font-semibold">Оформление заказа</h1>
         <p role="alert">{loadError}</p>
         <Link href={uploadId ? `/upload/${uploadId}` : "/upload"} style={{ color: "var(--filament-text)" }}>
           {uploadId ? "← К модели и расчёту цены" : "← Загрузить модель"}
@@ -133,7 +136,13 @@ function NewOrder() {
       </main>
     );
   }
-  if (!quote) return <main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>;
+  if (!quote)
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-16">
+        <h1 className="mb-4 text-2xl font-semibold">Оформление заказа</h1>
+        <p>Загружаем…</p>
+      </main>
+    );
 
   const courier = needsAddress(quote.delivery);
   const submitText = sending

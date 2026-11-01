@@ -25,7 +25,7 @@ export default async function CatalogPage() {
         <h1 className="text-3xl font-bold">Каталог готовых моделей</h1>
         <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
           Нажмите «Заказать» — модель откроется в расчёте: материал, количество, цена сразу. Есть своя модель?{" "}
-          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
+          <Link href="/upload" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             Загрузите её
           </Link>
           .

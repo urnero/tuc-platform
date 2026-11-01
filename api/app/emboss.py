@@ -17,7 +17,10 @@
 POST   /api/v1/uploads/{id}/logo              — загрузить SVG-логотип (≤ 1 МБ) к загрузке.
 DELETE /api/v1/uploads/{id}/logo              — убрать логотип.
 POST   /api/v1/uploads/{id}/embosses          — тело {"params": {...}}: проверка параметров
-                                                (422 с ошибками по полям), сборка. Одинаковые
+                                                (422 с ошибками по полям), сборка. Размещение из
+                                                интерактивного редактора (B60) — params.placement
+                                                = {point, normal, up, size_mm, depth_mm, mode};
+                                                тогда face/dx/dy не нужны. Одинаковые
                                                 параметры → одна и та же сборка. В очередь
                                                 (worker) или, без REDIS_URL, сразу.
 GET    /api/v1/uploads/{id}/embosses/{job_id} — статус queued|running|done|error; после done —
@@ -98,7 +101,17 @@ DEFAULTS = {
     "dx": 0.0,
     "dy": 0.0,
     "angle": 0.0,
+    # Размещение из интерактивного редактора (B60, docs/EDITOR.md): точка на поверхности,
+    # нормаль наружу и вектор «верх» надписи — всё в мм, в системе модели (Z вверх).
+    # Если задано — face/dx/dy не используются. Внутри могут быть size_mm, depth_mm и mode
+    # ("raised"|"engraved") — они перекрывают одноимённые параметры выше.
+    "placement": None,
 }
+PLACEMENT_KEYS = ("point", "normal", "up", "size_mm", "depth_mm", "mode")
+COORD_MAX = 10_000.0  # мм: координаты точки размещения по модулю
+# B64: точка размещения должна лежать на поверхности модели с таким допуском (мм) — запас
+# overlap в emboss.scad 0,3 мм плюс погрешность округления и «толщина» грубой сетки клиента.
+CONTACT_TOL_MM = 1.0
 
 
 class EmbossError(ValueError):
@@ -244,7 +257,176 @@ def validate_params(raw: dict | None, has_logo: bool) -> tuple[dict, dict[str, s
             clean["text"] = text if clean.get("kind") == "text" else ""
     if clean.get("kind") == "logo" and not has_logo:
         errors["kind"] = "Сначала загрузите логотип (SVG)."
+
+    placement, perrors = validate_placement(values["placement"])
+    if perrors:
+        errors.update(perrors)
+    else:
+        clean["placement"] = placement
+        if placement:
+            # Размер, глубина и режим из редактора важнее одноимённых полей снаружи.
+            for key in ("size_mm", "depth_mm"):
+                if key in placement:
+                    clean[key] = placement[key]
+            if "mode" in placement:
+                clean["style"] = placement["mode"]
     return clean, errors
+
+
+def _vector(value: object) -> list[float] | None:
+    """[x, y, z] из трёх конечных чисел (строки «1,5» тоже годятся) или None."""
+    if not isinstance(value, list | tuple) or len(value) != 3:
+        return None
+    out = []
+    for v in value:
+        num, error = _number(v, -COORD_MAX, COORD_MAX)
+        if error:
+            return None
+        out.append(num)
+    return out
+
+
+def validate_placement(raw: object) -> tuple[dict | None, dict[str, str]]:
+    """Размещение из редактора → (чистое; ошибки по полям вида placement.point).
+
+    Нормаль приводится к единичной, «верх» — к единичному и перпендикулярному нормали
+    (tangent_frame). Так одинаковое размещение всегда даёт одну и ту же сборку (job_id).
+    """
+    if raw is None:
+        return None, {}
+    if not isinstance(raw, dict):
+        return None, {"placement": "Ожидался словарь размещения."}
+    errors: dict[str, str] = {}
+    for name in raw:
+        if name not in PLACEMENT_KEYS:
+            errors[f"placement.{name}"] = "Неизвестный параметр."
+    vectors: dict[str, list[float]] = {}
+    for name in ("point", "normal", "up"):
+        vec = _vector(raw.get(name))
+        if vec is None:
+            errors[f"placement.{name}"] = "Нужны три числа [x, y, z] в мм."
+        else:
+            vectors[name] = vec
+    if "normal" in vectors and float(np.linalg.norm(vectors["normal"])) < 1e-9:
+        errors["placement.normal"] = "Нормаль не может быть нулевой."
+    clean: dict = {}
+    for name, lo, hi in (("size_mm", SIZE_MIN, SIZE_MAX), ("depth_mm", DEPTH_MIN, DEPTH_MAX)):
+        if name in raw:
+            num, error = _number(raw[name], lo, hi)
+            if error:
+                errors[f"placement.{name}"] = error
+            else:
+                clean[name] = num
+    if "mode" in raw:
+        if str(raw["mode"]) not in STYLES:
+            errors["placement.mode"] = "Выберите один из вариантов."
+        else:
+            clean["mode"] = str(raw["mode"])
+    if errors:
+        return None, errors
+    _x, up, normal = tangent_frame(np.array(vectors["normal"]), np.array(vectors["up"]))
+    clean["point"] = _round_vec(vectors["point"], 3)
+    clean["normal"] = _round_vec(normal, 6)
+    clean["up"] = _round_vec(up, 6)
+    return clean, {}
+
+
+def _round_vec(vec, digits: int) -> list[float]:
+    """Округление координат; «−0.0» становится «0.0», чтобы одинаковые размещения совпадали
+    и в JSON (от этого зависит job_id)."""
+    return [round(float(v), digits) + 0.0 for v in vec]
+
+
+def tangent_frame(normal: np.ndarray, up: np.ndarray | None = None) -> tuple[np.ndarray, ...]:
+    """Локальная система тиснения в точке поверхности: (right, up, normal), все единичные.
+
+    normal — наружу от поверхности (станет осью Z фигуры из OpenSCAD, «лицом» наружу);
+    up — куда смотрит верх букв; его проекция на касательную плоскость становится осью Y.
+    Если up не задан или параллелен нормали — берём мировой Z («верх» модели), а на
+    горизонтальной грани — мировой Y (как у face="top"). right = up × normal — так текст
+    читается снаружи, а не зеркально. Та же формула — в web/lib/editor/math.ts.
+    """
+    n = np.asarray(normal, dtype=float)
+    n = n / np.linalg.norm(n)
+    candidates = [up] if up is not None else []
+    candidates += [np.array([0.0, 0.0, 1.0]), np.array([0.0, 1.0, 0.0])]
+    for hint in candidates:
+        h = np.asarray(hint, dtype=float)
+        y = h - np.dot(h, n) * n
+        length = float(np.linalg.norm(y))
+        if length > 1e-6:
+            y = y / length
+            break
+    x = np.cross(y, n)
+    return x, y, n
+
+
+def placement_transform(point, normal, up) -> np.ndarray:
+    """Матрица 4×4: фигуру из плоскости XY (лицом вверх, центр в нуле) — в точку поверхности.
+
+    Столбцы — оси локальной системы (tangent_frame), последний — точка. Для грани
+    «сверху» в центре и up = +Y совпадает с face_transform(..., "top", 0, 0).
+    """
+    x, y, z = tangent_frame(np.asarray(normal, dtype=float), np.asarray(up, dtype=float))
+    m = np.eye(4)
+    m[:3, 0], m[:3, 1], m[:3, 2] = x, y, z
+    m[:3, 3] = np.asarray(point, dtype=float)
+    return m
+
+
+def surface_distance(mesh: trimesh.Trimesh, point) -> tuple[float, int]:
+    """Расстояние от точки до поверхности сетки и номер ближайшего треугольника.
+
+    Без rtree (его нет в зависимостях): считаем ближайшую точку на КАЖДОМ треугольнике
+    разом через numpy (trimesh.triangles.closest_point) — для 500 тыс. треугольников это
+    доли секунды и ~40 МБ памяти, зато точно и без индексов.
+    """
+    p = np.asarray(point, dtype=float)
+    tris = mesh.triangles
+    if len(tris) == 0:
+        return math.inf, -1
+    closest = trimesh.triangles.closest_point(tris, np.repeat(p[None, :], len(tris), axis=0))
+    dist = np.linalg.norm(closest - p, axis=1)
+    i = int(np.argmin(dist))
+    return float(dist[i]), i
+
+
+def check_contact(mesh: trimesh.Trimesh, placement: dict) -> tuple[dict, list[str]]:
+    """B64: размещение из редактора касается поверхности? Иначе EmbossError (→ 422).
+
+    Точка дальше CONTACT_TOL_MM от сетки — надпись «висит в воздухе» (клиент тянул гизмо за
+    край или модель поменяли после размещения). Нормаль, смотрящая внутрь (сетка с
+    вывернутыми треугольниками), разворачиваем наружу — выпуклая надпись должна торчать
+    наружу, врезанная — уходить внутрь; об этом предупреждение «normal_flipped».
+    """
+    dist, face = surface_distance(mesh, placement["point"])
+    if dist > CONTACT_TOL_MM:
+        raise EmbossError(
+            f"Надпись не касается поверхности модели (до неё {dist:.1f} мм) — "
+            "поставьте её на модель заново."
+        )
+    warnings: list[str] = []
+    face_normal = mesh.face_normals[face]
+    if float(np.dot(face_normal, placement["normal"])) < 0:
+        x, up, normal = tangent_frame(-np.asarray(placement["normal"]), np.asarray(placement["up"]))
+        placement = {**placement, "normal": _round_vec(normal, 6), "up": _round_vec(up, 6)}
+        warnings.append("normal_flipped")
+    return placement, warnings
+
+
+def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, list[str]]:
+    """Проверка касания для запроса из редактора (до постановки в очередь).
+
+    Загружает модель клиента целиком — так же, как inspect_file при загрузке; для файлов до
+    100 МБ это секунды, зато клиент получает 422 сразу, а не ошибку сборки через минуту.
+    """
+    placement = params.get("placement")
+    if not placement:
+        return params, []
+    model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
+    mesh = load_model(model_file, meta.get("units", "mm"))
+    fixed, warnings = check_contact(mesh, placement)
+    return {**params, "placement": fixed}, warnings
 
 
 def _fmt(value: float) -> str:
@@ -260,9 +442,17 @@ def describe(params: dict, logo_name: str = "") -> str:
         font = FONT_LABELS[params["font"]] + (", жирный" if params["bold"] else "")
         what = f"Надпись «{params['text']}» ({font}) {_fmt(params['size_mm'])} мм"
         how = "выпуклая" if params["style"] == "raised" else "углублённая"
-    parts = [what, f"{how} {_fmt(params['depth_mm'])} мм", FACE_LABELS[params["face"]]]
-    if params["dx"] or params["dy"]:
-        parts.append(f"сдвиг {_fmt(params['dx'])} / {_fmt(params['dy'])} мм")
+    parts = [what, f"{how} {_fmt(params['depth_mm'])} мм"]
+    placement = params.get("placement")
+    if placement:
+        p = placement["point"]
+        parts.append(
+            f"по размещению в редакторе (точка {_fmt(p[0])}, {_fmt(p[1])}, {_fmt(p[2])} мм)"
+        )
+    else:
+        parts.append(FACE_LABELS[params["face"]])
+        if params["dx"] or params["dy"]:
+            parts.append(f"сдвиг {_fmt(params['dx'])} / {_fmt(params['dy'])} мм")
     if params["angle"]:
         parts.append(f"поворот {_fmt(params['angle'])}°")
     return ", ".join(parts)
@@ -461,9 +651,17 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
             raise EmbossError("Тиснение получилось пустым — проверьте надпись или логотип.")
         model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
         model = load_model(model_file, meta.get("units", "mm"))
-        matrix = face_transform(model.bounds, params["face"], params["dx"], params["dy"])
+        placement = params.get("placement")
+        if placement:
+            # Редактор (B60): точка, нормаль и «верх» в мм в системе модели.
+            matrix = placement_transform(placement["point"], placement["normal"], placement["up"])
+        else:
+            matrix = face_transform(model.bounds, params["face"], params["dx"], params["dy"])
         dec.apply_transform(matrix)
-        result, warnings = merge(model, dec, params["style"])
+        result, merge_warnings = merge(model, dec, params["style"])
+        warnings = [
+            w for w in record.get("warnings", []) if w != "merged_without_boolean"
+        ] + merge_warnings
 
         # Результат — новая загрузка: своя папка, meta.json, событие воронки.
         new_id = uuid.uuid4().hex
@@ -559,6 +757,12 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
     params, errors = validate_params(body.params, has_logo=logo_path(upload_id).is_file())
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors})
+    try:
+        params, contact_warnings = await run_in_threadpool(check_placement, upload_id, meta, params)
+    except EmbossError as e:
+        raise HTTPException(
+            status_code=422, detail={"errors": {"placement.point": str(e)}}
+        ) from None
 
     job_id = job_id_for(upload_id, meta, params)
     record = jobs.settle(load_job(upload_id, job_id), save_job)  # брошенная → error
@@ -570,11 +774,13 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
         props={"job_id": job_id, "cached": cached, "params": params},
     )
     if cached:
-        return record
+        # Та же сборка уже есть; предупреждение о развороте нормали — только в этом ответе.
+        return {**record, "warnings": list(dict.fromkeys([*contact_warnings, *record["warnings"]]))}
 
     attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
     record = new_job(upload_id, job_id, params)
     record["attempt"] = attempt
+    record["warnings"] = contact_warnings  # «normal_flipped» — дополнится при сборке
     save_job(record)
     if settings.redis_url:
         try:

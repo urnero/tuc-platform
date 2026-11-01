@@ -56,6 +56,7 @@ params:
     max: 150
     step: 0.5
     default: 10
+    hint: Длина втулки вдоль отверстия (толщина проставки).
   - name: shape
     label: Форма
     type: choice
@@ -63,6 +64,7 @@ params:
       - { value: round, label: Круглая }
       - { value: hex, label: Шестигранник }
     default: round
+    hint: Шестигранник не прокручивается в пазу и удобен под гаечный ключ.
   - name: chamfer
     label: Фаска по краям
     type: bool

@@ -5,6 +5,7 @@
  */
 
 import { apiInternalUrl } from "./landing";
+import { formatPrice } from "./format";
 import { formatDims, type MeshInfo } from "./mesh";
 
 export type CatalogCategory = {
@@ -29,6 +30,19 @@ export type CatalogModel = {
   file_url: string;
   /** null — файл модели не найден или не читается; карточка показывается без габаритов. */
   mesh: MeshInfo | null;
+  /**
+   * Ориентир цены одной штуки до слайсера (api/app/pricing.py::estimate_price): по объёму сетки,
+   * самовывоз, без постобработки. null — нет сетки или прайса. Старый API поля не отдаёт.
+   */
+  price?: CatalogPrice | null;
+};
+
+export type CatalogPrice = {
+  total: number;
+  /** В каком материале посчитано (материал модели или PLA, если он «по запросу»). */
+  material: string;
+  /** Одна штука упирается в минимальный заказ — честнее писать «от N ₽». */
+  min_order: boolean;
 };
 
 export type Catalog = { categories: CatalogCategory[]; models: CatalogModel[] };
@@ -123,4 +137,25 @@ export function modelsWord(n: number): string {
   if (d10 === 1 && d100 !== 11) return "модель";
   if (d10 >= 2 && d10 <= 4 && (d100 < 12 || d100 > 14)) return "модели";
   return "моделей";
+}
+
+/**
+ * Цена для карточки: «от 400 ₽» (упёрлись в минимальный заказ) или «≈ 580 ₽».
+ * Нет ориентира — null, карточка показывает только габариты.
+ */
+export function priceText(model: CatalogModel): string | null {
+  const p = model.price;
+  if (!p || p.total <= 0) return null;
+  return `${p.min_order ? "от" : "≈"} ${formatPrice(p.total)}`;
+}
+
+/**
+ * Пример цены для главной: самая дешёвая модель каталога с ориентиром —
+ * «Подставка под кружку — от 400 ₽». Каталога или цен нет — null (строка не показывается).
+ */
+export function priceExample(catalog: Catalog | null): { slug: string; text: string } | null {
+  const priced = (catalog?.models ?? []).filter((m) => priceText(m) !== null);
+  if (priced.length === 0) return null;
+  const cheapest = priced.reduce((a, b) => ((b.price?.total ?? 0) < (a.price?.total ?? 0) ? b : a));
+  return { slug: cheapest.slug, text: `${cheapest.title} — ${priceText(cheapest)}` };
 }

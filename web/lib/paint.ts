@@ -111,3 +111,78 @@ export function partCaption(p: Part): string {
   const vol = `${p.volume_cm3.toFixed(1).replace(".", ",")} см³`;
   return p.merged > 0 ? `${vol} вместе` : `${dims}, ${vol}`;
 }
+
+// ---------------------------------------------------------------------------
+// B63: инструмент «Цвет» — клик по детали в 3D-просмотре, отмена/повтор, счётчик цветов.
+
+/** Сколько цветов принтер печатает за один запуск (AMS / ACE Pro — до 4, docs/PRINTERS.md). */
+export const MAX_COLORS_PER_RUN = 4;
+
+/** Какая деталь содержит треугольник faceIndex (номер в parts.stl). -1 — ни одна. */
+export function partAtFace(parts: Part[], faceIndex: number | null | undefined): number {
+  if (faceIndex === null || faceIndex === undefined || faceIndex < 0) return -1;
+  return parts.findIndex((p) => faceIndex >= p.first_face && faceIndex < p.first_face + p.faces);
+}
+
+/** Осветлить цвет #rrggbb на долю amount (0…1) — подсветка детали под курсором. */
+export function lighten(hex: string, amount = 0.35): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => Math.round(v + (255 - v) * amount));
+  return "#" + ch.map((v) => v.toString(16).padStart(2, "0")).join("");
+}
+
+/** Предупреждение, если цветов больше, чем принтер берёт за один запуск. Иначе null. */
+export function colorsWarning(colors: string[]): string | null {
+  const k = distinctCount(colors);
+  if (k <= MAX_COLORS_PER_RUN) return null;
+  return (
+    `${k} ${plural(k, "цвет", "цвета", "цветов")}: за один запуск принтер печатает до ` +
+    `${MAX_COLORS_PER_RUN} цветов, поэтому модель напечатаем в несколько заходов — ` +
+    `срок может вырасти на день.`
+  );
+}
+
+/**
+ * История раскраски для «Отменить / Повторить» (Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y).
+ * present — текущие цвета, past — что было раньше (последнее — ближайшее), future — отменённое.
+ */
+export type ColorHistory = { past: string[][]; present: string[]; future: string[][] };
+
+/** Сколько шагов назад помним — чтобы история не росла бесконечно. */
+export const HISTORY_LIMIT = 100;
+
+export function historyStart(colors: string[]): ColorHistory {
+  return { past: [], present: colors, future: [] };
+}
+
+/** Новый шаг. Если цвета не изменились — история та же (пустых шагов не бывает). */
+export function historyPush(h: ColorHistory, next: string[]): ColorHistory {
+  const same = next.length === h.present.length && next.every((v, i) => v === h.present[i]);
+  if (same) return h;
+  return { past: [...h.past, h.present].slice(-HISTORY_LIMIT), present: next, future: [] };
+}
+
+export function historyUndo(h: ColorHistory): ColorHistory {
+  if (h.past.length === 0) return h;
+  return { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] };
+}
+
+export function historyRedo(h: ColorHistory): ColorHistory {
+  if (h.future.length === 0) return h;
+  return { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) };
+}
+
+/** Какое действие истории просит сочетание клавиш: "undo", "redo" или null. */
+export function historyKey(e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }):
+  | "undo"
+  | "redo"
+  | null {
+  if (!(e.ctrlKey || e.metaKey)) return null;
+  const k = e.key.toLowerCase();
+  // «я» и «н» — те же клавиши Z и Y в русской раскладке.
+  if (k === "z" || k === "я") return e.shiftKey ? "redo" : "undo";
+  if (k === "y" || k === "н") return "redo";
+  return null;
+}

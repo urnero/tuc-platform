@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import EmbossPanel from "@/components/EmbossPanel";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
+import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
@@ -45,8 +46,7 @@ export default function ModelPage() {
   const { id } = useParams<{ id: string }>();
   const [upload, setUpload] = useState<Upload | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showUnits, setShowUnits] = useState<Units>("mm"); // в чём показывать габариты
-  const [saving, setSaving] = useState(false);
+    const [saving, setSaving] = useState(false);
   const [preset, setPreset] = useState<Preset | null>(null); // повтор заказа (B32)
 
   useEffect(() => {
@@ -190,14 +190,8 @@ export default function ModelPage() {
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">
-            Габариты: {formatDims(m.bbox_mm, showUnits)}
+            Габариты: {formatDims(m.bbox_mm, "mm")}
           </h2>
-          <Toggle
-            value={showUnits}
-            onChange={setShowUnits}
-            labels={{ mm: "мм", inch: "дюймы" }}
-            title="Показывать в"
-          />
         </div>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -215,7 +209,9 @@ export default function ModelPage() {
 
         {!knownUnits && (
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span style={{ color: "var(--ink-muted)" }}>Единицы в файле:</span>
+            <span style={{ color: "var(--ink-muted)" }}>
+              В каких единицах сделан файл? Если модель кажется крошечной — выберите «дюймы»:
+            </span>
             <Toggle
               value={upload.units}
               onChange={(u) => void setFileUnits(u)}
@@ -237,7 +233,7 @@ export default function ModelPage() {
         )}
 
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-          Номер загрузки: <code>{upload.id}</code>.
+          Номер загрузки: <code>{upload.id.slice(0, 8)}</code>.
         </p>
       </section>
 
@@ -280,6 +276,16 @@ export default function ModelPage() {
             </p>
           ) : (
             <>
+              {/* Интерактивный редактор (B60): надпись ставится мышью прямо на поверхность. */}
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
+                <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+                  Новый редактор: надпись ставится мышью или пальцем прямо на поверхность модели и
+                  двигается по ней.
+                </p>
+                <Button href={`/upload/${upload.id}/edit`} variant="secondary" size="sm">
+                  Открыть редактор
+                </Button>
+              </div>
               <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
               {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
               <PaintPanel key={upload.units} uploadId={upload.id} />

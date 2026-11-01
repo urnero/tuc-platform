@@ -15,6 +15,8 @@ chat_id в Telegram (B34). В `orders.anonymized_at` пишется дата. С
 стираются имя, телефон, e-mail и комментарий; материал, тираж и дата остаются.
 
 Файлы модели к этому времени давно удалены (app/cleanup.py — через год после закрытия).
+Папка заказа в Google Drive (B46) к этому времени тоже удалена (cleanup); если осталась
+(Drive тогда был выключен) — удаляем её перед обезличиванием, пока имя папки ещё можно найти.
 Таблицу `events` не трогаем: в ней нет данных клиента, только id загрузок, заказов и заявок.
 
 Запуск: cron в worker каждую ночь (app/worker.py) и руками —
@@ -30,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app import drive
 from app.cleanup import CLOSED_STATUSES
 from app.config import settings
 from app.db import session_factory
@@ -58,6 +61,7 @@ BLANK_LEAD_FIELDS: dict = {"name": "", "phone": "", "email": None, "comment": No
 class AnonymizeReport:
     orders: list[int] = field(default_factory=list)  # номера обезличенных заказов
     payments: int = 0  # у скольких оплат стёрт raw
+    drive_folders: int = 0  # сколько папок Google Drive удалено (B46b)
     leads: list[int] = field(default_factory=list)  # номера обезличенных заявок (B44)
     dry_run: bool = False
 
@@ -65,6 +69,7 @@ class AnonymizeReport:
         return {
             "orders": len(self.orders),
             "payments": self.payments,
+            "drive_folders": self.drive_folders,
             "leads": len(self.leads),
             "dry_run": self.dry_run,
         }
@@ -130,6 +135,12 @@ def anonymize_orders(
 
     ids = report.orders
     report.payments = _count_payments_with_raw(db, ids)
+    with_folder = list(
+        db.scalars(
+            select(Order.id).where(Order.id.in_(ids), Order.drive_folder_url.is_not(None))
+        )
+    )
+    report.drive_folders = drive.delete_folders(db, with_folder, dry_run=dry_run)["deleted"]
     if not dry_run:
         # Core-UPDATE, а не правка объектов: так `updated_at` не сдвигается (onupdate
         # срабатывает только когда колонки нет в SET), и дата закрытия заказа остаётся честной.

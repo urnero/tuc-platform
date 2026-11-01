@@ -39,6 +39,7 @@ params:
     max: 100
     step: 1
     default: 25
+    hint: Ширина обеих полок. Шире — жёстче уголок и больше места под винты.
   - name: thickness
     label: Толщина полок
     type: number
@@ -76,6 +77,7 @@ params:
     step: 1
     integer: true
     default: 2
+    hint: Ставятся в ряд по середине вертикальной полки. 0 — без отверстий.
   - name: hole_type
     label: Тип отверстий
     type: choice
@@ -94,6 +96,7 @@ params:
     type: bool
     default: true
 
+    hint: Скруглённые концы не цепляются и выглядят аккуратнее.
 checks:
   - rule: hole_d < width
     message: Отверстие должно быть уже полки — оставьте стенки хотя бы по 2 мм.
