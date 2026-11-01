@@ -4,6 +4,8 @@ import {
   activeDraft,
   createEditorStore,
   INITIAL_STATE,
+  editAgainHref,
+  overlayFromParams,
   overlayProblem,
   reduce,
   selectedOverlay,
@@ -104,5 +106,53 @@ describe("контракт API", () => {
     expect(overlayProblem(ok.overlays[0])).toBeNull();
     const logo = run([{ type: "tool", tool: "logo" }, { type: "place", placement: top }]);
     expect(overlayProblem(logo.overlays[0])).toMatch(/логотип/);
+  });
+
+  it("overlayFromParams возвращает прошлую надпись: туда-обратно через toEmbossParams", () => {
+    const s = run([{ type: "draft", patch: { text: "Маше", mode: "engraved", depth_mm: 0.5, font: "serif", bold: false, size_mm: 14 } }, { type: "place", placement: side }]);
+    const params = toEmbossParams(s.overlays[0]);
+    const back = overlayFromParams("abc123", params as unknown as Record<string, unknown>);
+    expect(back).toMatchObject({
+      id: "job-abc123",
+      kind: "text",
+      text: "Маше",
+      font: "serif",
+      bold: false,
+      size_mm: 14,
+      depth_mm: 0.5,
+      mode: "engraved",
+      placement: { point: [5, 0, 3], normal: [1, 0, 0], up: [0, 0, 1] },
+    });
+  });
+
+  it("overlayFromParams: старая форма без placement и логотип — null", () => {
+    expect(overlayFromParams("j", { kind: "text", text: "А", face: "front" })).toBeNull();
+    expect(overlayFromParams("j", { kind: "logo", placement: { point: [0, 0, 0], normal: [0, 0, 1], up: [0, 1, 0] } })).toBeNull();
+    expect(overlayFromParams("j", { kind: "text", placement: { point: [0, 0], normal: [0, 0, 1], up: [0, 1, 0] } })).toBeNull();
+    expect(overlayFromParams("j", null)).toBeNull();
+  });
+});
+
+describe("restore (B60c)", () => {
+  it("кладёт наложение в стор, выбирает его и не дублирует при повторе", () => {
+    const o = overlayFromParams("j1", { kind: "text", text: "Hi", placement: { point: [0, 0, 10], normal: [0, 0, 1], up: [0, 1, 0], size_mm: 8, depth_mm: 1, mode: "raised" } })!;
+    const s1 = run([{ type: "tool", tool: "color" }, { type: "restore", overlay: o }]);
+    expect(s1.tool).toBe("text");
+    expect(s1.overlays).toHaveLength(1);
+    expect(selectedOverlay(s1)?.text).toBe("Hi");
+    expect(activeDraft(s1).size_mm).toBe(8);
+    expect(reduce(s1, { type: "restore", overlay: o })).toBe(s1);
+  });
+});
+
+describe("editAgainHref (B60c)", () => {
+  const placement = { point: [0, 0, 10], normal: [0, 0, 1], up: [0, 1, 0], size_mm: 8, depth_mm: 1, mode: "raised" };
+  it("ведёт в редактор исходной модели с job_id", () => {
+    expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "text", text: "A", placement } })).toBe("/upload/p1/edit?overlay=j9");
+  });
+  it("старая форма и логотип — без ссылки", () => {
+    expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "text", text: "A", face: "top" } })).toBeNull();
+    expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "logo", placement } })).toBeNull();
+    expect(editAgainHref(undefined)).toBeNull();
   });
 });

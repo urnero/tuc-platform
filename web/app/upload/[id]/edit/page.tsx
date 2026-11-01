@@ -7,6 +7,8 @@
  * панель — TextToolPanel.tsx); «Логотип» — придёт в B62; «Цвет» — раскраска по частям (B63,
  * components/PaintPanel.tsx как есть); «Готово» — назад на страницу модели.
  * Состояние редактора — одно хранилище lib/editor/store.ts, создаётся на страницу.
+ * ?overlay=<job_id> (B60c, «Изменить в редакторе» на странице результата): прошлая надпись
+ * читается из GET /api/v1/uploads/{id}/embosses/{job_id} и снова стоит на модели, выбранная.
  */
 
 import dynamic from "next/dynamic";
@@ -17,7 +19,7 @@ import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
 import { Button } from "@/components/ui";
 import { gizmoHint } from "@/lib/editor/phone";
-import { createEditorStore, type Tool, useEditor } from "@/lib/editor/store";
+import { createEditorStore, overlayFromParams, type Tool, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import { UNIT_SCALE, type Upload } from "@/lib/mesh";
 
@@ -41,6 +43,7 @@ export default function EditorPage() {
   const gizmo = useEditor(store, (s) => s.gizmo);
   const [upload, setUpload] = useState<Upload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/v1/uploads/${id}`)
@@ -50,6 +53,27 @@ export default function EditorPage() {
       })
       .catch((e: unknown) => setError(caughtErrorText(e)));
   }, [id]);
+
+  // Вернулись с результата: кладём прошлую надпись в стор (B60c). Ошибка — не беда:
+  // редактор работает как обычно, клиент просто ставит надпись заново.
+  useEffect(() => {
+    const jobId = new URLSearchParams(window.location.search).get("overlay");
+    if (!jobId) return;
+    const ctrl = new AbortController();
+    fetch(`/api/v1/uploads/${id}/embosses/${encodeURIComponent(jobId)}`, { signal: ctrl.signal })
+      .then(async (r) => {
+        if (!r.ok) throw new Error("job");
+        const job = (await r.json()) as { params?: Record<string, unknown> };
+        const overlay = overlayFromParams(jobId, job.params);
+        if (!overlay) throw new Error("params");
+        store.dispatch({ type: "restore", overlay });
+      })
+      .catch((e: unknown) => {
+        if ((e as Error)?.name === "AbortError") return;
+        setRestoreNote("Прошлую надпись открыть не удалось — поставьте её заново.");
+      });
+    return () => ctrl.abort();
+  }, [id, store]);
 
   // Esc снимает выбор, Delete убирает выбранную надпись.
   useEffect(() => {
@@ -159,6 +183,11 @@ export default function EditorPage() {
           style={{ borderColor: "var(--line)", background: "var(--surface-raised)" }}
           aria-label="Параметры инструмента"
         >
+          {restoreNote && tool === "text" && (
+            <p className="mb-2 text-sm" role="status" style={{ color: "var(--ink-muted)" }} data-testid="restore-note">
+              {restoreNote}
+            </p>
+          )}
           {tool === "text" && <TextToolPanel uploadId={upload.id} store={store} />}
           {tool === "logo" && (
             <div className="flex flex-col gap-3 text-sm" data-testid="logo-tool">

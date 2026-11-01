@@ -47,7 +47,8 @@ export type Action =
   | { type: "move"; id: string; placement: Placement }
   | { type: "remove"; id: string }
   | { type: "gizmo"; gizmo: Gizmo }
-  | { type: "draft"; patch: Partial<OverlayDraft> };
+  | { type: "draft"; patch: Partial<OverlayDraft> }
+  | { type: "restore"; overlay: Overlay };
 
 export const DEFAULT_DRAFT: OverlayDraft = {
   kind: "text",
@@ -130,6 +131,18 @@ export function reduce(state: EditorState, action: Action): EditorState {
       return { ...state, gizmo: action.gizmo };
     case "draft":
       return { ...state, draft: { ...state.draft, ...clampDraft(action.patch) } };
+    case "restore":
+      // Вернулись со страницы результата (B60c): прошлая надпись снова на модели и выбрана —
+      // её можно двигать и править. Если она уже есть (повторный запрос) — не дублируем.
+      if (state.overlays.some((o) => o.id === action.overlay.id)) return state;
+      return {
+        ...state,
+        tool: action.overlay.kind,
+        overlays: [...state.overlays, action.overlay],
+        selectedId: action.overlay.id,
+        hover: null,
+        draft: { ...state.draft, kind: action.overlay.kind },
+      };
     default:
       return state;
   }
@@ -172,6 +185,48 @@ export function overlayProblem(o: Overlay | null): string | null {
   if (o.kind === "text" && !o.text.trim()) return "Введите текст надписи.";
   if (o.kind === "logo") return "Загрузка логотипа появится в следующей версии редактора.";
   return null;
+}
+
+const isVec3 = (v: unknown): v is [number, number, number] =>
+  Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x));
+
+/**
+ * Обратно к `toEmbossParams` (B60c): параметры прошлой сборки (GET …/embosses/{job_id}) →
+ * наложение для стора. null — сборка старой формой (без `placement`) или не надпись:
+ * такую в редакторе не поставить, клиент правит её на странице модели.
+ * id наложения — `job-<job_id>`, чтобы повторная загрузка не добавила вторую копию.
+ */
+export function overlayFromParams(jobId: string, params: Record<string, unknown> | null | undefined): Overlay | null {
+  if (!params || params.kind !== "text") return null;
+  const pl = params.placement as Record<string, unknown> | undefined;
+  if (!pl || !isVec3(pl.point) || !isVec3(pl.normal) || !isVec3(pl.up)) return null;
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  const mode = pl.mode === "engraved" || params.style === "engraved" ? "engraved" : "raised";
+  const font = params.font === "serif" || params.font === "mono" ? params.font : "sans";
+  const draft = clampDraft({
+    text: typeof params.text === "string" ? params.text : "",
+    size_mm: num(pl.size_mm, num(params.size_mm, DEFAULT_DRAFT.size_mm)),
+    depth_mm: num(pl.depth_mm, num(params.depth_mm, DEFAULT_DRAFT.depth_mm)),
+  });
+  return {
+    ...DEFAULT_DRAFT,
+    ...draft,
+    kind: "text",
+    font,
+    bold: params.bold !== false,
+    mode,
+    id: `job-${jobId}`,
+    placement: { point: pl.point, normal: pl.normal, up: pl.up },
+  };
+}
+
+/**
+ * Ссылка «Изменить в редакторе» со страницы результата (B60c): редактор исходной модели
+ * с прошлой надписью. null — тиснение сделано старой формой или это логотип.
+ */
+export function editAgainHref(emboss: { parent_id: string; job_id: string; params: Record<string, unknown> } | null | undefined): string | null {
+  if (!emboss || !overlayFromParams(emboss.job_id, emboss.params)) return null;
+  return `/upload/${encodeURIComponent(emboss.parent_id)}/edit?overlay=${encodeURIComponent(emboss.job_id)}`;
 }
 
 // --- хранилище для React -------------------------------------------------------------------

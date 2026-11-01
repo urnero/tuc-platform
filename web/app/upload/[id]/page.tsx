@@ -19,6 +19,7 @@ import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
 import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
+import { editAgainHref } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
   formatBytes,
@@ -99,6 +100,7 @@ export default function ModelPage() {
   const fromEditor = upload.source === "editor" && upload.editor;
   const fromEmboss = upload.source === "emboss" && upload.emboss;
   const fromPaint = upload.source === "paint" && upload.paint;
+  const editHref = fromEmboss ? editAgainHref(upload.emboss) : null;
   const knownUnits = fromCatalog || fromEditor || fromEmboss || fromPaint;
 
   return (
@@ -156,6 +158,14 @@ export default function ModelPage() {
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
         </p>
+      )}
+      {/* B60c: надпись из редактора можно поправить, не ставя её заново. */}
+      {fromEmboss && editHref && (
+        <div>
+          <Button href={editHref} variant="secondary" size="sm">
+            Изменить в редакторе
+          </Button>
+        </div>
       )}
       {fromPaint && (
         <div className="flex flex-col gap-2 text-sm" style={{ color: "var(--ink-muted)" }}>
