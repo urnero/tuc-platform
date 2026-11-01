@@ -135,7 +135,23 @@ function SelectedOverlay({
   );
   useLayoutEffect(() => applyPlacement(overlay.placement), [overlay.placement, applyPlacement]);
 
-  const { camera, pointer } = useThree();
+  const { camera, gl } = useThree();
+  // Курсор в координатах −1…1 (NDC). Свой слушатель, а не useThree().pointer: пока тянут
+  // гизмо, TransformControls захватывает указатель и pointer в состоянии r3f не обновляется.
+  const pointer = useMemo(() => new THREE.Vector2(), []);
+  useEffect(() => {
+    const el = gl.domElement;
+    const onMove = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    };
+    el.addEventListener("pointermove", onMove, true);
+    el.addEventListener("pointerdown", onMove, true);
+    return () => {
+      el.removeEventListener("pointermove", onMove, true);
+      el.removeEventListener("pointerdown", onMove, true);
+    };
+  }, [gl, pointer]);
 
   /**
    * Где поверхность под текущим положением группы.
