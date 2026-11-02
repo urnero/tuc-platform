@@ -4,7 +4,7 @@
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx) — сразу под габаритами,
- * ниже свёрнутое «Дополнительно»: надпись или логотип (B30, components/EmbossPanel.tsx)
+ * ниже свёрнутое «Дополнительно»: редактор надписи (B60) и логотип (B30, components/EmbossPanel.tsx)
  * и раскраска по частям (B31, components/PaintPanel.tsx).
  * Повтор заказа из кабинета (B32): параметры прошлого заказа приходят в адресе
  * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
@@ -289,11 +289,11 @@ export default function ModelPage() {
               {/* Интерактивный редактор (B60): надпись ставится мышью прямо на поверхность. */}
               <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
                 <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-                  Новый редактор: надпись ставится мышью или пальцем прямо на поверхность модели и
-                  двигается по ней.
+                  Надпись на модели — в редакторе: буквы ставятся мышью или пальцем прямо на
+                  поверхность, объёмные, видно сразу.
                 </p>
                 <Button href={`/upload/${upload.id}/edit`} variant="secondary" size="sm">
-                  Открыть редактор
+                  Подписать в редакторе
                 </Button>
               </div>
               <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />

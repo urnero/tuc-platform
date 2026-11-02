@@ -1,11 +1,14 @@
 "use client";
 
 /**
- * Блок «Надпись или логотип на модели» на странице загрузки (B30).
+ * Блок «Логотип на модели» на странице загрузки (B30, с B60d — только логотип).
  *
- * 1. Клиент выбирает: надпись (текст, шрифт, жирный) или логотип (SVG — грузится отдельно,
- *    POST /api/v1/uploads/{id}/logo), размер, высоту/глубину, выпуклое или углублённое,
- *    грань модели, сдвиг и поворот.
+ * Надпись здесь больше не наносится: она ставится в интерактивном редакторе
+ * (/upload/<id>/edit, B60/B61) — там сразу видно объёмные буквы на модели. Сервер
+ * по-прежнему принимает kind = "text" со старыми параметрами (face/dx/dy) — для старых ссылок.
+ *
+ * 1. Клиент загружает логотип (SVG, POST /api/v1/uploads/{id}/logo), выбирает ширину,
+ *    высоту/глубину, выпуклое или углублённое, грань модели, сдвиг и поворот.
  * 2. «Нанести» → POST /api/v1/uploads/{id}/embosses → пока queued/running, опрашиваем
  *    GET раз в 2 секунды → done: ссылка на новую загрузку /upload/<result_upload_id>
  *    (копия модели с тиснением — там расчёт, цена и заказ). Исходная модель не меняется.
@@ -14,13 +17,13 @@
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
-  DEFAULT_FORM,
+  editorHref,
   type EmbossForm,
   type EmbossJob,
   FACES,
-  FONTS,
   fmt,
   LIMITS,
+  LOGO_FORM,
   STATUS_TEXT,
   STYLES,
   toParams,
@@ -42,7 +45,7 @@ type Props = {
 type Errors = Partial<Record<keyof EmbossForm, string>>;
 
 export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: Props) {
-  const [form, setForm] = useState<EmbossForm>(DEFAULT_FORM);
+  const [form, setForm] = useState<EmbossForm>(LOGO_FORM);
   const [errors, setErrors] = useState<Errors>({});
   const [logoName, setLogoName] = useState<string | null>(initialLogo);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -137,117 +140,63 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
   }
 
   const working = busy || (job !== null && (job.status === "queued" || job.status === "running"));
-  const isText = form.kind === "text";
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border p-6" style={BORDER}>
       <div>
-        <h2 className="text-lg font-semibold">Надпись или логотип на модели</h2>
+        <h2 className="text-lg font-semibold">Логотип на модели</h2>
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-          Нанесём на одну из граней — выпуклыми буквами поверх модели или вырезом в ней. Получится
-          новая модель, исходная останется как есть.
+          Нанесём на одну из граней — выпуклым рисунком поверх модели или вырезом в ней. Получится
+          новая модель, исходная останется как есть. Нужна надпись —{" "}
+          <Link href={editorHref(uploadId)} className="underline" style={{ color: "var(--filament-text)" }} data-testid="emboss-text-link">
+            подпишите модель в редакторе
+          </Link>
+          : буквы ставятся прямо на поверхность, видно сразу.
         </p>
       </div>
 
-      {/* Что наносим */}
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Что нанести">
-        {(
-          [
-            ["text", "Надпись"],
-            ["logo", "Логотип (SVG)"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            role="radio"
-            aria-checked={form.kind === value}
-            onClick={() => set("kind", value)}
-            className="rounded-md border px-3 py-1.5 text-sm"
-            style={form.kind === value ? { background: "var(--filament)", color: "var(--on-filament)", borderColor: "var(--filament-text)" } : BORDER}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {isText ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Надпись" error={errors.text} hint={`Кириллица и латиница, до ${LIMITS.textMaxlen} символов.`}>
-            {(id) => (
-              <input
-                id={id}
-                type="text"
-                className="rounded-md border px-3 py-2"
-                style={FIELD}
-                value={form.text}
-                maxLength={LIMITS.textMaxlen}
-                onChange={(e) => set("text", e.target.value)}
-              />
-            )}
-          </Field>
-          <div className="flex flex-col gap-3">
-            <Field label="Шрифт">
-              {(id) => (
-                <select id={id} className="rounded-md border px-3 py-2" style={FIELD} value={form.font} onChange={(e) => set("font", e.target.value as EmbossForm["font"])}>
-                  {FONTS.map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={form.bold} onChange={(e) => set("bold", e.target.checked)} />
-              Жирный — прочнее и лучше читается после печати
-            </label>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 text-sm">
-          <div className="flex flex-wrap items-center gap-3">
-            {logoName ? (
-              <>
-                <span>
-                  Логотип: <strong>{logoName}</strong>
-                </span>
-                <button type="button" className="underline" disabled={logoBusy} onClick={() => void removeLogo()}>
-                  убрать
-                </button>
-              </>
-            ) : (
-              <span style={{ color: "var(--ink-muted)" }}>Логотип ещё не загружен.</span>
-            )}
-            <label className="cursor-pointer rounded-md border px-3 py-1.5" style={BORDER}>
-              {logoBusy ? "Загружаем…" : logoName ? "Заменить SVG" : "Выбрать SVG"}
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".svg,image/svg+xml"
-                className="sr-only"
-                disabled={logoBusy}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void uploadLogo(f);
-                }}
-              />
-            </label>
-          </div>
-          {errors.kind ? (
-            <span role="alert">{errors.kind}</span>
+      <div className="flex flex-col gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          {logoName ? (
+            <>
+              <span>
+                Логотип: <strong>{logoName}</strong>
+              </span>
+              <button type="button" className="underline" disabled={logoBusy} onClick={() => void removeLogo()}>
+                убрать
+              </button>
+            </>
           ) : (
-            <span style={{ color: "var(--ink-muted)" }}>
-              SVG до 1 МБ, только контуры: текст в редакторе переведите в кривые (Inkscape: «Контур → Оконтурить объект»). Картинка
-              будет одним цветом, без заливок и градиентов.
-            </span>
+            <span style={{ color: "var(--ink-muted)" }}>Логотип ещё не загружен.</span>
           )}
+          <label className="cursor-pointer rounded-md border px-3 py-1.5" style={BORDER}>
+            {logoBusy ? "Загружаем…" : logoName ? "Заменить SVG" : "Выбрать SVG"}
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".svg,image/svg+xml"
+              className="sr-only"
+              disabled={logoBusy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadLogo(f);
+              }}
+            />
+          </label>
         </div>
-      )}
+        {errors.kind ? (
+          <span role="alert">{errors.kind}</span>
+        ) : (
+          <span style={{ color: "var(--ink-muted)" }}>
+            SVG до 1 МБ, только контуры: текст в редакторе переведите в кривые (Inkscape: «Контур → Оконтурить объект»). Картинка
+            будет одним цветом, без заливок и градиентов.
+          </span>
+        )}
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <NumberField
-          label={isText ? "Высота букв" : "Ширина логотипа"}
+          label="Ширина логотипа"
           unit="мм"
           value={form.size_mm}
           min={LIMITS.size.min}
@@ -330,7 +279,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
       )}
       {job?.status === "done" && job.result_upload_id && (
         <div className="flex flex-col gap-2 rounded-md border p-4 text-sm" style={BORDER} aria-live="polite">
-          <p>Готово — модель с тиснением построена.</p>
+          <p>Готово — модель с логотипом построена.</p>
           {job.warnings.map((w) => (
             <p key={w} style={{ color: "var(--ink-muted)" }}>
               ⚠ {WARNING_TEXT[w] ?? w}
@@ -341,7 +290,7 @@ export default function EmbossPanel({ uploadId, logoName: initialLogo = null }: 
             className="inline-block rounded-md px-4 py-2 font-medium"
             style={{ background: "var(--filament)", color: "var(--on-filament)", width: "fit-content" }}
           >
-            Открыть модель с тиснением →
+            Открыть модель с логотипом →
           </Link>
           <p style={{ color: "var(--ink-muted)" }}>
             Там же — 3D-просмотр, расчёт печати и заказ. Не понравилось — вернитесь сюда и
