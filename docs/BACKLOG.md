@@ -3,6 +3,8 @@
 Порядок = приоритет. Статусы: `todo` / `doing` / `done` / `blocked (причина)`.
 Баги добавляются в начало строкой `BUG todo fix: <что> — <где> — <как воспроизвести>`.
 
+BUG todo fix: [F] [НЕДОСТУПНОСТЬ] автодеплой dev (и, возможно, сам VPS) не отвечает: Deploy 0cf73f8 и 459192f упали на шаге «Деплой по SSH» — `ssh: connect to host … port 22: Connection timed out`; Deploy ce4b0fe за 3 минуты до этого прошёл — причина на сервере (VPS завис/перезагружается/блок по IP/файрвол), не в коде. Владельцу: проверить VPS в панели хостера и `/health` на broprint3d.ru, перезапустить; после — перезапустить упавший Deploy (STATUS 2026-11-02, дневной).
+
 ## QA 2026-10-29 (сборка dev 9b45df5 локально — staging закрыт прокси песочницы, п. 18)
 
 - BUG done (2026-10-29, opus: таблица `leads`, миграция 0008, обезличивание, /admin/leads) fix: [ПДн] заявка «цена по запросу» (B44) кладёт имя, телефон, e-mail и комментарий клиента в `events.props` — `api/app/leads.py::create_lead` — нарушает инвариант «в events нет данных клиента» (`anonymize.py` стр. 15): эти строки не обезличиваются через 5 лет и видны read-only пользователю `tuc_ro` (Superset/DBeaver, `GRANT SELECT ON ALL TABLES`). Воспроизвести: `POST /api/v1/uploads/<id>/request {material:"RESIN", name, phone}` → `SELECT props FROM events WHERE type='material_request'`. Исправление: отдельная таблица `leads` (+ обезличивание, + список в админке), в events — только material/qty.
