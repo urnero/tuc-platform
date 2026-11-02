@@ -13,12 +13,16 @@
  *    за краем грани — переезжает на соседнюю грань под курсором (B60a «за угол»);
  *    «повернуть» — только вокруг нормали (меняется вектор «верх»); «размер» — меняет size_mm.
  *
- * Плашка — пока прямоугольник по размеру надписи; живой 3D-текст и логотип придут в B61/B62.
+ * Надпись — живой 3D-текст (B61, lib/editor/text3d.ts): шрифт Liberation как на сервере,
+ * обновляется при каждой правке в панели. Пока шрифт грузится, пустой текст или логотип (B62) —
+ * плашка-прямоугольник. Выбранную надпись можно тянуть прямо пальцем/мышью по поверхности,
+ * а на телефоне — растягивать щипком двумя пальцами.
  * Только на клиенте: подключать через next/dynamic с ssr: false.
  */
 
 import { Grid, OrbitControls, TransformControls } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useLoader, useThree } from "@react-three/fiber";
+import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
@@ -36,6 +40,7 @@ import {
   type Vec3,
 } from "@/lib/editor/math";
 import { gizmoSize, useIsPhone } from "@/lib/editor/phone";
+import { buildTextGeometry, pinchSize, typefaceUrl } from "@/lib/editor/text3d";
 import { type EditorStore, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
 
 type Props = {
@@ -47,10 +52,36 @@ type Props = {
 };
 
 const MATERIAL = new THREE.MeshStandardMaterial({ color: "#4fbfb2", metalness: 0.1, roughness: 0.6 });
-const RAISED = new THREE.MeshStandardMaterial({ color: "#f26a1b", roughness: 0.5 });
-const ENGRAVED = new THREE.MeshStandardMaterial({ color: "#c0392b", roughness: 0.5, transparent: true, opacity: 0.8 });
-const GHOST = new THREE.MeshStandardMaterial({ color: "#f26a1b", transparent: true, opacity: 0.45, depthWrite: false });
-const SELECTED = new THREE.MeshStandardMaterial({ color: "#ffb347", roughness: 0.4 });
+/** Как показать наложение: стоит на модели / выбрано / предпросмотр под курсором. */
+type Role = "static" | "selected" | "ghost";
+
+/**
+ * Материал надписи. Выпукло — цвет просмотра из панели; врезано — полупрозрачный красный
+ * («здесь будет вырез»); выбранная подсвечена; предпросмотр под курсором — полупрозрачный.
+ */
+function useOverlayMaterial(role: Role, mode: OverlayDraft["mode"], color: string): THREE.Material {
+  const material = useMemo(() => {
+    const engraved = mode === "engraved";
+    const m = new THREE.MeshStandardMaterial({ color: engraved ? "#c0392b" : color, roughness: 0.5 });
+    if (engraved) {
+      m.transparent = true;
+      m.opacity = 0.8;
+    }
+    if (role === "selected") {
+      // Подсветка выбранной — чуть светлее, цвет просмотра не искажаем.
+      m.emissive = new THREE.Color("#ffffff");
+      m.emissiveIntensity = 0.12;
+    }
+    if (role === "ghost") {
+      m.transparent = true;
+      m.opacity = 0.45;
+      m.depthWrite = false;
+    }
+    return m;
+  }, [role, mode, color]);
+  useEffect(() => () => material.dispose(), [material]);
+  return material;
+}
 
 const v3 = (v: Vec3) => new THREE.Vector3(v[0], v[1], v[2]);
 const arr = (v: THREE.Vector3): Vec3 => [v.x, v.y, v.z];
@@ -81,8 +112,31 @@ function Plaque({ draft, material }: { draft: OverlayDraft; material: THREE.Mate
   );
 }
 
+/** Живой 3D-текст: геометрия пересобирается при каждой правке текста, шрифта, размера, глубины. */
+function LiveText({ draft, material }: { draft: OverlayDraft; material: THREE.Material }) {
+  const font = useLoader(FontLoader, typefaceUrl(draft.font, draft.bold));
+  const geometry = useMemo(
+    () => buildTextGeometry(font, draft.text, draft.size_mm, draft.depth_mm, draft.mode),
+    [font, draft.text, draft.size_mm, draft.depth_mm, draft.mode],
+  );
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return <Plaque draft={draft} material={material} />;
+  return <mesh geometry={geometry} material={material} />;
+}
+
+/** Тело наложения: надпись — 3D-текст (пока грузится шрифт — плашка), логотип — плашка (до B62). */
+function OverlayBody({ draft, role, color }: { draft: OverlayDraft; role: Role; color: string }) {
+  const material = useOverlayMaterial(role, draft.mode, color);
+  if (draft.kind !== "text" || !draft.text.trim()) return <Plaque draft={draft} material={material} />;
+  return (
+    <Suspense fallback={<Plaque draft={draft} material={material} />}>
+      <LiveText draft={draft} material={material} />
+    </Suspense>
+  );
+}
+
 /** Наложение, стоящее на модели без гизмо: матрица из размещения. */
-function StaticOverlay({ overlay, fit, store }: { overlay: Overlay; fit: SceneFit; store: EditorStore }) {
+function StaticOverlay({ overlay, fit, store, color }: { overlay: Overlay; fit: SceneFit; store: EditorStore; color: string }) {
   const matrix = useMemo(
     () => new THREE.Matrix4().fromArray(placementSceneMatrix(overlay.placement, fit)),
     [overlay.placement, fit],
@@ -97,7 +151,7 @@ function StaticOverlay({ overlay, fit, store }: { overlay: Overlay; fit: SceneFi
         store.dispatch({ type: "select", id: overlay.id });
       }}
     >
-      <Plaque draft={overlay} material={overlay.mode === "engraved" ? ENGRAVED : RAISED} />
+      <OverlayBody draft={overlay} role="static" color={color} />
     </group>
   );
 }
@@ -110,8 +164,10 @@ function SelectedOverlay({
   target,
   longest,
   dragging,
+  color,
 }: {
   overlay: Overlay;
+  color: string;
   fit: SceneFit;
   store: EditorStore;
   target: THREE.Object3D;
@@ -204,6 +260,90 @@ function SelectedOverlay({
     return makePlacement(p.point, p.normal, transportUp(prev.up, prev.normal, p.normal));
   }, [camera, fit, longest, overlay.placement, pointer, raycaster, target]);
 
+  // --- Тянуть надпись прямо пальцем / мышью (B61) и щипок двумя пальцами на телефоне ---
+  const gizmoRef = useRef<{ dragging?: boolean } | null>(null);
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null;
+  const direct = useRef<{ pointers: Map<number, { x: number; y: number }>; pinch: { dist: number; size: number } | null } | null>(null);
+
+  const endDirect = useCallback(() => {
+    if (!direct.current) return;
+    direct.current = null;
+    if (controls) controls.enabled = true;
+    setTimeout(() => (dragging.current = false), 0);
+    const p = lastSnap.current;
+    if (p) {
+      applyPlacement(p);
+      store.dispatch({ type: "move", id: overlay.id, placement: p });
+    }
+  }, [applyPlacement, controls, dragging, overlay.id, store]);
+
+  useEffect(() => {
+    const el = gl.domElement;
+    const dist = (m: Map<number, { x: number; y: number }>) => {
+      const [a, b] = [...m.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const onDown = (e: PointerEvent) => {
+      const d = direct.current;
+      if (!d) return;
+      d.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      // Второй палец, пока первый держит надпись, — щипок: меняем размер букв.
+      if (d.pointers.size === 2) d.pinch = { dist: dist(d.pointers), size: overlay.size_mm };
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = direct.current;
+      if (!d || !d.pointers.has(e.pointerId)) return;
+      // Тянут стрелку гизмо — это его перетаскивание, не наше.
+      if (gizmoRef.current?.dragging) {
+        direct.current = null;
+        if (controls) controls.enabled = true;
+        return;
+      }
+      d.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (d.pinch && d.pointers.size >= 2) {
+        const size = pinchSize(d.pinch.size, d.pinch.dist, dist(d.pointers));
+        if (size !== overlay.size_mm) store.dispatch({ type: "update", id: overlay.id, patch: { size_mm: size } });
+        return;
+      }
+      if (d.pinch) return; // один палец отпустили после щипка — не прыгаем
+      // Один палец / мышь: надпись под курсором, «верх» перегибается через рёбра.
+      raycaster.setFromCamera(pointer, camera);
+      raycaster.far = Infinity;
+      const hit = raycaster.intersectObject(target, true)[0];
+      const p = hit ? hitToPlacement(hit.point, hit.face, hit.object, fit) : null;
+      if (!p) return;
+      const prev = lastSnap.current ?? overlay.placement;
+      const next = makePlacement(p.point, p.normal, transportUp(prev.up, prev.normal, p.normal));
+      lastSnap.current = next;
+      applyPlacement(next);
+    };
+    const onUp = (e: PointerEvent) => {
+      const d = direct.current;
+      if (!d || !d.pointers.has(e.pointerId)) return;
+      d.pointers.delete(e.pointerId);
+      if (d.pointers.size === 0) endDirect();
+    };
+    el.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      el.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [applyPlacement, camera, controls, endDirect, fit, gl, overlay.id, overlay.placement, overlay.size_mm, pointer, raycaster, store, target]);
+
+  const startDirect = (e: ThreeEvent<PointerEvent>) => {
+    if (gizmoRef.current?.dragging || direct.current) return;
+    e.stopPropagation();
+    dragging.current = true;
+    lastSnap.current = null;
+    if (controls) controls.enabled = false; // камера не крутится, пока тянем надпись
+    direct.current = { pointers: new Map([[e.pointerId, { x: e.clientX, y: e.clientY }]]), pinch: null };
+  };
+
   const onChange = () => {
     // Во время перетаскивания плашка не отрывается от поверхности: каждый сдвиг — прилипание.
     if (gizmo !== "translate") return;
@@ -240,12 +380,17 @@ function SelectedOverlay({
 
   return (
     <>
-      <group ref={group}>
+      <group
+        ref={group}
+        onPointerDown={startDirect}
+        onClick={(e) => e.stopPropagation() /* нажатие на выбранную надпись не снимает выбор */}
+      >
         <group ref={inner}>
-          <Plaque draft={overlay} material={SELECTED} />
+          <OverlayBody draft={overlay} role="selected" color={color} />
         </group>
       </group>
       <TransformControls
+        ref={gizmoRef as never}
         object={group}
         mode={gizmo}
         space="local"
@@ -272,6 +417,7 @@ function Scene({ url, ext, scale = 1, store }: Props) {
   const draft = useEditor(store, (s) => s.draft);
   const overlays = useEditor(store, (s) => s.overlays);
   const selectedId = useEditor(store, (s) => s.selectedId);
+  const color = useEditor(store, (s) => s.previewColor);
   const dragging = useRef(false);
 
   const { object, fit, longest } = useMemo(() => {
@@ -328,14 +474,14 @@ function Scene({ url, ext, scale = 1, store }: Props) {
       />
       {hoverMatrix && hover && (
         <group matrix={hoverMatrix} matrixAutoUpdate={false}>
-          <Plaque draft={draft} material={GHOST} />
+          <OverlayBody draft={draft} role="ghost" color={color} />
         </group>
       )}
       {overlays.map((o) =>
         o.id === selectedId ? (
-          <SelectedOverlay key={o.id} overlay={o} fit={fit} store={store} target={object} longest={longest} dragging={dragging} />
+          <SelectedOverlay key={o.id} overlay={o} fit={fit} store={store} target={object} longest={longest} dragging={dragging} color={color} />
         ) : (
-          <StaticOverlay key={o.id} overlay={o} fit={fit} store={store} />
+          <StaticOverlay key={o.id} overlay={o} fit={fit} store={store} color={color} />
         ),
       )}
       <Grid

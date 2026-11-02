@@ -5,7 +5,8 @@
  * Правит черновик (пока надпись не поставлена) или выбранное наложение: текст, шрифт, размер,
  * глубина, выпукло/врезано; переключает гизмо (двигать / повернуть / размер); «Применить»
  * отправляет наложение на сервер (POST /api/v1/uploads/{id}/embosses с placement), ждёт
- * сборку и ведёт на страницу новой модели. Живой 3D-текст в окне — B61.
+ * сборку и ведёт на страницу новой модели. Окно показывает живой 3D-текст (B61): каждая
+ * правка здесь сразу видна на модели; «Цвет в окне» — только для просмотра.
  */
 
 import { useRouter } from "next/navigation";
@@ -15,6 +16,7 @@ import { type EmbossJob, FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/
 import { fmt } from "@/lib/emboss";
 import { upAngle, rotateUp } from "@/lib/editor/math";
 import { useIsPhone } from "@/lib/editor/phone";
+import { PINCH_MAX_MM, PREVIEW_COLORS } from "@/lib/editor/text3d";
 import {
   activeDraft,
   type EditorStore,
@@ -44,6 +46,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
   const draft = useEditor(store, activeDraft);
   const gizmo = useEditor(store, (s) => s.gizmo);
   const count = useEditor(store, (s) => s.overlays.length);
+  const previewColor = useEditor(store, (s) => s.previewColor);
   const [job, setJob] = useState<EmbossJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +113,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
     <div className="flex flex-col gap-3" data-testid="text-tool">
       <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
         {selected
-          ? "Надпись выбрана: тяните стрелки гизмо, чтобы двигать по поверхности, или правьте параметры."
+          ? "Надпись выбрана: тяните её пальцем или мышью по поверхности (или стрелки гизмо), на телефоне — двумя пальцами меняйте размер."
           : count === 0
             ? "Наведите на модель и нажмите — надпись встанет в эту точку и прилипнет к поверхности."
             : "Нажмите на надпись, чтобы изменить её, или на свободное место модели — поставить ещё одну."}
@@ -132,7 +135,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
         </label>
       </div>
 
-      <Range id="ed-size" label="Размер букв" unit="мм" value={draft.size_mm} min={LIMITS.size.min} max={60} step={0.5} onChange={(v) => set({ size_mm: v })} />
+      <Range id="ed-size" label="Размер букв" unit="мм" value={draft.size_mm} min={LIMITS.size.min} max={PINCH_MAX_MM} step={0.5} onChange={(v) => set({ size_mm: v })} />
       <Range id="ed-depth" label={draft.mode === "engraved" ? "Глубина" : "Высота"} unit="мм" value={draft.depth_mm} min={LIMITS.depth.min} max={5} step={0.1} onChange={(v) => set({ depth_mm: v })} />
 
       <Segmented
@@ -145,6 +148,33 @@ export default function TextToolPanel({ uploadId, store }: Props) {
         ]}
         onChange={(v) => set({ mode: v as OverlayDraft["mode"] })}
       />
+
+      <div className="flex flex-col gap-1">
+        <span className="text-sm font-semibold">Цвет в окне</span>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Цвет надписи в окне просмотра">
+          {PREVIEW_COLORS.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              role="radio"
+              aria-checked={c.value === previewColor}
+              aria-label={c.label}
+              title={c.label}
+              onClick={() => store.dispatch({ type: "previewColor", color: c.value })}
+              className="h-8 w-8 rounded-full"
+              style={{
+                background: c.value,
+                border: "1px solid var(--line)",
+                outline: c.value === previewColor ? "3px solid var(--filament)" : "none",
+                outlineOffset: 2,
+              }}
+            />
+          ))}
+        </div>
+        <span className="text-xs" style={{ color: "var(--ink-muted)" }}>
+          Только для просмотра. Цвет пластика выбирается при заказе или в «Цвете».
+        </span>
+      </div>
 
       {selected && (
         <>

@@ -36,6 +36,8 @@ export type EditorState = {
   gizmo: Gizmo;
   /** Параметры для следующего наложения; при выборе наложения панель правит его, а не черновик. */
   draft: OverlayDraft;
+  /** Цвет надписей в окне (B61) — только для просмотра, на сервер не уходит. */
+  previewColor: string;
 };
 
 export type Action =
@@ -48,7 +50,8 @@ export type Action =
   | { type: "remove"; id: string }
   | { type: "gizmo"; gizmo: Gizmo }
   | { type: "draft"; patch: Partial<OverlayDraft> }
-  | { type: "restore"; overlay: Overlay };
+  | { type: "restore"; overlay: Overlay }
+  | { type: "previewColor"; color: string };
 
 export const DEFAULT_DRAFT: OverlayDraft = {
   kind: "text",
@@ -67,6 +70,7 @@ export const INITIAL_STATE: EditorState = {
   hover: null,
   gizmo: "translate",
   draft: DEFAULT_DRAFT,
+  previewColor: "#f26a1b",
 };
 
 let counter = 0;
@@ -129,6 +133,8 @@ export function reduce(state: EditorState, action: Action): EditorState {
       };
     case "gizmo":
       return { ...state, gizmo: action.gizmo };
+    case "previewColor":
+      return /^#[0-9a-f]{6}$/i.test(action.color) ? { ...state, previewColor: action.color } : state;
     case "draft":
       return { ...state, draft: { ...state.draft, ...clampDraft(action.patch) } };
     case "restore":

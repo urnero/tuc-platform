@@ -156,3 +156,11 @@ describe("editAgainHref (B60c)", () => {
     expect(editAgainHref(undefined)).toBeNull();
   });
 });
+
+describe("previewColor (B61)", () => {
+  it("меняет цвет просмотра, мусор игнорирует", () => {
+    const s1 = reduce(INITIAL_STATE, { type: "previewColor", color: "#2e86de" });
+    expect(s1.previewColor).toBe("#2e86de");
+    expect(reduce(s1, { type: "previewColor", color: "red" })).toBe(s1);
+  });
+});

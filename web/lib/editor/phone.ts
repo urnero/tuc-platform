@@ -26,8 +26,8 @@ export function gizmoSize(phone: boolean): number {
 /** Подсказка под окном на телефоне: что делать с гизмо в текущем режиме. */
 export function gizmoHint(gizmo: Gizmo): string {
   if (gizmo === "rotate") return "Тяните дугу, чтобы повернуть надпись";
-  if (gizmo === "scale") return "Тяните квадратики, чтобы изменить размер";
-  return "Тяните стрелки, чтобы двигать надпись";
+  if (gizmo === "scale") return "Тяните квадратики или разведите два пальца на надписи — размер";
+  return "Тяните надпись пальцем или стрелки; двумя пальцами — размер";
 }
 
 function subscribe(onChange: () => void) {
