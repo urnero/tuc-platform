@@ -4,10 +4,11 @@
  * Интерактивный редактор модели (B60, docs/EDITOR.md): /upload/[id]/edit.
  * Окно 3D-просмотра на весь экран, панель инструментов сбоку (десктоп) или снизу (телефон):
  * «Текст» — надпись ставится мышью/пальцем на поверхность (components/editor/EditorCanvas.tsx,
- * панель — TextToolPanel.tsx); «Логотип» — придёт в B62; «Цвет» — раскраска по частям (B63,
+ * панель — TextToolPanel.tsx); «Логотип» — то же для SVG-логотипа (B62, загрузка —
+ * editor/LogoUpload.tsx, SVG уже загруженного логотипа берём из GET …/logo); «Цвет» — раскраска по частям (B63,
  * components/PaintPanel.tsx как есть); «Готово» — назад на страницу модели.
  * Состояние редактора — одно хранилище lib/editor/store.ts, создаётся на страницу.
- * ?overlay=<job_id> (B60c, «Изменить в редакторе» на странице результата): прошлая надпись
+ * ?overlay=<job_id> (B60c, «Изменить в редакторе» на странице результата): прошлая надпись или логотип
  * читается из GET /api/v1/uploads/{id}/embosses/{job_id} и снова стоит на модели, выбранная.
  */
 
@@ -17,7 +18,6 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
-import { Button } from "@/components/ui";
 import { gizmoHint } from "@/lib/editor/phone";
 import { createEditorStore, overlayFromParams, type Tool, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
@@ -54,6 +54,20 @@ export default function EditorPage() {
       .catch((e: unknown) => setError(caughtErrorText(e)));
   }, [id]);
 
+  // У модели уже есть логотип (загружали раньше или старой формой) — берём его SVG,
+  // чтобы окно сразу показало контуры (B62). Не получилось — клиент загрузит заново.
+  const logoName = upload?.logo?.name;
+  useEffect(() => {
+    if (!logoName) return;
+    const ctrl = new AbortController();
+    fetch(`/api/v1/uploads/${id}/logo`, { signal: ctrl.signal })
+      .then(async (r) => {
+        if (r.ok) store.dispatch({ type: "logo", logo: { name: logoName, svg: await r.text() } });
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [id, logoName, store]);
+
   // Вернулись с результата: кладём прошлую надпись в стор (B60c). Ошибка — не беда:
   // редактор работает как обычно, клиент просто ставит надпись заново.
   useEffect(() => {
@@ -70,7 +84,7 @@ export default function EditorPage() {
       })
       .catch((e: unknown) => {
         if ((e as Error)?.name === "AbortError") return;
-        setRestoreNote("Прошлую надпись открыть не удалось — поставьте её заново.");
+        setRestoreNote("Прошлое наложение открыть не удалось — поставьте его заново.");
       });
     return () => ctrl.abort();
   }, [id, store]);
@@ -165,13 +179,13 @@ export default function EditorPage() {
           </div>
         )}
         {/* Подсказка на телефоне (B60b): наведения пальцем нет, поэтому говорим, что делать. */}
-        {upload && tool === "text" && (
+        {upload && (tool === "text" || tool === "logo") && (
           <p
             className="pointer-events-none absolute bottom-2 left-2 right-2 z-10 rounded-lg px-3 py-1.5 text-center text-xs md:hidden"
             style={{ background: "rgba(0,0,0,.55)", color: "#f3efe7" }}
             data-testid="editor-phone-hint"
           >
-            {hasSelection ? gizmoHint(gizmo) : "Коснитесь модели, чтобы поставить надпись"}
+            {hasSelection ? gizmoHint(gizmo, tool === "logo" ? "logo" : "text") : tool === "logo" ? "Коснитесь модели, чтобы поставить логотип" : "Коснитесь модели, чтобы поставить надпись"}
           </p>
         )}
       </section>
@@ -183,23 +197,12 @@ export default function EditorPage() {
           style={{ borderColor: "var(--line)", background: "var(--surface-raised)" }}
           aria-label="Параметры инструмента"
         >
-          {restoreNote && tool === "text" && (
+          {restoreNote && (tool === "text" || tool === "logo") && (
             <p className="mb-2 text-sm" role="status" style={{ color: "var(--ink-muted)" }} data-testid="restore-note">
               {restoreNote}
             </p>
           )}
-          {tool === "text" && <TextToolPanel uploadId={upload.id} store={store} />}
-          {tool === "logo" && (
-            <div className="flex flex-col gap-3 text-sm" data-testid="logo-tool">
-              <p>Логотип в этом окне — скоро: SVG будет ложиться на поверхность так же, как надпись.</p>
-              <p style={{ color: "var(--ink-muted)" }}>
-                Пока логотип можно нанести по старой форме на странице модели, раздел «Дополнительно».
-              </p>
-              <Button href={backHref} variant="secondary" size="sm">
-                К форме логотипа
-              </Button>
-            </div>
-          )}
+          {(tool === "text" || tool === "logo") && <TextToolPanel key={tool} uploadId={upload.id} store={store} />}
         </aside>
       )}
     </main>

@@ -9,6 +9,7 @@
 
 import { useSyncExternalStore } from "react";
 import { LIMITS, type EmbossFont, type EmbossParams, type EmbossStyle } from "../emboss";
+import { LOGO_DEFAULT_MM } from "./logo3d";
 import { type Placement, roundPlacement } from "./math";
 
 export type Tool = "text" | "logo" | "color" | "done";
@@ -27,6 +28,9 @@ export type OverlayDraft = {
 
 export type Overlay = OverlayDraft & { id: string; placement: Placement };
 
+/** Логотип модели (B62): один на загрузку, лежит на сервере (POST/GET …/uploads/{id}/logo). */
+export type LogoInfo = { name: string; svg: string };
+
 export type EditorState = {
   tool: Tool;
   overlays: Overlay[];
@@ -38,6 +42,8 @@ export type EditorState = {
   draft: OverlayDraft;
   /** Цвет надписей в окне (B61) — только для просмотра, на сервер не уходит. */
   previewColor: string;
+  /** Загруженный SVG-логотип — его контуры видны в окне; null — ещё не загружен. */
+  logo: LogoInfo | null;
 };
 
 export type Action =
@@ -51,7 +57,8 @@ export type Action =
   | { type: "gizmo"; gizmo: Gizmo }
   | { type: "draft"; patch: Partial<OverlayDraft> }
   | { type: "restore"; overlay: Overlay }
-  | { type: "previewColor"; color: string };
+  | { type: "previewColor"; color: string }
+  | { type: "logo"; logo: LogoInfo | null };
 
 export const DEFAULT_DRAFT: OverlayDraft = {
   kind: "text",
@@ -71,6 +78,7 @@ export const INITIAL_STATE: EditorState = {
   gizmo: "translate",
   draft: DEFAULT_DRAFT,
   previewColor: "#f26a1b",
+  logo: null,
 };
 
 let counter = 0;
@@ -91,6 +99,16 @@ export function clampDraft(patch: Partial<OverlayDraft>): Partial<OverlayDraft> 
   return out;
 }
 
+/**
+ * Черновик под инструмент: «Текст» и «Логотип» — свой вид; при смене вида размер
+ * возвращается к привычному (буквы 10 мм, логотип 20 мм в ширину).
+ */
+function draftFor(draft: OverlayDraft, tool: Tool): OverlayDraft {
+  if (tool !== "text" && tool !== "logo") return draft;
+  if (draft.kind === tool) return draft;
+  return { ...draft, kind: tool, size_mm: tool === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm };
+}
+
 export function reduce(state: EditorState, action: Action): EditorState {
   switch (action.type) {
     case "tool":
@@ -100,10 +118,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         tool: action.tool,
         selectedId: null,
         hover: null,
-        draft:
-          action.tool === "text" || action.tool === "logo"
-            ? { ...state.draft, kind: action.tool }
-            : state.draft,
+        draft: draftFor(state.draft, action.tool),
       };
     case "hover":
       // Пока наложение выбрано, плашка под курсором не нужна — им управляет гизмо.
@@ -133,6 +148,8 @@ export function reduce(state: EditorState, action: Action): EditorState {
       };
     case "gizmo":
       return { ...state, gizmo: action.gizmo };
+    case "logo":
+      return { ...state, logo: action.logo };
     case "previewColor":
       return /^#[0-9a-f]{6}$/i.test(action.color) ? { ...state, previewColor: action.color } : state;
     case "draft":
@@ -147,7 +164,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         overlays: [...state.overlays, action.overlay],
         selectedId: action.overlay.id,
         hover: null,
-        draft: { ...state.draft, kind: action.overlay.kind },
+        draft: draftFor(state.draft, action.overlay.kind),
       };
     default:
       return state;
@@ -185,11 +202,11 @@ export function toEmbossParams(o: Overlay): EmbossParams & { placement: Placemen
   };
 }
 
-/** Почему наложение нельзя отправить на сервер (null — можно). */
-export function overlayProblem(o: Overlay | null): string | null {
-  if (!o) return "Поставьте надпись на модель: наведите на поверхность и нажмите.";
+/** Почему наложение нельзя отправить на сервер (null — можно). hasLogo — SVG уже загружен. */
+export function overlayProblem(o: Overlay | null, hasLogo = false): string | null {
+  if (!o) return "Поставьте наложение на модель: наведите на поверхность и нажмите.";
   if (o.kind === "text" && !o.text.trim()) return "Введите текст надписи.";
-  if (o.kind === "logo") return "Загрузка логотипа появится в следующей версии редактора.";
+  if (o.kind === "logo" && !hasLogo) return "Сначала загрузите логотип (SVG).";
   return null;
 }
 
@@ -198,26 +215,28 @@ const isVec3 = (v: unknown): v is [number, number, number] =>
 
 /**
  * Обратно к `toEmbossParams` (B60c): параметры прошлой сборки (GET …/embosses/{job_id}) →
- * наложение для стора. null — сборка старой формой (без `placement`) или не надпись:
- * такую в редакторе не поставить, клиент правит её на странице модели.
+ * наложение для стора. null — сборка старой формой (без `placement`): такую в редакторе
+ * не поставить, клиент правит её на странице модели. Логотип (B62) тоже возвращается —
+ * его SVG редактор берёт с сервера (GET …/uploads/{id}/logo).
  * id наложения — `job-<job_id>`, чтобы повторная загрузка не добавила вторую копию.
  */
 export function overlayFromParams(jobId: string, params: Record<string, unknown> | null | undefined): Overlay | null {
-  if (!params || params.kind !== "text") return null;
+  if (!params || (params.kind !== "text" && params.kind !== "logo")) return null;
+  const kind = params.kind;
   const pl = params.placement as Record<string, unknown> | undefined;
   if (!pl || !isVec3(pl.point) || !isVec3(pl.normal) || !isVec3(pl.up)) return null;
   const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
   const mode = pl.mode === "engraved" || params.style === "engraved" ? "engraved" : "raised";
   const font = params.font === "serif" || params.font === "mono" ? params.font : "sans";
   const draft = clampDraft({
-    text: typeof params.text === "string" ? params.text : "",
-    size_mm: num(pl.size_mm, num(params.size_mm, DEFAULT_DRAFT.size_mm)),
+    text: kind === "text" && typeof params.text === "string" ? params.text : "",
+    size_mm: num(pl.size_mm, num(params.size_mm, kind === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm)),
     depth_mm: num(pl.depth_mm, num(params.depth_mm, DEFAULT_DRAFT.depth_mm)),
   });
   return {
     ...DEFAULT_DRAFT,
     ...draft,
-    kind: "text",
+    kind,
     font,
     bold: params.bold !== false,
     mode,
@@ -228,7 +247,7 @@ export function overlayFromParams(jobId: string, params: Record<string, unknown>
 
 /**
  * Ссылка «Изменить в редакторе» со страницы результата (B60c): редактор исходной модели
- * с прошлой надписью. null — тиснение сделано старой формой или это логотип.
+ * с прошлой надписью или логотипом. null — тиснение сделано старой формой.
  */
 export function editAgainHref(emboss: { parent_id: string; job_id: string; params: Record<string, unknown> } | null | undefined): string | null {
   if (!emboss || !overlayFromParams(emboss.job_id, emboss.params)) return null;

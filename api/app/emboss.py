@@ -15,6 +15,7 @@
    такие операции на больших сетках минутами и падает на незамкнутых).
 
 POST   /api/v1/uploads/{id}/logo              — загрузить SVG-логотип (≤ 1 МБ) к загрузке.
+GET    /api/v1/uploads/{id}/logo              — сам SVG (редактор B62 рисует его на модели).
 DELETE /api/v1/uploads/{id}/logo              — убрать логотип.
 POST   /api/v1/uploads/{id}/embosses          — тело {"params": {...}}: проверка параметров
                                                 (422 с ошибками по полям), сборка. Размещение из
@@ -43,7 +44,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from lxml import etree
 from pydantic import BaseModel
@@ -175,6 +176,28 @@ async def upload_logo(upload_id: str, file: UploadFile) -> dict:
     meta["logo"] = {"name": name, "size_bytes": len(data)}
     _save_meta(upload_dir(upload_id), meta)
     return meta
+
+
+@router.get("/api/v1/uploads/{upload_id}/logo")
+def get_logo(upload_id: str) -> Response:
+    """Отдать SVG-логотип модели — редактор (B62) выдавливает его контуры в окне просмотра.
+
+    Файл проверен при загрузке (check_svg: без скриптов и ссылок), но на всякий случай
+    запрещаем браузеру что-либо исполнять, если SVG откроют напрямую по ссылке.
+    """
+    load_meta(upload_id)  # 404, если модели нет
+    path = logo_path(upload_id)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Логотип не загружен.")
+    return Response(
+        content=path.read_bytes(),
+        media_type="image/svg+xml",
+        headers={
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.delete("/api/v1/uploads/{upload_id}/logo")

@@ -89,11 +89,19 @@ def test_logo_upload_and_delete(client):
     assert (settings.data_dir / "uploads" / uid / "logo.svg").read_bytes() == SVG_OK
     # в meta.json тоже
     assert client.get(f"/api/v1/uploads/{uid}").json()["logo"]["name"] == "Лого.svg"
+    # сам SVG — для редактора (B62); браузеру запрещено что-либо исполнять
+    r = client.get(f"/api/v1/uploads/{uid}/logo")
+    assert r.status_code == 200
+    assert r.content == SVG_OK
+    assert r.headers["content-type"].startswith("image/svg+xml")
+    assert "default-src 'none'" in r.headers["content-security-policy"]
 
     r = client.delete(f"/api/v1/uploads/{uid}/logo")
     assert r.status_code == 200
     assert "logo" not in r.json()
     assert not (settings.data_dir / "uploads" / uid / "logo.svg").exists()
+    assert client.get(f"/api/v1/uploads/{uid}/logo").status_code == 404
+    assert client.get("/api/v1/uploads/nope/logo").status_code == 404
 
 
 def test_logo_upload_rejects(client):

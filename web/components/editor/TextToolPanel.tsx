@@ -7,10 +7,13 @@
  * отправляет наложение на сервер (POST /api/v1/uploads/{id}/embosses с placement), ждёт
  * сборку и ведёт на страницу новой модели. Окно показывает живой 3D-текст (B61): каждая
  * правка здесь сразу видна на модели; «Цвет в окне» — только для просмотра.
+ * Та же панель — для инструмента «Логотип» (B62): вместо текста и шрифта — загрузка SVG,
+ * размер — ширина логотипа; размещение, гизмо и «Применить» — общие с надписью.
  */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import LogoUpload from "@/components/editor/LogoUpload";
 import { Button, Field, Select } from "@/components/ui";
 import { type EmbossJob, FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/emboss";
 import { fmt } from "@/lib/emboss";
@@ -47,6 +50,9 @@ export default function TextToolPanel({ uploadId, store }: Props) {
   const gizmo = useEditor(store, (s) => s.gizmo);
   const count = useEditor(store, (s) => s.overlays.length);
   const previewColor = useEditor(store, (s) => s.previewColor);
+  const isLogo = useEditor(store, (s) => s.tool === "logo");
+  const hasLogo = useEditor(store, (s) => s.logo !== null);
+  const what = isLogo ? "Логотип" : "Надпись";
   const [job, setJob] = useState<EmbossJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +85,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
   }
 
   async function apply() {
-    const problem = overlayProblem(selected);
+    const problem = overlayProblem(selected, hasLogo);
     if (problem || !selected) {
       setError(problem);
       return;
@@ -110,32 +116,40 @@ export default function TextToolPanel({ uploadId, store }: Props) {
   const angleDeg = selected ? Math.round((upAngle(selected.placement) * 180) / Math.PI) : 0;
 
   return (
-    <div className="flex flex-col gap-3" data-testid="text-tool">
+    <div className="flex flex-col gap-3" data-testid={isLogo ? "logo-tool" : "text-tool"}>
       <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
         {selected
-          ? "Надпись выбрана: тяните её пальцем или мышью по поверхности (или стрелки гизмо), на телефоне — двумя пальцами меняйте размер."
-          : count === 0
-            ? "Наведите на модель и нажмите — надпись встанет в эту точку и прилипнет к поверхности."
-            : "Нажмите на надпись, чтобы изменить её, или на свободное место модели — поставить ещё одну."}
+          ? `${what} выбран${isLogo ? "" : "а"}: тяните пальцем или мышью по поверхности (или стрелки гизмо), на телефоне — двумя пальцами меняйте размер.`
+          : isLogo && !hasLogo
+            ? "Загрузите SVG-логотип, затем нажмите на модель — он встанет в эту точку и прилипнет к поверхности."
+            : count === 0
+              ? `Наведите на модель и нажмите — ${what.toLowerCase()} встанет в эту точку и прилипнет к поверхности.`
+              : `Нажмите на ${isLogo ? "логотип" : "надпись"}, чтобы изменить, или на свободное место модели — поставить ещё.`}
       </p>
 
-      <Field
-        id="ed-text"
-        label="Текст"
-        value={draft.text}
-        maxLength={LIMITS.textMaxlen}
-        placeholder="Например, «Маше на память»"
-        onChange={(e) => set({ text: e.target.value })}
-      />
+      {isLogo ? (
+        <LogoUpload uploadId={uploadId} store={store} />
+      ) : (
+        <>
+          <Field
+            id="ed-text"
+            label="Текст"
+            value={draft.text}
+            maxLength={LIMITS.textMaxlen}
+            placeholder="Например, «Маше на память»"
+            onChange={(e) => set({ text: e.target.value })}
+          />
 
-      <div className="grid grid-cols-2 gap-3">
-        <Select id="ed-font" label="Шрифт" options={FONTS} value={draft.font} onChange={(e) => set({ font: e.target.value as OverlayDraft["font"] })} />
-        <label className="flex items-end gap-2 pb-2 text-sm">
-          <input type="checkbox" checked={draft.bold} onChange={(e) => set({ bold: e.target.checked })} /> Жирный
-        </label>
-      </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select id="ed-font" label="Шрифт" options={FONTS} value={draft.font} onChange={(e) => set({ font: e.target.value as OverlayDraft["font"] })} />
+            <label className="flex items-end gap-2 pb-2 text-sm">
+              <input type="checkbox" checked={draft.bold} onChange={(e) => set({ bold: e.target.checked })} /> Жирный
+            </label>
+          </div>
+        </>
+      )}
 
-      <Range id="ed-size" label="Размер букв" unit="мм" value={draft.size_mm} min={LIMITS.size.min} max={PINCH_MAX_MM} step={0.5} onChange={(v) => set({ size_mm: v })} />
+      <Range id="ed-size" label={isLogo ? "Ширина логотипа" : "Размер букв"} unit="мм" value={draft.size_mm} min={LIMITS.size.min} max={PINCH_MAX_MM} step={0.5} onChange={(v) => set({ size_mm: v })} />
       <Range id="ed-depth" label={draft.mode === "engraved" ? "Глубина" : "Высота"} unit="мм" value={draft.depth_mm} min={LIMITS.depth.min} max={5} step={0.1} onChange={(v) => set({ depth_mm: v })} />
 
       <Segmented
@@ -151,7 +165,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
 
       <div className="flex flex-col gap-1">
         <span className="text-sm font-semibold">Цвет в окне</span>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Цвет надписи в окне просмотра">
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={`Цвет: ${what.toLowerCase()} в окне просмотра`}>
           {PREVIEW_COLORS.map((c) => (
             <button
               key={c.value}
@@ -192,7 +206,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
             Точка: {selected.placement.point.map((v) => fmt(v)).join(", ")} мм
           </p>
           <Button variant="ghost" size={btn} onClick={() => store.dispatch({ type: "remove", id: selected.id })}>
-            Убрать надпись
+            {isLogo ? "Убрать логотип" : "Убрать надпись"}
           </Button>
         </>
       )}

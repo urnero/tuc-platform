@@ -105,7 +105,8 @@ describe("контракт API", () => {
     const ok = reduce(s, { type: "update", id: s.overlays[0].id, patch: { text: "Привет" } });
     expect(overlayProblem(ok.overlays[0])).toBeNull();
     const logo = run([{ type: "tool", tool: "logo" }, { type: "place", placement: top }]);
-    expect(overlayProblem(logo.overlays[0])).toMatch(/логотип/);
+    expect(overlayProblem(logo.overlays[0])).toMatch(/загрузите логотип/);
+    expect(overlayProblem(logo.overlays[0], true)).toBeNull();
   });
 
   it("overlayFromParams возвращает прошлую надпись: туда-обратно через toEmbossParams", () => {
@@ -125,9 +126,9 @@ describe("контракт API", () => {
     });
   });
 
-  it("overlayFromParams: старая форма без placement и логотип — null", () => {
+  it("overlayFromParams: старая форма без placement — null", () => {
     expect(overlayFromParams("j", { kind: "text", text: "А", face: "front" })).toBeNull();
-    expect(overlayFromParams("j", { kind: "logo", placement: { point: [0, 0, 0], normal: [0, 0, 1], up: [0, 1, 0] } })).toBeNull();
+    expect(overlayFromParams("j", { kind: "logo", face: "front" })).toBeNull();
     expect(overlayFromParams("j", { kind: "text", placement: { point: [0, 0], normal: [0, 0, 1], up: [0, 1, 0] } })).toBeNull();
     expect(overlayFromParams("j", null)).toBeNull();
   });
@@ -150,9 +151,12 @@ describe("editAgainHref (B60c)", () => {
   it("ведёт в редактор исходной модели с job_id", () => {
     expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "text", text: "A", placement } })).toBe("/upload/p1/edit?overlay=j9");
   });
-  it("старая форма и логотип — без ссылки", () => {
+  it("логотип из редактора (B62) — тоже со ссылкой", () => {
+    expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "logo", placement } })).toBe("/upload/p1/edit?overlay=j9");
+  });
+  it("старая форма — без ссылки", () => {
     expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "text", text: "A", face: "top" } })).toBeNull();
-    expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "logo", placement } })).toBeNull();
+    expect(editAgainHref({ parent_id: "p1", job_id: "j9", params: { kind: "logo", face: "top" } })).toBeNull();
     expect(editAgainHref(undefined)).toBeNull();
   });
 });
@@ -162,5 +166,33 @@ describe("previewColor (B61)", () => {
     const s1 = reduce(INITIAL_STATE, { type: "previewColor", color: "#2e86de" });
     expect(s1.previewColor).toBe("#2e86de");
     expect(reduce(s1, { type: "previewColor", color: "red" })).toBe(s1);
+  });
+});
+
+describe("логотип (B62)", () => {
+  it("инструмент «Логотип» ставит ширину 20 мм, «Текст» — снова 10 мм", () => {
+    const s = run([{ type: "tool", tool: "logo" }]);
+    expect(s.draft).toMatchObject({ kind: "logo", size_mm: 20 });
+    expect(reduce(s, { type: "tool", tool: "text" }).draft).toMatchObject({ kind: "text", size_mm: 10 });
+    // Повторный выбор того же инструмента размер не сбрасывает.
+    const custom = reduce(s, { type: "draft", patch: { size_mm: 33 } });
+    expect(reduce(custom, { type: "tool", tool: "logo" }).draft.size_mm).toBe(33);
+  });
+
+  it("действие logo кладёт и убирает SVG", () => {
+    const s = run([{ type: "logo", logo: { name: "a.svg", svg: "<svg/>" } }]);
+    expect(s.logo?.name).toBe("a.svg");
+    expect(reduce(s, { type: "logo", logo: null }).logo).toBeNull();
+  });
+
+  it("логотип туда-обратно: toEmbossParams → overlayFromParams", () => {
+    const s = run([{ type: "tool", tool: "logo" }, { type: "draft", patch: { size_mm: 25, mode: "engraved" } }, { type: "place", placement: top }]);
+    const params = toEmbossParams(s.overlays[0]);
+    expect(params).toMatchObject({ kind: "logo", text: "", size_mm: 25, style: "engraved" });
+    const back = overlayFromParams("j2", params as unknown as Record<string, unknown>)!;
+    expect(back).toMatchObject({ kind: "logo", size_mm: 25, mode: "engraved", text: "" });
+    const restored = run([{ type: "restore", overlay: back }]);
+    expect(restored.tool).toBe("logo");
+    expect(restored.draft.kind).toBe("logo");
   });
 });

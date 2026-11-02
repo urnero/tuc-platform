@@ -13,6 +13,7 @@
  *    за краем грани — переезжает на соседнюю грань под курсором (B60a «за угол»);
  *    «повернуть» — только вокруг нормали (меняется вектор «верх»); «размер» — меняет size_mm.
  *
+ * Логотип — контуры загруженного SVG, выдавленные на глубину (B62, lib/editor/logo3d.ts).
  * Надпись — живой 3D-текст (B61, lib/editor/text3d.ts): шрифт Liberation как на сервере,
  * обновляется при каждой правке в панели. Пока шрифт грузится, пустой текст или логотип (B62) —
  * плашка-прямоугольник. Выбранную надпись можно тянуть прямо пальцем/мышью по поверхности,
@@ -23,7 +24,7 @@
 import { Grid, OrbitControls, TransformControls } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useLoader, useThree } from "@react-three/fiber";
 import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
+import { createContext, Suspense, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, type MutableRefObject } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
@@ -40,6 +41,7 @@ import {
   type Vec3,
 } from "@/lib/editor/math";
 import { gizmoSize, useIsPhone } from "@/lib/editor/phone";
+import { buildLogoGeometry, logoAspect, logoShapes, parseLogoSvg } from "@/lib/editor/logo3d";
 import { buildTextGeometry, pinchSize, typefaceUrl } from "@/lib/editor/text3d";
 import { type EditorStore, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
 
@@ -93,6 +95,9 @@ function hitToPlacement(point: THREE.Vector3, face: THREE.Face | null | undefine
   return makePlacement(sceneToModel(arr(point), fit), sceneDirToModel(arr(normal)), upHint);
 }
 
+/** Контуры загруженного логотипа (B62) — общие для всех логотипов в окне; null — не загружен. */
+const LogoShapes = createContext<THREE.Shape[] | null>(null);
+
 /** Плашка наложения в его локальной системе: X — вправо, Y — верх букв, Z — наружу. */
 function Plaque({ draft, material }: { draft: OverlayDraft; material: THREE.Material }) {
   const w = draft.kind === "text" ? textWidthMm(draft.text, draft.size_mm) : draft.size_mm;
@@ -124,10 +129,25 @@ function LiveText({ draft, material }: { draft: OverlayDraft; material: THREE.Ma
   return <mesh geometry={geometry} material={material} />;
 }
 
-/** Тело наложения: надпись — 3D-текст (пока грузится шрифт — плашка), логотип — плашка (до B62). */
+/** Живой 3D-логотип (B62): контуры SVG, выдавленные на глубину; ширина = size_mm. */
+function LiveLogo({ draft, shapes, material }: { draft: OverlayDraft; shapes: THREE.Shape[]; material: THREE.Material }) {
+  const geometry = useMemo(
+    () => buildLogoGeometry(shapes, draft.size_mm, draft.depth_mm, draft.mode),
+    [shapes, draft.size_mm, draft.depth_mm, draft.mode],
+  );
+  useEffect(() => () => geometry?.dispose(), [geometry]);
+  if (!geometry) return <Plaque draft={draft} material={material} />;
+  return <mesh geometry={geometry} material={material} />;
+}
+
+/** Тело наложения: надпись — 3D-текст (пока грузится шрифт — плашка), логотип — контуры SVG. */
 function OverlayBody({ draft, role, color }: { draft: OverlayDraft; role: Role; color: string }) {
   const material = useOverlayMaterial(role, draft.mode, color);
-  if (draft.kind !== "text" || !draft.text.trim()) return <Plaque draft={draft} material={material} />;
+  const shapes = useContext(LogoShapes);
+  if (draft.kind === "logo") {
+    return shapes ? <LiveLogo draft={draft} shapes={shapes} material={material} /> : <Plaque draft={draft} material={material} />;
+  }
+  if (!draft.text.trim()) return <Plaque draft={draft} material={material} />;
   return (
     <Suspense fallback={<Plaque draft={draft} material={material} />}>
       <LiveText draft={draft} material={material} />
@@ -418,7 +438,18 @@ function Scene({ url, ext, scale = 1, store }: Props) {
   const overlays = useEditor(store, (s) => s.overlays);
   const selectedId = useEditor(store, (s) => s.selectedId);
   const color = useEditor(store, (s) => s.previewColor);
+  const logo = useEditor(store, (s) => s.logo);
   const dragging = useRef(false);
+  // Логотип разбираем один раз на файл; битый SVG — показываем плашку (сервер его и так не примет).
+  const logoShapesValue = useMemo(() => {
+    if (!logo) return null;
+    try {
+      const shapes = logoShapes(parseLogoSvg(logo.svg));
+      return shapes.length && logoAspect(shapes) > 0 ? shapes : null;
+    } catch {
+      return null;
+    }
+  }, [logo]);
 
   const { object, fit, longest } = useMemo(() => {
     let obj: THREE.Object3D;
@@ -451,7 +482,7 @@ function Scene({ url, ext, scale = 1, store }: Props) {
   );
 
   return (
-    <>
+    <LogoShapes.Provider value={logoShapesValue}>
       <primitive
         object={object}
         onPointerMove={(e: ThreeEvent<PointerEvent>) => {
@@ -494,7 +525,7 @@ function Scene({ url, ext, scale = 1, store }: Props) {
         infiniteGrid
       />
       <CameraFit longest={longest} />
-    </>
+    </LogoShapes.Provider>
   );
 }
 

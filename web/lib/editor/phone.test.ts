@@ -18,5 +18,7 @@ describe("телефон в редакторе (B60b)", () => {
     expect(gizmoHint("translate")).toContain("стрелки");
     expect(gizmoHint("rotate")).toContain("повернуть");
     expect(gizmoHint("scale")).toContain("размер");
+    expect(gizmoHint("translate", "logo")).toContain("Тяните логотип");
+    expect(gizmoHint("scale", "logo")).toContain("на логотипе");
   });
 });
