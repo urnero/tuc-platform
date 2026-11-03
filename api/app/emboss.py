@@ -113,6 +113,11 @@ COORD_MAX = 10_000.0  # мм: координаты точки размещени
 # B64: точка размещения должна лежать на поверхности модели с таким допуском (мм) — запас
 # overlap в emboss.scad 0,3 мм плюс погрешность округления и «толщина» грубой сетки клиента.
 CONTACT_TOL_MM = 1.0
+# B64a: изогнутая поверхность — нормали треугольников в радиусе размера надписи вокруг точки
+# расходятся с нормалью в точке больше чем на столько градусов. Тогда запас overlap в
+# emboss.scad поднимаем до глубины надписи, чтобы края букв не повисли над поверхностью.
+CURVED_MAX_DEG = 15.0
+OVERLAP_MM = 0.3  # обычный запас (как в emboss.scad)
 
 
 class EmbossError(ValueError):
@@ -414,7 +419,33 @@ def surface_distance(mesh: trimesh.Trimesh, point) -> tuple[float, int]:
     return float(dist[i]), i
 
 
-def check_contact(mesh: trimesh.Trimesh, placement: dict) -> tuple[dict, list[str]]:
+def surface_spread(mesh: trimesh.Trimesh, point, normal, radius_mm: float) -> float:
+    """B64a: насколько изогнута поверхность вокруг точки — наибольший угол (градусы) между
+    нормалью в точке и нормалями треугольников, у которых есть точка ближе radius_mm.
+
+    Треугольники, смотрящие «назад» (угол больше 90°), не считаем: это обратная сторона
+    тонкой стенки, а не изгиб под надписью. Вырожденные треугольники (нулевая нормаль) —
+    тоже пропускаем.
+    """
+    p = np.asarray(point, dtype=float)
+    n = np.asarray(normal, dtype=float)
+    tris = mesh.triangles
+    if len(tris) == 0:
+        return 0.0
+    closest = trimesh.triangles.closest_point(tris, np.repeat(p[None, :], len(tris), axis=0))
+    near = np.linalg.norm(closest - p, axis=1) <= radius_mm
+    normals = mesh.face_normals[near]
+    normals = normals[np.linalg.norm(normals, axis=1) > 0.5]
+    cos = normals @ n
+    cos = cos[cos >= 0]  # обратная сторона тонкой стенки — не изгиб
+    if len(cos) == 0:
+        return 0.0
+    return float(np.degrees(np.arccos(np.clip(cos.min(), -1.0, 1.0))))
+
+
+def check_contact(
+    mesh: trimesh.Trimesh, placement: dict, size_mm: float | None = None
+) -> tuple[dict, list[str]]:
     """B64: размещение из редактора касается поверхности? Иначе EmbossError (→ 422).
 
     Точка дальше CONTACT_TOL_MM от сетки — надпись «висит в воздухе» (клиент тянул гизмо за
@@ -434,6 +465,11 @@ def check_contact(mesh: trimesh.Trimesh, placement: dict) -> tuple[dict, list[st
         x, up, normal = tangent_frame(-np.asarray(placement["normal"]), np.asarray(placement["up"]))
         placement = {**placement, "normal": _round_vec(normal, 6), "up": _round_vec(up, 6)}
         warnings.append("normal_flipped")
+    # B64a: изогнутая поверхность под надписью (size_mm — размер надписи/ширина логотипа).
+    if size_mm and surface_spread(mesh, placement["point"], placement["normal"], size_mm) > (
+        CURVED_MAX_DEG
+    ):
+        warnings.append("curved_surface")
     return placement, warnings
 
 
@@ -448,8 +484,12 @@ def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, lis
         return params, []
     model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
     mesh = load_model(model_file, meta.get("units", "mm"))
-    fixed, warnings = check_contact(mesh, placement)
-    return {**params, "placement": fixed}, warnings
+    fixed, warnings = check_contact(mesh, placement, params.get("size_mm"))
+    params = {**params, "placement": fixed}
+    if "curved_surface" in warnings:
+        # Запас «внутрь модели» = вся глубина: на изгибе края букв отходят от поверхности.
+        params["overlap_mm"] = max(OVERLAP_MM, float(params["depth_mm"]))
+    return params, warnings
 
 
 def _fmt(value: float) -> str:
@@ -647,6 +687,8 @@ def _scad_params(params: dict, upload_id: str) -> dict:
         "style": params["style"],
         "logo_file": str(logo_path(upload_id).resolve()) if params["kind"] == "logo" else "",
         "angle": params["angle"],
+        # B64a: на изогнутой поверхности запас больше (см. check_placement)
+        "overlap": params.get("overlap_mm", OVERLAP_MM),
     }
 
 
@@ -803,7 +845,7 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
     attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
     record = new_job(upload_id, job_id, params)
     record["attempt"] = attempt
-    record["warnings"] = contact_warnings  # «normal_flipped» — дополнится при сборке
+    record["warnings"] = contact_warnings  # normal_flipped/curved_surface — дополнится при сборке
     save_job(record)
     if settings.redis_url:
         try:

@@ -592,6 +592,43 @@ def test_surface_distance_and_contact_on_cube():
     assert flipped["normal"] == [1, 0, 0] and flipped["up"] == [0, 0, 1]
 
 
+def test_curved_surface_sphere_vs_cube():
+    """B64a: сфера r=20 с надписью 15 мм — изогнута; середина грани куба — нет."""
+    sphere = trimesh.creation.icosphere(subdivisions=4, radius=20)
+    top = {"point": [0, 0, 20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    assert em.surface_spread(sphere, top["point"], top["normal"], 15) > 30
+    assert em.check_contact(sphere, top, 15)[1] == ["curved_surface"]
+    assert em.check_contact(sphere, top)[1] == []  # без размера — не проверяем
+
+    cube = trimesh.creation.box(extents=(40, 40, 40))
+    face = {"point": [20, 0, 0], "normal": [1, 0, 0], "up": [0, 0, 1]}
+    assert em.surface_spread(cube, face["point"], face["normal"], 15) == pytest.approx(0.0)
+    assert em.check_contact(cube, face, 15)[1] == []
+    # тонкая пластина 2 мм: обратная сторона рядом, но это не изгиб
+    plate = trimesh.creation.box(extents=(60, 60, 2))
+    assert (
+        em.check_contact(
+            plate, {**face, "point": [0, 0, 1], "normal": [0, 0, 1], "up": [0, 1, 0]}, 15
+        )[1]
+        == []
+    )
+
+
+def test_scad_params_overlap():
+    base = {
+        "kind": "text",
+        "text": "Я",
+        "font": "sans",
+        "bold": False,
+        "size_mm": 10,
+        "depth_mm": 2.0,
+        "style": "raised",
+        "angle": 0,
+    }
+    assert em._scad_params(base, "x")["overlap"] == em.OVERLAP_MM
+    assert em._scad_params({**base, "overlap_mm": 2.0}, "x")["overlap"] == 2.0
+
+
 def test_contact_check_is_fast_on_big_sphere():
     """Проверка касания на ~330 тыс. треугольников — доли секунды (без rtree, чистый numpy)."""
     import time
@@ -614,7 +651,9 @@ def test_emboss_by_placement_on_sphere(client, fake_openscad):
     body = {"params": {"kind": "text", "text": "ТУЦ", "placement": placement}}
     job = client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()
     assert job["status"] == "done", job
-    assert job["warnings"] == []
+    # B64a: сфера r=20 под надписью 10 мм изогнута — предупреждение и запас = глубине
+    assert job["warnings"] == ["curved_surface"]
+    assert job["params"]["overlap_mm"] == job["params"]["depth_mm"]
     after = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()["mesh"]
     assert after["bbox_mm"]["z"] == pytest.approx(before["bbox_mm"]["z"] + 5, abs=0.2)
 
@@ -645,7 +684,7 @@ def test_emboss_by_placement_on_sphere(client, fake_openscad):
         },
     ).json()
     assert inward["status"] == "done", inward
-    assert inward["warnings"] == ["normal_flipped"]
+    assert inward["warnings"] == ["normal_flipped", "curved_surface"]
     assert inward["params"]["placement"]["normal"] == [0, 0, 1]
     assert inward["id"] == job["id"]  # после разворота — то же размещение, та же сборка
 
