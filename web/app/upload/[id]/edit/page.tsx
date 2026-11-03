@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
 import { gizmoHint } from "@/lib/editor/phone";
-import { createEditorStore, overlayFromParams, type Tool, toolFromParam, useEditor } from "@/lib/editor/store";
+import { createEditorStore, overlaysFromParams, type Tool, toolFromParam, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import { UNIT_SCALE, type Upload } from "@/lib/mesh";
 
@@ -85,9 +85,10 @@ export default function EditorPage() {
       .then(async (r) => {
         if (!r.ok) throw new Error("job");
         const job = (await r.json()) as { params?: Record<string, unknown> };
-        const overlay = overlayFromParams(jobId, job.params);
-        if (!overlay) throw new Error("params");
-        store.dispatch({ type: "restore", overlay });
+        // B65: в сборке могло быть несколько наложений — возвращаем все, по порядку.
+        const overlays = overlaysFromParams(jobId, job.params);
+        if (overlays.length === 0) throw new Error("params");
+        overlays.forEach((overlay) => store.dispatch({ type: "restore", overlay }));
       })
       .catch((e: unknown) => {
         if ((e as Error)?.name === "AbortError") return;
@@ -96,12 +97,20 @@ export default function EditorPage() {
     return () => ctrl.abort();
   }, [id, store]);
 
-  // Esc снимает выбор, Delete убирает выбранную надпись.
+  // Esc снимает выбор, Delete убирает выбранную надпись, Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y) —
+  // отменить / повторить (B65; на Mac — Cmd).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       const s = store.getState();
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (key === "z" || key === "y" || key === "я" || key === "н")) {
+        e.preventDefault();
+        const redo = key === "y" || key === "н" || e.shiftKey;
+        store.dispatch({ type: redo ? "redo" : "undo" });
+        return;
+      }
       if (e.key === "Escape") store.dispatch({ type: "select", id: null });
       if ((e.key === "Delete" || e.key === "Backspace") && s.selectedId) store.dispatch({ type: "remove", id: s.selectedId });
     }

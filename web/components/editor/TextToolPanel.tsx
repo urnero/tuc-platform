@@ -14,6 +14,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import LogoUpload from "@/components/editor/LogoUpload";
+import OverlayList from "@/components/editor/OverlayList";
 import { Button, Field, Select } from "@/components/ui";
 import { type EmbossJob, FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/emboss";
 import { fmt } from "@/lib/emboss";
@@ -25,9 +26,9 @@ import {
   type EditorStore,
   type Gizmo,
   type OverlayDraft,
-  overlayProblem,
+  overlaysProblem,
   selectedOverlay,
-  toEmbossParams,
+  toEmbossBody,
   useEditor,
 } from "@/lib/editor/store";
 
@@ -48,7 +49,8 @@ export default function TextToolPanel({ uploadId, store }: Props) {
   const btn = useIsPhone() ? "md" : "sm";
   const draft = useEditor(store, activeDraft);
   const gizmo = useEditor(store, (s) => s.gizmo);
-  const count = useEditor(store, (s) => s.overlays.length);
+  const overlays = useEditor(store, (s) => s.overlays);
+  const count = overlays.length;
   const previewColor = useEditor(store, (s) => s.previewColor);
   const isLogo = useEditor(store, (s) => s.tool === "logo");
   const hasLogo = useEditor(store, (s) => s.logo !== null);
@@ -84,9 +86,11 @@ export default function TextToolPanel({ uploadId, store }: Props) {
     store.dispatch({ type: "move", id: selected.id, placement: rotateUp(selected.placement, (deg * Math.PI) / 180) });
   }
 
+  // B65: «Применить» отправляет все наложения одной сборкой (первое — params, остальные — more).
   async function apply() {
-    const problem = overlayProblem(selected, hasLogo);
-    if (problem || !selected) {
+    const problem = overlaysProblem(overlays, hasLogo);
+    const body = toEmbossBody(overlays);
+    if (problem || !body) {
       setError(problem);
       return;
     }
@@ -96,15 +100,15 @@ export default function TextToolPanel({ uploadId, store }: Props) {
       const r = await fetch(`/api/v1/uploads/${uploadId}/embosses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ params: toEmbossParams(selected) }),
+        body: JSON.stringify(body),
       });
-      const body = (await r.json().catch(() => ({}))) as { detail?: { errors?: Record<string, string> } | string };
-      if (r.status === 422 && typeof body.detail === "object" && body.detail?.errors) {
-        setError(Object.values(body.detail.errors).join(" "));
+      const res = (await r.json().catch(() => ({}))) as { detail?: { errors?: Record<string, string> } | string };
+      if (r.status === 422 && typeof res.detail === "object" && res.detail?.errors) {
+        setError(Object.values(res.detail.errors).join(" "));
         return;
       }
-      if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : `Ошибка ${r.status}.`);
-      setJob(body as EmbossJob);
+      if (!r.ok) throw new Error(typeof res.detail === "string" ? res.detail : `Ошибка ${r.status}.`);
+      setJob(res as EmbossJob);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -117,6 +121,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
 
   return (
     <div className="flex flex-col gap-3" data-testid={isLogo ? "logo-tool" : "text-tool"}>
+      <OverlayList store={store} size={btn} />
       <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
         {selected
           ? `${what} выбран${isLogo ? "" : "а"}: тяните пальцем или мышью по поверхности (или стрелки гизмо), на телефоне — двумя пальцами меняйте размер.`
@@ -224,8 +229,8 @@ export default function TextToolPanel({ uploadId, store }: Props) {
         </p>
       )}
 
-      <Button onClick={apply} disabled={working || !selected} data-testid="apply">
-        {working ? "Наносим…" : "Применить"}
+      <Button onClick={apply} disabled={working || count === 0} data-testid="apply">
+        {working ? "Наносим…" : count > 1 ? `Применить все (${count})` : "Применить"}
       </Button>
     </div>
   );

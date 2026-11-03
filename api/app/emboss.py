@@ -118,6 +118,9 @@ CONTACT_TOL_MM = 1.0
 # emboss.scad поднимаем до глубины надписи, чтобы края букв не повисли над поверхностью.
 CURVED_MAX_DEG = 15.0
 OVERLAP_MM = 0.3  # обычный запас (как в emboss.scad)
+# B65: несколько наложений из редактора — одной сборкой. Первое лежит в params, остальные —
+# в params["more"] (каждое со своим размещением), наносятся по порядку списка.
+MAX_OVERLAYS = 10
 
 
 class EmbossError(ValueError):
@@ -473,23 +476,73 @@ def check_contact(
     return placement, warnings
 
 
-def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, list[str]]:
-    """Проверка касания для запроса из редактора (до постановки в очередь).
-
-    Загружает модель клиента целиком — так же, как inspect_file при загрузке; для файлов до
-    100 МБ это секунды, зато клиент получает 422 сразу, а не ошибку сборки через минуту.
-    """
-    placement = params.get("placement")
-    if not placement:
-        return params, []
-    model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
-    mesh = load_model(model_file, meta.get("units", "mm"))
-    fixed, warnings = check_contact(mesh, placement, params.get("size_mm"))
+def _check_one(mesh: trimesh.Trimesh, params: dict) -> tuple[dict, list[str]]:
+    fixed, warnings = check_contact(mesh, params["placement"], params.get("size_mm"))
     params = {**params, "placement": fixed}
     if "curved_surface" in warnings:
         # Запас «внутрь модели» = вся глубина: на изгибе края букв отходят от поверхности.
         params["overlap_mm"] = max(OVERLAP_MM, float(params["depth_mm"]))
     return params, warnings
+
+
+def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, list[str]]:
+    """Проверка касания для запроса из редактора (до постановки в очередь).
+
+    Загружает модель клиента целиком — так же, как inspect_file при загрузке; для файлов до
+    100 МБ это секунды, зато клиент получает 422 сразу, а не ошибку сборки через минуту.
+    Несколько наложений (B65, params["more"]) проверяются на той же загруженной модели;
+    ошибка второго и дальше — с номером: «Наложение 2: …».
+    """
+    if not params.get("placement"):
+        return params, []
+    model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
+    mesh = load_model(model_file, meta.get("units", "mm"))
+    params, warnings = _check_one(mesh, params)
+    more = []
+    for i, extra in enumerate(params.get("more") or [], start=2):
+        try:
+            extra, extra_warnings = _check_one(mesh, extra)
+        except EmbossError as e:
+            raise EmbossError(f"Наложение {i}: {e}") from None
+        more.append(extra)
+        warnings += [w for w in extra_warnings if w not in warnings]
+    if more:
+        params["more"] = more
+    return params, warnings
+
+
+def validate_overlays(
+    raw_more: object, primary: dict, has_logo: bool
+) -> tuple[list[dict], dict[str, str]]:
+    """B65: остальные наложения из редактора (поле `more` запроса) → (чистые; ошибки).
+
+    Каждое — те же параметры, что у первого, и обязательно с размещением; первое тоже
+    должно быть из редактора. Ошибки — с номером наложения: «more.0.text».
+    """
+    if raw_more is None or raw_more == []:
+        return [], {}
+    if not isinstance(raw_more, list):
+        return [], {"more": "Ожидался список наложений."}
+    if len(raw_more) + 1 > MAX_OVERLAYS:
+        return [], {"more": f"Не больше {MAX_OVERLAYS} наложений за одну сборку."}
+    if not primary.get("placement"):
+        return [], {"more": "Несколько наложений — только из редактора (нужно размещение)."}
+    out: list[dict] = []
+    errors: dict[str, str] = {}
+    for i, raw in enumerate(raw_more):
+        clean, errs = validate_params(raw, has_logo)
+        if not errs and not clean.get("placement"):
+            errs = {"placement": "Нужно размещение на модели."}
+        for key, msg in errs.items():
+            errors[f"more.{i}.{key}"] = f"Наложение {i + 2}: {msg}"
+        out.append(clean)
+    return out, errors
+
+
+def all_overlays(params: dict) -> list[dict]:
+    """Все наложения сборки по порядку: первое (сами params) и остальные из params["more"]."""
+    first = {k: v for k, v in params.items() if k != "more"}
+    return [first, *(params.get("more") or [])]
 
 
 def _fmt(value: float) -> str:
@@ -505,6 +558,11 @@ def describe(params: dict, logo_name: str = "") -> str:
         font = FONT_LABELS[params["font"]] + (", жирный" if params["bold"] else "")
         what = f"Надпись «{params['text']}» ({font}) {_fmt(params['size_mm'])} мм"
         how = "выпуклая" if params["style"] == "raised" else "углублённая"
+    more = params.get("more") or []
+    if more:
+        # B65: несколько наложений — описания через «;».
+        first = {k: v for k, v in params.items() if k != "more"}
+        return "; ".join(describe(p, logo_name) for p in [first, *more])
     parts = [what, f"{how} {_fmt(params['depth_mm'])} мм"]
     placement = params.get("placement")
     if placement:
@@ -545,7 +603,9 @@ def job_id_for(upload_id: str, meta: dict, params: dict) -> str:
         [
             upload_id,
             meta.get("units", "mm"),
-            logo.stat().st_mtime_ns if params["kind"] == "logo" and logo.is_file() else 0,
+            logo.stat().st_mtime_ns
+            if any(p["kind"] == "logo" for p in all_overlays(params)) and logo.is_file()
+            else 0,
             params,
         ],
         sort_keys=True,
@@ -696,6 +756,8 @@ def build_result_name(original_name: str, params: dict) -> str:
     """«bracket.stl» + надпись «ТУЦ» → «bracket + ТУЦ.stl»; логотип → «bracket + логотип.stl»."""
     stem = Path(original_name).stem[:120] or "model"
     what = f"«{params['text']}»" if params["kind"] == "text" else "логотип"
+    if params.get("more"):
+        what += f" и ещё {len(params['more'])}"
     return f"{stem} + {what}.stl"[:200]
 
 
@@ -709,21 +771,28 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
     params = record["params"]
     try:
         meta = load_meta(upload_id)
-        dec_file = decoration_path(upload_id, job_id)
-        run_openscad(SCAD_PATH, dec_file, _scad_params(params, upload_id))
-        dec = trimesh.load(dec_file, file_type="stl", force="mesh")
-        if not isinstance(dec, trimesh.Trimesh) or dec.is_empty:
-            raise EmbossError("Тиснение получилось пустым — проверьте надпись или логотип.")
         model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
-        model = load_model(model_file, meta.get("units", "mm"))
-        placement = params.get("placement")
-        if placement:
-            # Редактор (B60): точка, нормаль и «верх» в мм в системе модели.
-            matrix = placement_transform(placement["point"], placement["normal"], placement["up"])
-        else:
-            matrix = face_transform(model.bounds, params["face"], params["dx"], params["dy"])
-        dec.apply_transform(matrix)
-        result, merge_warnings = merge(model, dec, params["style"])
+        result = load_model(model_file, meta.get("units", "mm"))
+        merge_warnings: list[str] = []
+        # B65: наложения по порядку, каждое — на результат предыдущего (врезанное после
+        # выпуклого прорежет и его). Обычно наложение одно.
+        for i, one in enumerate(all_overlays(params)):
+            dec_file = decoration_path(upload_id, job_id if i == 0 else f"{job_id}-{i}")
+            run_openscad(SCAD_PATH, dec_file, _scad_params(one, upload_id))
+            dec = trimesh.load(dec_file, file_type="stl", force="mesh")
+            if not isinstance(dec, trimesh.Trimesh) or dec.is_empty:
+                raise EmbossError("Тиснение получилось пустым — проверьте надпись или логотип.")
+            placement = one.get("placement")
+            if placement:
+                # Редактор (B60): точка, нормаль и «верх» в мм в системе модели.
+                matrix = placement_transform(
+                    placement["point"], placement["normal"], placement["up"]
+                )
+            else:
+                matrix = face_transform(result.bounds, one["face"], one["dx"], one["dy"])
+            dec.apply_transform(matrix)
+            result, step_warnings = merge(result, dec, one["style"])
+            merge_warnings += [w for w in step_warnings if w not in merge_warnings]
         warnings = [
             w for w in record.get("warnings", []) if w != "merged_without_boolean"
         ] + merge_warnings
@@ -788,6 +857,8 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
 
 class EmbossRequest(BaseModel):
     params: dict = {}
+    # B65: остальные наложения из редактора (у каждого своё размещение) — одной сборкой.
+    more: list = []
 
 
 async def _enqueue(request: Request, upload_id: str, job_id: str, attempt: int = 0) -> None:
@@ -819,7 +890,12 @@ def emboss_options() -> dict:
 )
 async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -> dict:
     meta = load_meta(upload_id)
-    params, errors = validate_params(body.params, has_logo=logo_path(upload_id).is_file())
+    has_logo = logo_path(upload_id).is_file()
+    params, errors = validate_params(body.params, has_logo=has_logo)
+    if not errors:
+        more, errors = validate_overlays(body.more, params, has_logo)
+        if more:
+            params["more"] = more
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors})
     try:

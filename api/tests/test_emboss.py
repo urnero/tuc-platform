@@ -702,3 +702,72 @@ def test_emboss_placement_off_surface_422(client, fake_openscad):
     assert r.status_code == 422, r.text
     assert "не касается поверхности" in r.json()["detail"]["errors"]["placement.point"]
     assert not list(em.jobs_dir(uid).glob("*.json"))  # сборка не создавалась
+
+
+# --- B65: несколько наложений одной сборкой ------------------------------------------------
+
+
+def _pl(point, normal, up=(0, 0, 1), **extra):
+    return {"point": list(point), "normal": list(normal), "up": list(up), "size_mm": 8, **extra}
+
+
+def test_emboss_several_overlays_one_build(client, fake_openscad):
+    """Две надписи — на правой (+X) и левой (−X) гранях коробки 40×30×20: торчат с обеих сторон."""
+    uid = _upload(client)
+    body = {
+        "params": {"kind": "text", "text": "ТУЦ", "placement": _pl((20, 0, 0), (1, 0, 0))},
+        "more": [{"kind": "text", "text": "BRO", "placement": _pl((-20, 0, 0), (-1, 0, 0))}],
+    }
+    r = client.post(f"/api/v1/uploads/{uid}/embosses", json=body)
+    assert r.status_code == 202, r.text
+    job = r.json()
+    assert job["status"] == "done", job
+    assert len(job["params"]["more"]) == 1
+    meta = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()
+    assert meta["mesh"]["bbox_mm"] == {"x": 50, "y": 30, "z": 20}
+    assert "«ТУЦ»" in meta["emboss"]["summary"] and "«BRO»" in meta["emboss"]["summary"]
+    assert "; " in meta["emboss"]["summary"]
+    assert "и ещё 1" in meta["original_name"]
+    # другой порядок — другая сборка (порядок нанесения важен)
+    swapped = {"params": {**body["more"][0]}, "more": [body["params"]]}
+    again = client.post(f"/api/v1/uploads/{uid}/embosses", json=swapped)
+    assert again.status_code == 202 and again.json()["id"] != job["id"]
+
+
+def test_emboss_several_overlays_validation(client, fake_openscad):
+    uid = _upload(client)
+    first = {"kind": "text", "text": "ТУЦ", "placement": _pl((20, 0, 0), (1, 0, 0))}
+    second = {"kind": "text", "text": "", "placement": _pl((-20, 0, 0), (-1, 0, 0))}
+    url = f"/api/v1/uploads/{uid}/embosses"
+    # у второго нет текста → ошибка с номером
+    r = client.post(url, json={"params": first, "more": [second]})
+    assert r.status_code == 422
+    assert r.json()["detail"]["errors"]["more.0.text"].startswith("Наложение 2:")
+    # второе без размещения
+    r = client.post(url, json={"params": first, "more": [{"kind": "text", "text": "A"}]})
+    assert "more.0.placement" in r.json()["detail"]["errors"]
+    # первое без размещения (старая форма) — несколько нельзя
+    r = client.post(url, json={"params": {"kind": "text", "text": "A"}, "more": [first]})
+    assert "more" in r.json()["detail"]["errors"]
+    # слишком много
+    many = [first] * em.MAX_OVERLAYS
+    r = client.post(url, json={"params": first, "more": many})
+    assert "more" in r.json()["detail"]["errors"]
+    # второе висит в воздухе → 422 с номером, сборки нет
+    off = {"kind": "text", "text": "A", "placement": _pl((-30, 0, 0), (-1, 0, 0))}
+    r = client.post(url, json={"params": first, "more": [off]})
+    assert r.status_code == 422
+    assert r.json()["detail"]["errors"]["placement.point"].startswith("Наложение 2:")
+    assert not list(em.jobs_dir(uid).glob("*.json"))
+
+
+def test_all_overlays_and_describe():
+    p = {"kind": "text", "text": "A", "font": "sans", "bold": True, "size_mm": 5.0,
+         "depth_mm": 1.0, "style": "raised", "face": "top", "dx": 0.0, "dy": 0.0,
+         "angle": 0.0, "placement": None}
+    assert em.all_overlays(p) == [p]
+    both = {**p, "more": [{**p, "text": "B", "style": "engraved"}]}
+    assert [o["text"] for o in em.all_overlays(both)] == ["A", "B"]
+    assert "more" not in em.all_overlays(both)[0]
+    text = em.describe(both)
+    assert text.startswith("Надпись «A»") and "Надпись «B»" in text and "углублённая" in text

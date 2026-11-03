@@ -6,6 +6,10 @@ import {
   INITIAL_STATE,
   editAgainHref,
   overlayFromParams,
+  overlaysFromParams,
+  overlaysProblem,
+  MAX_OVERLAYS,
+  toEmbossBody,
   toolFromParam,
   overlayProblem,
   reduce,
@@ -206,5 +210,86 @@ describe("?tool= в ссылке на редактор (B62a)", () => {
     expect(toolFromParam("done")).toBeNull();
     expect(toolFromParam("<x>")).toBeNull();
     expect(toolFromParam(null)).toBeNull();
+  });
+});
+
+describe("история и несколько наложений (B65)", () => {
+  const placed = run([
+    { type: "draft", patch: { text: "А" } },
+    { type: "place", placement: top },
+    { type: "draft", patch: { text: "Б" } },
+    { type: "select", id: null },
+    { type: "place", placement: side },
+  ]);
+  const [a, b] = placed.overlays;
+
+  it("отменить / повторить постановку и удаление", () => {
+    expect(placed.overlays.map((o) => o.text)).toEqual(["А", "Б"]);
+    const u1 = reduce(placed, { type: "undo" });
+    expect(u1.overlays.map((o) => o.text)).toEqual(["А"]);
+    expect(u1.selectedId).toBeNull(); // выбранное «Б» исчезло — выбор снят
+    const r1 = reduce(u1, { type: "redo" });
+    expect(r1.overlays).toEqual(placed.overlays);
+    const removed = reduce(r1, { type: "remove", id: a.id });
+    expect(removed.overlays).toEqual([b]);
+    expect(removed.future).toEqual([]);
+    expect(reduce(removed, { type: "undo" }).overlays).toEqual(placed.overlays);
+    // пустая история — ничего не меняется
+    expect(reduce(INITIAL_STATE, { type: "undo" })).toBe(INITIAL_STATE);
+    expect(reduce(placed, { type: "redo" })).toBe(placed);
+  });
+
+  it("набор текста и ползунок — один шаг, перемещения — каждое своё", () => {
+    let s = reduce(placed, { type: "select", id: a.id });
+    for (const text of ["А", "Ан", "Аня"]) s = reduce(s, { type: "update", id: a.id, patch: { text } });
+    for (const size_mm of [11, 12, 13]) s = reduce(s, { type: "update", id: a.id, patch: { size_mm } });
+    s = reduce(s, { type: "move", id: a.id, placement: side });
+    s = reduce(s, { type: "move", id: a.id, placement: top });
+    const steps = [s];
+    while (steps[steps.length - 1].past.length > placed.past.length) steps.push(reduce(steps[steps.length - 1], { type: "undo" }));
+    // 2 перемещения + размер + текст = 4 шага назад к исходному
+    expect(steps).toHaveLength(5);
+    expect(steps[3].overlays[0].text).toBe("Аня");
+    expect(steps[3].overlays[0].size_mm).toBe(10);
+    expect(steps[4].overlays).toEqual(placed.overlays);
+  });
+
+  it("порядок: вверх/вниз, за край — без изменений", () => {
+    const s = reduce(placed, { type: "reorder", id: b.id, dir: -1 });
+    expect(s.overlays.map((o) => o.text)).toEqual(["Б", "А"]);
+    expect(reduce(s, { type: "reorder", id: b.id, dir: -1 })).toBe(s);
+    expect(reduce(s, { type: "undo" }).overlays.map((o) => o.text)).toEqual(["А", "Б"]);
+  });
+
+  it("выбор логотипа на инструменте «Текст» переключает панель на «Логотип»", () => {
+    const s = run([{ type: "tool", tool: "logo" }, { type: "place", placement: top }, { type: "tool", tool: "text" }]);
+    const logoId = s.overlays[0].id;
+    const sel = reduce(s, { type: "select", id: logoId });
+    expect(sel.tool).toBe("logo");
+    expect(selectedOverlay(sel)?.kind).toBe("logo");
+  });
+
+  it("restore не попадает в историю", () => {
+    const o = overlayFromParams("j1", toEmbossParams(a))!;
+    const s = reduce(INITIAL_STATE, { type: "restore", overlay: o });
+    expect(s.past).toEqual([]);
+  });
+
+  it("тело запроса: первое — params, остальные — more; обратно — все по порядку", () => {
+    const body = toEmbossBody(placed.overlays)!;
+    expect(body.params.text).toBe("А");
+    expect(body.more.map((m) => m.text)).toEqual(["Б"]);
+    expect(toEmbossBody([])).toBeNull();
+    const back = overlaysFromParams("j9", { ...body.params, more: body.more });
+    expect(back.map((o) => [o.id, o.text])).toEqual([["job-j9", "А"], ["job-j9-1", "Б"]]);
+    expect(overlaysFromParams("j9", { kind: "text", text: "x" })).toEqual([]);
+  });
+
+  it("проблемы: пустая надпись с номером, лимит", () => {
+    const empty = reduce(placed, { type: "update", id: b.id, patch: { text: " " } });
+    expect(overlaysProblem(empty.overlays)).toMatch(/^2\. Надпись \(пустая\): Введите текст/);
+    expect(overlaysProblem(placed.overlays)).toBeNull();
+    expect(overlaysProblem([])).toMatch(/Поставьте наложение/);
+    expect(overlaysProblem(Array(MAX_OVERLAYS + 1).fill(a))).toMatch(/Не больше 10/);
   });
 });
