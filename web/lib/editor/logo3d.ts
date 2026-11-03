@@ -17,7 +17,7 @@ import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import type { EmbossStyle } from "../emboss";
 import { SINK_MM } from "./text3d";
 
-/** Ширина логотипа по умолчанию (мм) — как у старой формы (LOGO_FORM). */
+/** Ширина логотипа по умолчанию (мм) — как у старой формы «Логотип на модели» (убрана в B62a). */
 export const LOGO_DEFAULT_MM = 20;
 
 /**

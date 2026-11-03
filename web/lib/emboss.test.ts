@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FORM,
   editorHref,
-  LOGO_FORM,
   FACES,
   fmt,
   parseNumber,
@@ -90,16 +89,9 @@ describe("мелочи", () => {
   });
 });
 
-describe("форма только для логотипа (B60d)", () => {
-  it("LOGO_FORM — логотип, без загруженного SVG просит его загрузить", () => {
-    expect(LOGO_FORM.kind).toBe("logo");
-    expect(Object.keys(validateForm(LOGO_FORM, false))).toEqual(["kind"]);
-    expect(validateForm(LOGO_FORM, true)).toEqual({});
-  });
-  it("в параметрах сборки нет текста", () => {
-    expect(toParams({ ...LOGO_FORM, text: "ТУЦ" }).text).toBe("");
-  });
-  it("ссылка на редактор", () => {
+describe("ссылка на редактор (B62a)", () => {
+  it("без инструмента и сразу с инструментом «Логотип»", () => {
     expect(editorHref("abc")).toBe("/upload/abc/edit");
+    expect(editorHref("abc", "logo")).toBe("/upload/abc/edit?tool=logo");
   });
 });

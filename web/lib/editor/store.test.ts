@@ -6,6 +6,7 @@ import {
   INITIAL_STATE,
   editAgainHref,
   overlayFromParams,
+  toolFromParam,
   overlayProblem,
   reduce,
   selectedOverlay,
@@ -194,5 +195,16 @@ describe("логотип (B62)", () => {
     const restored = run([{ type: "restore", overlay: back }]);
     expect(restored.tool).toBe("logo");
     expect(restored.draft.kind).toBe("logo");
+  });
+});
+
+describe("?tool= в ссылке на редактор (B62a)", () => {
+  it("text/logo/color — инструмент, остальное — null", () => {
+    expect(toolFromParam("logo")).toBe("logo");
+    expect(toolFromParam("color")).toBe("color");
+    expect(toolFromParam("text")).toBe("text");
+    expect(toolFromParam("done")).toBeNull();
+    expect(toolFromParam("<x>")).toBeNull();
+    expect(toolFromParam(null)).toBeNull();
   });
 });

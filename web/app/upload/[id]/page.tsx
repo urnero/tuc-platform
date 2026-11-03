@@ -4,7 +4,7 @@
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx) — сразу под габаритами,
- * ниже свёрнутое «Дополнительно»: редактор надписи (B60) и логотип (B30, components/EmbossPanel.tsx)
+ * ниже свёрнутое «Дополнительно»: ссылки в редактор (надпись B61, логотип B62 — старая форма логотипа убрана в B62a)
  * и раскраска по частям (B31, components/PaintPanel.tsx).
  * Повтор заказа из кабинета (B32): параметры прошлого заказа приходят в адресе
  * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
@@ -14,12 +14,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import EmbossPanel from "@/components/EmbossPanel";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
 import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
 import { editAgainHref } from "@/lib/editor/store";
+import { editorHref } from "@/lib/emboss";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
   formatBytes,
@@ -286,17 +286,22 @@ export default function ModelPage() {
             </p>
           ) : (
             <>
-              {/* Интерактивный редактор (B60): надпись ставится мышью прямо на поверхность. */}
-              <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
+              {/* Интерактивный редактор (B60): надпись и логотип ставятся мышью прямо на поверхность.
+                  Старой формы «Логотип на модели» больше нет (B62a) — только ссылки в редактор. */}
+              <div className="flex flex-col gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
                 <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-                  Надпись на модели — в редакторе: буквы ставятся мышью или пальцем прямо на
-                  поверхность, объёмные, видно сразу.
+                  Надпись или логотип — в редакторе: ставятся мышью или пальцем прямо на поверхность,
+                  объёмные, видно сразу. Логотип — файл SVG.
                 </p>
-                <Button href={`/upload/${upload.id}/edit`} variant="secondary" size="sm">
-                  Подписать в редакторе
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button href={editorHref(upload.id)} variant="secondary" size="sm">
+                    Подписать в редакторе
+                  </Button>
+                  <Button href={editorHref(upload.id, "logo")} variant="secondary" size="sm">
+                    Логотип в редакторе
+                  </Button>
+                </div>
               </div>
-              <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
               {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
               <PaintPanel key={upload.units} uploadId={upload.id} />
             </>

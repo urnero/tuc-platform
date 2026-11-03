@@ -249,6 +249,14 @@ export function overlayFromParams(jobId: string, params: Record<string, unknown>
  * Ссылка «Изменить в редакторе» со страницы результата (B60c): редактор исходной модели
  * с прошлой надписью или логотипом. null — тиснение сделано старой формой.
  */
+/**
+ * ?tool=<инструмент> в ссылке на редактор (B62a): со страницы модели «Логотип в редакторе»
+ * открывает сразу инструмент «Логотип». Неизвестное значение — null (инструмент по умолчанию).
+ */
+export function toolFromParam(value: string | null | undefined): Tool | null {
+  return value === "text" || value === "logo" || value === "color" ? value : null;
+}
+
 export function editAgainHref(emboss: { parent_id: string; job_id: string; params: Record<string, unknown> } | null | undefined): string | null {
   if (!emboss || !overlayFromParams(emboss.job_id, emboss.params)) return null;
   return `/upload/${encodeURIComponent(emboss.parent_id)}/edit?overlay=${encodeURIComponent(emboss.job_id)}`;

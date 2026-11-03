@@ -10,6 +10,7 @@
  * Состояние редактора — одно хранилище lib/editor/store.ts, создаётся на страницу.
  * ?overlay=<job_id> (B60c, «Изменить в редакторе» на странице результата): прошлая надпись или логотип
  * читается из GET /api/v1/uploads/{id}/embosses/{job_id} и снова стоит на модели, выбранная.
+ * ?tool=logo|text|color (B62a): сразу открыть инструмент — так ведёт кнопка «Логотип в редакторе».
  */
 
 import dynamic from "next/dynamic";
@@ -19,7 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
 import { gizmoHint } from "@/lib/editor/phone";
-import { createEditorStore, overlayFromParams, type Tool, useEditor } from "@/lib/editor/store";
+import { createEditorStore, overlayFromParams, type Tool, toolFromParam, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import { UNIT_SCALE, type Upload } from "@/lib/mesh";
 
@@ -67,6 +68,12 @@ export default function EditorPage() {
       .catch(() => {});
     return () => ctrl.abort();
   }, [id, logoName, store]);
+
+  // ?tool=logo — со страницы модели «Логотип в редакторе» (B62a): сразу нужный инструмент.
+  useEffect(() => {
+    const tool = toolFromParam(new URLSearchParams(window.location.search).get("tool"));
+    if (tool) store.dispatch({ type: "tool", tool });
+  }, [store]);
 
   // Вернулись с результата: кладём прошлую надпись в стор (B60c). Ошибка — не беда:
   // редактор работает как обычно, клиент просто ставит надпись заново.

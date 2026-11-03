@@ -94,14 +94,11 @@ export const DEFAULT_FORM: EmbossForm = {
 };
 
 /**
- * Старая форма (B60d) наносит только логотип: надпись теперь ставится в интерактивном
- * редакторе (B60/B61) — там видно объёмные буквы прямо на модели.
+ * Ссылка на интерактивный редактор модели. tool — сразу открыть инструмент
+ * (B62a: «Логотип в редакторе» на странице модели вместо старой формы).
  */
-export const LOGO_FORM: EmbossForm = { ...DEFAULT_FORM, kind: "logo", size_mm: "20" };
-
-/** Ссылка на интерактивный редактор модели. */
-export function editorHref(uploadId: string): string {
-  return `/upload/${uploadId}/edit`;
+export function editorHref(uploadId: string, tool?: "text" | "logo" | "color"): string {
+  return `/upload/${uploadId}/edit${tool ? `?tool=${tool}` : ""}`;
 }
 
 export const STATUS_TEXT: Record<EmbossStatus, string> = {
