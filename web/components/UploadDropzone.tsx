@@ -6,6 +6,7 @@
  * POST /api/v1/uploads → переход на /upload/<id> (3D-просмотр, расчёт, заказ).
  */
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { NETWORK_ERROR, responseErrorText } from "@/lib/errors";
@@ -109,6 +110,14 @@ export default function UploadDropzone({ idleText, cta }: Props) {
           onChange={(e) => onFiles(e.target.files)}
         />
       </div>
+
+      {/* B52: без файла — заявка с фото или описанием (вне зоны: клик по ней открывает выбор файла) */}
+      <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+        Нет файла модели?{" "}
+        <Link href="/request" className="underline">
+          Пришлите фото или описание
+        </Link>
+      </p>
 
       {state.kind === "error" && (
         <p role="alert" className="rounded-md border px-4 py-3" style={{ borderColor: "var(--danger)", color: "var(--danger)" }}>
