@@ -65,6 +65,7 @@
 ## Как это сделано на сайте (B40)
 
 - Токены — `web/app/globals.css`: `:root` (светлая), `@media (prefers-color-scheme: dark)` под `:root:not([data-theme="light"])` и `:root[data-theme="dark"]`. Те же токены отданы Tailwind через `@theme inline`, поэтому работают утилиты `bg-filament`, `text-ink-muted`, `border-line`, `font-display`, `hover:bg-sand` и т. д. База (шрифты заголовков) и компоненты лежат в `@layer base` / `@layer components`, чтобы утилиты Tailwind могли их переопределять.
+- Запасные шрифты (B53): `"Manrope Fallback"` и `"Unbounded Fallback"` в начале `globals.css` — системный Arial/Roboto с `size-adjust`/`ascent-override` под размеры наших шрифтов, стоят вторыми в `--font-sans`/`--font-display`. Пока шрифт грузится, строки переносятся так же, страница не прыгает (CLS). Сменили шрифт бренда — пересчитать числа `python web/scripts/fallback_metrics.py` (нужны `fonttools`, `brotli`).
 - Алиасы `--bg/--fg/--muted/--accent` → `surface/ink/ink-muted/filament-text`; все страницы до B40 переведены на токены напрямую (`var(--ink-muted)` и т. п.), кнопки действия — `var(--filament)` + `var(--on-filament)`.
 - Добавлен токен `--danger` (ошибки форм, статус «Отменён»): в брендбуке его нет, светлая `#B3261E`, тёмная `#FF7B72` (запись в DECISIONS.md).
 - Шрифты — `app/layout.tsx` импортирует `@fontsource/unbounded/700.css` и `@fontsource-variable/manrope` (семейство в CSS — `"Manrope Variable"`). Заголовки `h1/h2/h3` — Unbounded через базовые стили; классы `.t-display .t-heading .t-title .t-lead .t-caption` — для текста, который не заголовок.
