@@ -165,10 +165,12 @@ def parse_time(text: str) -> int:
 def parse_gcode(text: str) -> dict:
     """Из комментариев G-code → словарь: print_time_s, filament_g, filament_mm, slicer_version.
 
-    Смотрим только последние 300 строк — там итоги. Для многоматериальной печати
+    Смотрим только последние 2000 строк — там итоги. После итогов PrusaSlicer дописывает
+    блок настроек `prusaslicer_config` (~300+ строк, растёт с версией), поэтому 300 мало.
+    Для многоматериальной печати
     PrusaSlicer пишет «total filament used [g]» — берём его, если есть.
     """
-    tail = text.splitlines()[-300:]
+    tail = text.splitlines()[-2000:]
     head = text.splitlines()[:5]
     found: dict[str, str] = {}
     for line in tail:

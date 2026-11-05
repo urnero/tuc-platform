@@ -67,6 +67,16 @@ def test_parse_gcode_multi_material_sums():
     assert parse_gcode(text)["filament_g"] == 5.0
 
 
+def test_parse_gcode_totals_before_long_config_block():
+    # Настоящий G-code: итоги, затем блок настроек на 300+ строк (QA 2026-11-05)
+    config = "; prusaslicer_config = begin\n"
+    config += "".join(f"; option_{i} = {i}\n" for i in range(400))
+    config += "; prusaslicer_config = end\n"
+    parsed = parse_gcode(SAMPLE_GCODE + config)
+    assert parsed["filament_g"] == 3.7
+    assert parsed["print_time_s"] == 3723
+
+
 def test_parse_gcode_without_totals():
     with pytest.raises(SlicerError):
         parse_gcode("G28\nG1 X1\n")

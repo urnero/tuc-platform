@@ -89,7 +89,7 @@ export default function ModelPage() {
     );
   }
   if (!upload) {
-    return <main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>;
+    return <main className="mx-auto min-h-screen max-w-3xl px-4 py-16">Загружаем…</main>;
   }
 
   const m = upload.mesh;
