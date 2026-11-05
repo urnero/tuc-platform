@@ -10,10 +10,10 @@
  * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
  */
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import LazyModelViewer from "@/components/LazyModelViewer";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
 import { Button } from "@/components/ui";
@@ -29,19 +29,6 @@ import {
   type Upload,
   warningText,
 } from "@/lib/mesh";
-
-// Three.js работает только в браузере — не рендерим на сервере.
-const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
-  ssr: false,
-  loading: () => (
-    <div
-      className="flex h-[420px] items-center justify-center rounded-lg border"
-      style={{ borderColor: "var(--ink-muted)" }}
-    >
-      Загружаем 3D-просмотр…
-    </div>
-  ),
-});
 
 export default function ModelPage() {
   const { id } = useParams<{ id: string }>();
@@ -187,7 +174,7 @@ export default function ModelPage() {
         </div>
       )}
 
-      <ModelViewer
+      <LazyModelViewer
         url={fileUrl}
         ext={upload.ext}
         scale={UNIT_SCALE[upload.units]}
