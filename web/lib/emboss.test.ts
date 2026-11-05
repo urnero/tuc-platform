@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  WARNING_TEXT,
   DEFAULT_FORM,
   editorHref,
   FACES,
@@ -93,5 +94,13 @@ describe("ссылка на редактор (B62a)", () => {
   it("без инструмента и сразу с инструментом «Логотип»", () => {
     expect(editorHref("abc")).toBe("/upload/abc/edit");
     expect(editorHref("abc", "logo")).toBe("/upload/abc/edit?tool=logo");
+  });
+});
+
+describe("WARNING_TEXT", () => {
+  it("есть понятный текст для всех предупреждений сервера", () => {
+    for (const code of ["merged_without_boolean", "normal_flipped", "curved_surface", "edge_overhang"]) {
+      expect(WARNING_TEXT[code]).toBeTruthy();
+    }
   });
 });

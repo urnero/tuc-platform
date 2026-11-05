@@ -771,3 +771,70 @@ def test_all_overlays_and_describe():
     assert "more" not in em.all_overlays(both)[0]
     text = em.describe(both)
     assert text.startswith("Надпись «A»") and "Надпись «B»" in text and "углублённая" in text
+
+
+# --- Край модели под надписью (BUG QA 05.11: буквы висели за краем грани) -------------------
+
+
+def test_footprint_text_and_logo():
+    w, h = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 10})
+    assert (w, h) == (pytest.approx(18.6), 10.0)  # 3 буквы × 0,62 × 10 — как textWidthMm
+    assert em.footprint_mm({"kind": "text", "text": "Я", "size_mm": 10}) == (10.0, 10.0)
+    assert em.footprint_mm({"kind": "logo", "size_mm": 20}, 0.6) == (20.0, pytest.approx(12.0))
+
+
+def test_edge_overhang_on_box():
+    """Коробка 40×30×20: «ТУЦ» 10 мм у верхнего правого угла передней грани (y = −15) висит
+    за краем; в центре грани — нет; повёрнутая на 90° узкая надпись у края — тоже висит."""
+    box = trimesh.creation.box(extents=(40, 30, 20))
+    w, h = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 10})
+    corner = {"point": [15, -15, 8.3], "normal": [0, -1, 0], "up": [0, 0, 1]}
+    assert em.edge_overhang(box, corner, w, h) > 3
+    assert em.edge_overhang(box, {**corner, "point": [0, -15, 0]}, w, h) == 0.0
+    # «I» 6 мм шириной 6 × 6 — влезает у края по X, но повернём длинную «ТУЦ» 6 мм на 90°:
+    # ширина 11,2 мм встаёт вертикально, а до верха грани всего 5 мм от точки (z = 5)
+    w6, h6 = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 6})
+    mid = {"point": [0, -15, 5], "normal": [0, -1, 0], "up": [0, 0, 1]}
+    assert em.edge_overhang(box, mid, w6, h6) == 0.0  # 11,2 × 6: верх на z = 8 — на грани
+    assert em.edge_overhang(box, mid, w6, h6, 90) > 0  # 6 × 11,2: верх на z = 10,6 — за краем
+
+
+def test_edge_overhang_curved_and_concave():
+    """Сфера: края надписи отходят (это curved_surface), но модель под ними есть — с большим
+    допуском не висит; с обычным допуском — висит. Вогнутость (буквы утонут) — не висит."""
+    sphere = trimesh.creation.icosphere(subdivisions=4, radius=20)
+    top = {"point": [0, 0, 20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    w, h = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 10})
+    assert em.edge_overhang(sphere, top, w, h, 0, max(w, h)) == 0.0
+    assert em.edge_overhang(sphere, top, w, h) > 2
+    # внутренняя поверхность чаши: точка на дне сферы изнутри, нормаль вверх (в полость)
+    bowl = {"point": [0, 0, -20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    assert em.edge_overhang(sphere, bowl, w, h) == 0.0
+
+
+def test_ray_hits():
+    box = trimesh.creation.box(extents=(10, 10, 10))
+    hits = em.ray_hits(box, [1, 2, 20], [0, 0, -1])  # не по диагонали треугольников
+    assert hits.tolist() == pytest.approx([15.0, 25.0])  # верхняя и нижняя грани
+    assert len(em.ray_hits(box, [20, 0, 20], [0, 0, -1])) == 0
+
+
+def test_emboss_edge_overhang_warning(client, fake_openscad):
+    """Через API: надпись у края грани собирается, но с предупреждением edge_overhang;
+    в центре грани — без предупреждений."""
+    uid = _upload(client)
+    edge = _pl((15, -15, 8.3), (0, -1, 0), size_mm=10)
+    body = {"params": {"kind": "text", "text": "ТУЦ", "placement": edge}}
+    job = client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()
+    assert job["status"] == "done", job
+    assert job["warnings"] == ["edge_overhang"]
+    center = _pl((0, -15, 0), (0, -1, 0), size_mm=10)
+    body = {"params": {"kind": "text", "text": "ТУЦ", "placement": center}}
+    assert client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()["warnings"] == []
+
+
+def test_logo_aspect_from_svg(client):
+    uid = _upload(client)
+    assert em._svg_aspect(uid) == 1.0  # логотипа нет
+    em.logo_path(uid).write_bytes(SVG_OK)
+    assert em._svg_aspect(uid) == pytest.approx(0.6)  # viewBox 100 × 60

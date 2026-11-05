@@ -118,6 +118,12 @@ CONTACT_TOL_MM = 1.0
 # emboss.scad поднимаем до глубины надписи, чтобы края букв не повисли над поверхностью.
 CURVED_MAX_DEG = 15.0
 OVERLAP_MM = 0.3  # обычный запас (как в emboss.scad)
+# Край модели под надписью (BUG QA 05.11): углы и середины сторон прямоугольника надписи
+# проецируем лучом на модель. Если под какой-то из этих точек поверхности нет или она ниже
+# плоскости надписи больше чем на допуск (CONTACT_TOL_MM + запас overlap) — буквы частично
+# висят за краем модели: предупреждение «edge_overhang».
+EDGE_FACE_COS = math.cos(math.radians(80))  # грань под ≥ 80° к нормали — край, не изгиб
+TEXT_CHAR_WIDTH = 0.62  # ширина буквы ≈ 0,62 размера — та же прикидка, что textWidthMm на сайте
 # B65: несколько наложений из редактора — одной сборкой. Первое лежит в params, остальные —
 # в params["more"] (каждое со своим размещением), наносятся по порядку списка.
 MAX_OVERLAYS = 10
@@ -427,7 +433,8 @@ def surface_spread(mesh: trimesh.Trimesh, point, normal, radius_mm: float) -> fl
     нормалью в точке и нормалями треугольников, у которых есть точка ближе radius_mm.
 
     Треугольники, смотрящие «назад» (угол больше 90°), не считаем: это обратная сторона
-    тонкой стенки, а не изгиб под надписью. Вырожденные треугольники (нулевая нормаль) —
+    тонкой стенки, а не изгиб под надписью; почти перпендикулярные (≥ 80°) — тоже: это
+    соседняя грань у края модели. Вырожденные треугольники (нулевая нормаль) —
     тоже пропускаем.
     """
     p = np.asarray(point, dtype=float)
@@ -440,7 +447,9 @@ def surface_spread(mesh: trimesh.Trimesh, point, normal, radius_mm: float) -> fl
     normals = mesh.face_normals[near]
     normals = normals[np.linalg.norm(normals, axis=1) > 0.5]
     cos = normals @ n
-    cos = cos[cos >= 0]  # обратная сторона тонкой стенки — не изгиб
+    # Обратная сторона тонкой стенки (> 90°) — не изгиб. Соседняя грань под прямым углом
+    # (≥ 80°) — это край модели, а не изгиб: его ловит edge_overhang.
+    cos = cos[cos > EDGE_FACE_COS]
     if len(cos) == 0:
         return 0.0
     return float(np.degrees(np.arccos(np.clip(cos.min(), -1.0, 1.0))))
@@ -476,12 +485,123 @@ def check_contact(
     return placement, warnings
 
 
-def _check_one(mesh: trimesh.Trimesh, params: dict) -> tuple[dict, list[str]]:
+def ray_hits(mesh: trimesh.Trimesh, origin, direction) -> np.ndarray:
+    """Расстояния вдоль луча до всех треугольников, которые он пересекает (по возрастанию).
+
+    Алгоритм Мёллера — Трумбора разом на numpy по всем треугольникам: rtree/embree, которые
+    нужны trimesh.ray, в зависимостях нет, а несколько лучей на 500 тыс. треугольников —
+    доли секунды.
+    """
+    o = np.asarray(origin, dtype=float)
+    d = np.asarray(direction, dtype=float)
+    tris = mesh.triangles
+    if len(tris) == 0:
+        return np.zeros(0)
+    v0 = tris[:, 0]
+    e1 = tris[:, 1] - v0
+    e2 = tris[:, 2] - v0
+    pvec = np.cross(d, e2)
+    det = np.einsum("ij,ij->i", e1, pvec)
+    ok = np.abs(det) > 1e-12
+    inv = np.zeros_like(det)
+    inv[ok] = 1.0 / det[ok]
+    tvec = o - v0
+    u = np.einsum("ij,ij->i", tvec, pvec) * inv
+    qvec = np.cross(tvec, e1)
+    v = (qvec @ d) * inv
+    t = np.einsum("ij,ij->i", e2, qvec) * inv
+    eps = 1e-9
+    hit = ok & (u >= -eps) & (v >= -eps) & (u + v <= 1 + eps) & (t > 0)
+    return np.sort(t[hit])
+
+
+def _svg_aspect(upload_id: str | None) -> float:
+    """Высота / ширина загруженного логотипа (по viewBox или width/height); не вышло — 1."""
+    if not upload_id:
+        return 1.0
+    try:
+        root = etree.fromstring(logo_path(upload_id).read_bytes())
+    except (OSError, etree.XMLSyntaxError):
+        return 1.0
+    box = (root.get("viewBox") or "").replace(",", " ").split()
+    try:
+        if len(box) == 4 and float(box[2]) > 0:
+            return float(box[3]) / float(box[2])
+        w = float(re.sub(r"[a-z%]+$", "", root.get("width") or ""))
+        h = float(re.sub(r"[a-z%]+$", "", root.get("height") or ""))
+        return h / w if w > 0 and h > 0 else 1.0
+    except ValueError:
+        return 1.0
+
+
+def footprint_mm(params: dict, logo_aspect: float = 1.0) -> tuple[float, float]:
+    """Ширина и высота наложения в его плоскости (мм), без поворота angle.
+
+    Надпись — прикидка как у сайта (textWidthMm в web/lib/editor/math.ts): буква ≈ 0,62
+    размера, не уже одной буквы-квадрата; высота = размер. Логотип: ширина = size_mm,
+    высота — по пропорциям SVG.
+    """
+    size = float(params["size_mm"])
+    if params.get("kind") == "logo":
+        return size, size * logo_aspect
+    chars = max(1, len((params.get("text") or "").strip()))
+    return max(size, chars * size * TEXT_CHAR_WIDTH), size
+
+
+def edge_overhang(
+    mesh: trimesh.Trimesh,
+    placement: dict,
+    width: float,
+    height: float,
+    angle_deg: float = 0.0,
+    max_gap: float = CONTACT_TOL_MM + OVERLAP_MM,
+) -> float:
+    """Насколько (мм) прямоугольник надписи «висит» над моделью — 0, если лежит на ней.
+
+    Берём 4 угла и 4 середины сторон прямоугольника в плоскости надписи (касательная
+    плоскость в точке размещения) и пускаем из каждой луч внутрь модели (против нормали),
+    начиная чуть выше — на высоту надписи. Под точкой нет поверхности — висит на всю высоту
+    луча; поверхность ниже плоскости больше чем на max_gap — висит на эту разницу.
+    Поверхность выше плоскости (вогнутая) — не страшно: буквы утонут в модели.
+    """
+    x, y, n = tangent_frame(np.asarray(placement["normal"]), np.asarray(placement["up"]))
+    a = math.radians(angle_deg)
+    rx = math.cos(a) * x + math.sin(a) * y  # поворот angle в плоскости (как rotate в .scad)
+    ry = -math.sin(a) * x + math.cos(a) * y
+    p = np.asarray(placement["point"], dtype=float)
+    lift = max(width, height)  # начало луча над плоскостью надписи
+    worst = 0.0
+    for sx, sy in ((-1, -1), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0)):
+        sample = p + rx * (sx * width / 2) + ry * (sy * height / 2)
+        hits = ray_hits(mesh, sample + n * lift, -n)
+        if len(hits) == 0:
+            worst = max(worst, lift)
+            continue
+        gap = float(hits[0]) - lift  # > 0 — поверхность ниже плоскости надписи
+        if gap > max_gap:
+            worst = max(worst, gap)
+    return worst
+
+
+def _check_one(
+    mesh: trimesh.Trimesh, params: dict, upload_id: str | None = None
+) -> tuple[dict, list[str]]:
     fixed, warnings = check_contact(mesh, params["placement"], params.get("size_mm"))
     params = {**params, "placement": fixed}
-    if "curved_surface" in warnings:
+    curved = "curved_surface" in warnings
+    if curved:
         # Запас «внутрь модели» = вся глубина: на изгибе края букв отходят от поверхности.
         params["overlap_mm"] = max(OVERLAP_MM, float(params["depth_mm"]))
+    if params.get("size_mm"):
+        aspect = _svg_aspect(upload_id) if params.get("kind") == "logo" else 1.0
+        width, height = footprint_mm(params, aspect)
+        # На изогнутой поверхности края и так отходят (об этом curved_surface) — там ловим
+        # только «под краем надписи нет модели совсем».
+        overlap = params.get("overlap_mm", OVERLAP_MM)
+        max_gap = max(width, height) if curved else CONTACT_TOL_MM + overlap
+        angle = float(params.get("angle") or 0)
+        if edge_overhang(mesh, fixed, width, height, angle, max_gap) > 0:
+            warnings.append("edge_overhang")
     return params, warnings
 
 
@@ -497,11 +617,11 @@ def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, lis
         return params, []
     model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
     mesh = load_model(model_file, meta.get("units", "mm"))
-    params, warnings = _check_one(mesh, params)
+    params, warnings = _check_one(mesh, params, upload_id)
     more = []
     for i, extra in enumerate(params.get("more") or [], start=2):
         try:
-            extra, extra_warnings = _check_one(mesh, extra)
+            extra, extra_warnings = _check_one(mesh, extra, upload_id)
         except EmbossError as e:
             raise EmbossError(f"Наложение {i}: {e}") from None
         more.append(extra)
@@ -921,7 +1041,7 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
     attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
     record = new_job(upload_id, job_id, params)
     record["attempt"] = attempt
-    record["warnings"] = contact_warnings  # normal_flipped/curved_surface — дополнится при сборке
+    record["warnings"] = contact_warnings  # предупреждения проверки; дополнятся при сборке
     save_job(record)
     if settings.redis_url:
         try:
