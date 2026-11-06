@@ -17,3 +17,15 @@ export function formatPriceExact(rub: number): string {
     .replace(/[\u00a0\u202f]/g, " ");
   return `${text} ₽`;
 }
+
+/**
+ * Короткий номер расчёта для клиента: из технического id
+ * «7f763449bbc546f1b1a443918469791a-026903» (id загрузки + метка параметров)
+ * делаем «7F76-6903» — 4 знака модели и 4 знака параметров, 8 символов.
+ * Полный id остаётся в ссылке на заказ и в подсказке (title) — по нему ищет поддержка.
+ */
+export function shortQuoteNo(quoteId: string): string {
+  const [upload, params] = quoteId.split("-");
+  if (!upload || !params) return quoteId.slice(0, 8).toUpperCase();
+  return `${upload.slice(0, 4)}-${params.slice(-4)}`.toUpperCase();
+}
