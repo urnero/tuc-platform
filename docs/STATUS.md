@@ -1,5 +1,9 @@
 # Статус
 
+## 2026-11-06 · дневной (sonnet) · повторная проверка
+
+CI dev (31a2ab8) — success; Deploy 31a2ab8 — failure на «Деплой по SSH» (`port 22: Connection timed out`), `/health` обоих стендов — нет ответа. Код ни при чём, причина на VPS (BUG `[F]` уже в бэклоге). **Нужно от владельца:** проверить VPS/порт 22, затем перезапустить Deploy в GitHub Actions.
+
 ## 2026-11-06 · дневной (sonnet) · проверка стендов
 
 CI dev (e509dbc) — success, Deploy e509dbc и d1a3651 — failure на «Деплой по SSH» (`port 22: Connection timed out`). `/health` прод и staging — таймаут. Причина на сервере (VPS/SSH), в коде менять нечего; BUG `[F]` в BACKLOG уже есть. **Нужно от владельца:** п. 20 (VPS в панели хостера, перезагрузка, файрвол/блок IP), затем перезапустить Deploy.
