@@ -1,6 +1,6 @@
 /** Цена (B05): типы ответов API /pricing и /quote, подписи вариантов, строки разложения суммы. */
 
-import { formatPrice } from "./format";
+import { formatPrice, formatPriceExact } from "./format";
 
 /** GET /api/v1/pricing — прайс для формы. Числа — ₽. */
 export type Pricing = {
@@ -94,12 +94,28 @@ export function batchHint(batch: Pricing["batch"]): string {
 export function quoteLines(q: Quote): { label: string; value: string }[] {
   const lines: { label: string; value: string }[] = [];
   const perItem = q.qty > 1 ? ` × ${q.qty} шт` : "";
-  lines.push({ label: "Печать одного изделия", value: formatPrice(q.unit_price) });
-  if (q.qty > 1) {
-    lines.push({ label: `Печать${perItem}`, value: formatPrice(q.print_subtotal) });
-  }
-  if (q.k_batch < 1) {
-    lines.push({ label: "Скидка за тираж", value: `−${Math.round((1 - q.k_batch) * 100)} %` });
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  if (q.qty === 1) {
+    lines.push({ label: "Печать одного изделия", value: formatPrice(q.unit_price) });
+  } else if (q.k_batch >= 1) {
+    // Тираж без скидки: цена за штуку × тираж = сумма (с копейками, чтобы сходилось).
+    lines.push({ label: "Цена за штуку", value: formatPriceExact(q.unit_price) });
+    lines.push({ label: `Печать${perItem}`, value: formatPriceExact(q.print_subtotal) });
+  } else {
+    // Тираж со скидкой (UX 05.11, персона 3): unit_price из API уже со скидкой,
+    // поэтому показываем цену за штуку ДО скидки, сумму до скидки, скидку в рублях
+    // и итог. Скидка = «до» − «после», так строки сходятся копейка в копейку.
+    const percent = Math.round((1 - q.k_batch) * 100);
+    const fullUnit = r2(q.unit_price / q.k_batch);
+    const fullSubtotal = r2(fullUnit * q.qty);
+    const discount = r2(fullSubtotal - q.print_subtotal);
+    lines.push({ label: "Цена за штуку без скидки", value: formatPriceExact(fullUnit) });
+    lines.push({ label: `Печать${perItem}`, value: formatPriceExact(fullSubtotal) });
+    lines.push({ label: `Скидка за тираж −${percent} %`, value: `−${formatPriceExact(discount)}` });
+    lines.push({
+      label: `Печать со скидкой (${formatPriceExact(q.unit_price)} за шт)`,
+      value: formatPriceExact(q.print_subtotal),
+    });
   }
   if (q.supports) {
     lines.push({ label: "Поддержки", value: `×${q.k_supports.toString().replace(".", ",")}` });

@@ -88,16 +88,36 @@ describe("quoteLines", () => {
       total: 8048,
     };
     expect(quoteLines(q).map((l) => l.label)).toEqual([
-      "Печать одного изделия",
+      "Цена за штуку без скидки",
       "Печать × 10 шт",
-      "Скидка за тираж",
+      "Скидка за тираж −10 %",
+      "Печать со скидкой (614,79 ₽ за шт)",
       "Поддержки",
       "Шлифовка × 10 шт",
       "Курьер по Москве",
     ]);
-    expect(quoteLines(q)[2].value).toBe("−10 %");
-    expect(quoteLines(q)[3].value).toBe("×1,15");
-    expect(quoteLines(q)[5].value).toBe("400 ₽");
+    expect(quoteLines(q)[0].value).toBe("683,10 ₽");
+    expect(quoteLines(q)[1].value).toBe("6 831 ₽");
+    expect(quoteLines(q)[2].value).toBe("−683,10 ₽");
+    expect(quoteLines(q)[3].value).toBe("6 147,90 ₽");
+    expect(quoteLines(q)[4].value).toBe("×1,15");
+    expect(quoteLines(q)[6].value).toBe("400 ₽");
+  });
+  it("тираж 50 шт −20 %: строки сходятся (UX 05.11, персона 3)", () => {
+    const q: Quote = { ...base, qty: 50, k_batch: 0.8, unit_price: 61.72, print_subtotal: 3086, total: 3086 };
+    expect(quoteLines(q).slice(0, 4)).toEqual([
+      { label: "Цена за штуку без скидки", value: "77,15 ₽" },
+      { label: "Печать × 50 шт", value: "3 857,50 ₽" },
+      { label: "Скидка за тираж −20 %", value: "−771,50 ₽" },
+      { label: "Печать со скидкой (61,72 ₽ за шт)", value: "3 086 ₽" },
+    ]);
+  });
+  it("тираж без скидки: цена за штуку с копейками × тираж = сумма", () => {
+    const q: Quote = { ...base, qty: 3, unit_price: 61.72, print_subtotal: 185.16, total: 500, min_order_applied: true };
+    expect(quoteLines(q).slice(0, 2)).toEqual([
+      { label: "Цена за штуку", value: "61,72 ₽" },
+      { label: "Печать × 3 шт", value: "185,16 ₽" },
+    ]);
   });
   it("минимальный заказ", () => {
     const q: Quote = { ...base, unit_price: 90, print_subtotal: 90, min_order_applied: true, total: 500 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPrice } from "./format";
+import { formatPrice, formatPriceExact } from "./format";
 
 describe("formatPrice", () => {
   it("разделяет тысячи пробелом и добавляет ₽", () => {
@@ -10,5 +10,16 @@ describe("formatPrice", () => {
   });
   it("ноль", () => {
     expect(formatPrice(0)).toBe("0 ₽");
+  });
+});
+
+describe("formatPriceExact", () => {
+  it("копейки, если есть", () => {
+    expect(formatPriceExact(77.15)).toBe("77,15 ₽");
+    expect(formatPriceExact(3857.5)).toBe("3 857,50 ₽");
+  });
+  it("без копеек — как formatPrice", () => {
+    expect(formatPriceExact(3086)).toBe("3 086 ₽");
+    expect(formatPriceExact(3085.999)).toBe("3 086 ₽");
   });
 });
