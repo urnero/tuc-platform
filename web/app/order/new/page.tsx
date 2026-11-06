@@ -8,7 +8,9 @@
  * Если клиент вошёл в кабинет (B32), имя, телефон, e-mail и адрес подставляются
  * из последнего заказа (GET /api/v1/account) — поля остаются редактируемыми.
  * Галочка «Заказ от организации или ИП» (B33) открывает реквизиты покупателя: такой заказ
- * оплачивается по счёту безналом, счёт появится на странице заказа.
+ * оплачивается по счёту безналом, счёт появится на странице заказа. Ввели правильный ИНН —
+ * сайт спрашивает GET /api/v1/company/lookup (DaData) и подставляет наименование, КПП и адрес
+ * в пустые поля; без ключа DaData на сервере подсказки просто нет.
  * UX (B42): маска телефона на лету, проверка поля при уходе с него (и сразу после исправления),
  * комментарий спрятан за ссылкой, итог заказа всегда на виду — справа на компьютере (липкий блок)
  * и панелью с кнопкой «Заказать» внизу экрана на телефоне. Ошибки сервера — lib/errors.ts.
@@ -16,13 +18,17 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import type { Account } from "@/lib/account";
 import { Field } from "@/components/ui";
 import { caughtErrorText, responseErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
 import {
+  applyCompanyLookup,
+  type CompanyFill,
+  type CompanyLookup,
+  companyLookupHint,
   EMPTY_FORM,
   innKind,
   liveFieldError,
@@ -57,6 +63,10 @@ function NewOrder() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [showComment, setShowComment] = useState(false);
+  const [innHint, setInnHint] = useState<string | null>(null);
+  const filledRef = useRef<CompanyFill>({}); // что подставили по прошлому ИНН
+  const formRef = useRef(form); // свежая форма для ответа подсказки (он приходит позже)
+  formRef.current = form;
 
   useEffect(() => {
     if (!quoteId) {
@@ -80,6 +90,31 @@ function NewOrder() {
       .then((a) => a && setForm((f) => prefillForm(f, a)))
       .catch(() => {});
   }, [quoteId]);
+
+  // Подсказка по ИНН: как только ИНН полный и правильный — ищем реквизиты организации.
+  useEffect(() => {
+    const inn = form.inn;
+    if (!form.b2b || !innKind(inn)) {
+      setInnHint(null);
+      return;
+    }
+    const stop = new AbortController();
+    fetch(`/api/v1/company/lookup?inn=${inn}`, { signal: stop.signal })
+      .then(async (r) => (r.ok ? ((await r.json()) as CompanyLookup) : null))
+      .then((found) => {
+        if (!found?.found) return setInnHint(null);
+        const current = formRef.current;
+        if (current.inn !== inn) return; // клиент уже меняет ИНН — ответ устарел
+        const { form: next, filled } = applyCompanyLookup(current, found, filledRef.current);
+        setForm(next);
+        filledRef.current = { ...filledRef.current, ...filled };
+        setInnHint(companyLookupHint(found, filled));
+        // Подставили поле — снимаем с него старую ошибку.
+        setErrors((e) => ({ ...e, ...Object.fromEntries(Object.keys(filled).map((k) => [k, undefined])) }));
+      })
+      .catch(() => {});
+    return () => stop.abort();
+  }, [form.b2b, form.inn]);
 
   const delivery = quote?.delivery ?? "pickup";
 
@@ -320,6 +355,11 @@ function NewOrder() {
                   />
                 )}
               </div>
+              {innHint && (
+                <p className="-mt-2 text-sm" style={{ color: "var(--ink-muted)" }} aria-live="polite" data-testid="inn-hint">
+                  {innHint}
+                </p>
+              )}
               <Field
                 id="order-company-address"
                 label="Юридический адрес (необязательно)"

@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     session_days: int = 30  # сколько дней держим вход (cookie tuc_session)
     rate_limit_login_per_min: int = 5  # запросов кода и попыток входа в минуту с одного IP
 
+    # Подсказка реквизитов по ИНН в форме заказа (B2B): ключ API DaData (dadata.ru → Личный
+    # кабинет → API-ключ, бесплатный тариф). Пусто = подсказки нет, реквизиты вводятся руками.
+    dadata_api_key: str = ""
+    rate_limit_lookup_per_min: int = 20  # запросов подсказки по ИНН в минуту с одного IP
+
     @field_validator("google_sa_json_path", mode="before")
     @classmethod
     def _empty_path_is_none(cls, v):
