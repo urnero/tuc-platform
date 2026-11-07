@@ -48,7 +48,7 @@ import { DELIVERY_LABELS, POSTPROCESS_LABELS, type Quote, quoteLines } from "@/l
 export default function NewOrderPage() {
   // useSearchParams требует Suspense в Next 15 при сборке статической страницы.
   return (
-    <Suspense fallback={<main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>}>
+    <Suspense fallback={<main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-16">Загружаем…</main>}>
       <NewOrder />
     </Suspense>
   );
@@ -171,7 +171,7 @@ function NewOrder() {
   }
   if (!quote)
     return (
-      <main className="mx-auto max-w-3xl px-4 py-16">
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-16">
         <h1 className="mb-4 text-2xl font-semibold">Оформление заказа</h1>
         <p>Загружаем…</p>
       </main>
