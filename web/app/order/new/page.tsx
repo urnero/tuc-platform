@@ -24,6 +24,7 @@ import { Field } from "@/components/ui";
 import { caughtErrorText, responseErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
 import { formatPrice } from "@/lib/format";
+import { leadTimeText } from "@/lib/leadtime";
 import {
   applyCompanyLookup,
   type CompanyFill,
@@ -207,6 +208,15 @@ function NewOrder() {
             <dd className="text-right">{POSTPROCESS_LABELS[quote.postprocess] ?? quote.postprocess}</dd>
             <dt style={{ color: "var(--ink-muted)" }}>Получение</dt>
             <dd className="text-right">{DELIVERY_LABELS[quote.delivery] ?? quote.delivery}</dd>
+            {leadTimeText(quote.print_time_s, quote.qty, quote.postprocess) && (
+              <>
+                <dt style={{ color: "var(--ink-muted)" }}>Срок</dt>
+                <dd className="text-right" data-testid="lead-time">
+                  {leadTimeText(quote.print_time_s, quote.qty, quote.postprocess)}
+                  {quote.delivery !== "pickup" ? " + доставка" : ""}
+                </dd>
+              </>
+            )}
           </dl>
           <details className="text-sm">
             <summary className="cursor-pointer" style={{ color: "var(--filament-text)" }}>
