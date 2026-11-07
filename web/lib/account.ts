@@ -10,10 +10,31 @@ import type { Order } from "./order";
 
 /** GET /api/v1/account. `contacts` — из последнего заказа, подставляются в форму нового. */
 export type Account = {
+  logged_in?: true;
   email: string;
   orders_count: number;
   contacts: { name: string; phone: string; address: string } | null;
 };
+
+/** Разбирает ответ GET /api/v1/account: вошёл — Account, гость — null.
+ *  Гостю API отвечает 200 {"logged_in": false} (раньше 401 — красная строка в консоли
+ *  на каждой форме заказа). Старый ответ без поля logged_in тоже понимаем: есть email — вошёл. */
+export function parseAccount(ok: boolean, body: unknown): Account | null {
+  if (!ok || !body || typeof body !== "object") return null;
+  const a = body as { logged_in?: boolean; email?: unknown };
+  if (a.logged_in === false || typeof a.email !== "string" || !a.email) return null;
+  return body as Account;
+}
+
+/** Запрос «кто вошёл»: Account или null (гость, сеть упала). */
+export async function fetchAccount(): Promise<Account | null> {
+  try {
+    const r = await fetch("/api/v1/account");
+    return parseAccount(r.ok, r.ok ? await r.json() : null);
+  } catch {
+    return null;
+  }
+}
 
 /** Строка истории: заказ + можно ли повторить (файл модели ещё не удалён). */
 export type AccountOrder = Order & { can_repeat: boolean };

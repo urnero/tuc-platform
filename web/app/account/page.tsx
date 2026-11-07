@@ -14,6 +14,7 @@ import {
   type Account,
   type AccountOrder,
   cleanCode,
+  fetchAccount,
   type LoginStep,
   loginError,
   ordersCountLabel,
@@ -30,9 +31,7 @@ export default function AccountPage() {
   const [account, setAccount] = useState<Account | null | undefined>(undefined); // undefined — ещё не знаем
 
   useEffect(() => {
-    fetch("/api/v1/account")
-      .then(async (r) => setAccount(r.ok ? ((await r.json()) as Account) : null))
-      .catch(() => setAccount(null));
+    fetchAccount().then(setAccount);
   }, []);
 
   // Пока не знаем, вошёл ли клиент, — сразу показываем форму входа (она же в HTML с сервера):

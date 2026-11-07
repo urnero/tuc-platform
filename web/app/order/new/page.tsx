@@ -19,7 +19,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
-import type { Account } from "@/lib/account";
+import { fetchAccount } from "@/lib/account";
 import { Field } from "@/components/ui";
 import { caughtErrorText, responseErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
@@ -83,12 +83,9 @@ function NewOrder() {
 
   // Клиент в кабинете — заполняем контакты из прошлого заказа (пустые поля, пока ничего не ввели).
   useEffect(() => {
-    // Без расчёта форма не откроется — незачем звать кабинет (гостю он отвечает 401 в консоль).
+    // Без расчёта форма не откроется — незачем звать кабинет. Гостю он отвечает 200 logged_in=false.
     if (!quoteId) return;
-    fetch("/api/v1/account")
-      .then(async (r) => (r.ok ? ((await r.json()) as Account) : null))
-      .then((a) => a && setForm((f) => prefillForm(f, a)))
-      .catch(() => {});
+    fetchAccount().then((a) => a && setForm((f) => prefillForm(f, a)));
   }, [quoteId]);
 
   // Подсказка по ИНН: как только ИНН полный и правильный — ищем реквизиты организации.

@@ -6,7 +6,8 @@
 
 POST /api/v1/account/login            {email} → 202, письмо с кодом (LOGIN_CODE_TTL_MIN минут).
 POST /api/v1/account/login/confirm    {email, code} → вход: cookie `tuc_session` на SESSION_DAYS.
-GET  /api/v1/account                  кто вошёл + контакты из последнего заказа (для формы); 401.
+GET  /api/v1/account                  кто вошёл + контакты из последнего заказа (для формы);
+                                       гость — 200 {"logged_in": false} (не 401).
 GET  /api/v1/account/orders           заказы клиента, новые сверху; у каждого `can_repeat` —
                                       жив ли ещё файл модели (их удаляет app/cleanup.py).
 POST /api/v1/account/logout           выход: строка сессии удаляется, cookie стирается.
@@ -240,11 +241,16 @@ def account_info(db: Session, email: str) -> dict:
         if last
         else None
     )
-    return {"email": email, "orders_count": int(count), "contacts": contacts}
+    return {"logged_in": True, "email": email, "orders_count": int(count), "contacts": contacts}
 
 
 @router.get("")
-def get_account(email: Email, db: Db) -> dict:
+def get_account(email: CurrentEmail, db: Db) -> dict:
+    """Кто вошёл. Гостю — 200 {"logged_in": false}, а не 401: сайт спрашивает это на каждой
+    форме заказа, и 401 красной строкой в консоли браузера мешал замечать настоящие ошибки.
+    Остальные ручки кабинета (заказы, выход) без входа по-прежнему отвечают 401."""
+    if email is None:
+        return {"logged_in": False}
     return account_info(db, email)
 
 
