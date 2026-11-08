@@ -19,7 +19,7 @@ import SliceCalc from "@/components/SliceCalc";
 import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
 import { editAgainHref } from "@/lib/editor/store";
-import { editorHref, embossWarningTexts } from "@/lib/emboss";
+import { EDITOR_CHIPS, editorHref, embossWarningTexts } from "@/lib/emboss";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
   formatBytes,
@@ -189,6 +189,22 @@ export default function ModelPage() {
         scale={UNIT_SCALE[upload.units]}
         keepMaterials={Boolean(fromPaint)}
       />
+
+      {/* Вход в редактор сразу под 3D (QA 08.11): раньше он был только в свёрнутом
+          «Дополнительно» ниже калькулятора. Раскрашенную модель в редактор не ведём —
+          см. пояснение в «Дополнительно». */}
+      {!fromPaint && (
+        <nav className="flex flex-wrap items-center gap-2" aria-label="Редактор модели" data-testid="editor-chips">
+          <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
+            Добавить:
+          </span>
+          {EDITOR_CHIPS.map((c) => (
+            <Button key={c.tool} href={editorHref(upload.id, c.tool)} variant="ghost" size="sm">
+              {c.label}
+            </Button>
+          ))}
+        </nav>
+      )}
 
       <section
         className="flex flex-col gap-4 rounded-lg border p-6"

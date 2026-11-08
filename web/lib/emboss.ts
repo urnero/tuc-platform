@@ -101,6 +101,16 @@ export function editorHref(uploadId: string, tool?: "text" | "logo" | "color"): 
   return `/upload/${uploadId}/edit${tool ? `?tool=${tool}` : ""}`;
 }
 
+/**
+ * Чипы под окном 3D на странице модели (QA 08.11: вход в редактор был спрятан в свёрнутом
+ * «Дополнительно» ниже калькулятора). Каждый ведёт сразу в нужный инструмент редактора.
+ */
+export const EDITOR_CHIPS: { tool: "text" | "logo" | "color"; label: string }[] = [
+  { tool: "text", label: "Надпись" },
+  { tool: "logo", label: "Логотип" },
+  { tool: "color", label: "Цвет" },
+];
+
 export const STATUS_TEXT: Record<EmbossStatus, string> = {
   queued: "В очереди…",
   running: "Наносим…",
