@@ -11,13 +11,12 @@
  * размер — ширина логотипа; размещение, гизмо и «Применить» — общие с надписью.
  */
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import LogoUpload from "@/components/editor/LogoUpload";
 import OverlayList from "@/components/editor/OverlayList";
 import { Button, Field, Select } from "@/components/ui";
-import { type EmbossJob, FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/emboss";
+import { FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/emboss";
 import { fmt } from "@/lib/emboss";
+import type { ApplyState } from "@/lib/editor/apply";
 import { upAngle, rotateUp } from "@/lib/editor/math";
 import { useIsPhone } from "@/lib/editor/phone";
 import { PINCH_MAX_MM, PREVIEW_COLORS } from "@/lib/editor/text3d";
@@ -26,13 +25,9 @@ import {
   type EditorStore,
   type Gizmo,
   type OverlayDraft,
-  overlaysProblem,
   selectedOverlay,
-  toEmbossBody,
   useEditor,
 } from "@/lib/editor/store";
-
-const POLL_MS = 1500;
 
 const GIZMOS: { value: Gizmo; label: string }[] = [
   { value: "translate", label: "Двигать" },
@@ -40,10 +35,11 @@ const GIZMOS: { value: Gizmo; label: string }[] = [
   { value: "scale", label: "Размер" },
 ];
 
-type Props = { uploadId: string; store: EditorStore };
+/** applyState — общий с «✓ Готово» хук useApply (lib/editor/apply.ts), создаётся на странице. */
+type Props = { uploadId: string; store: EditorStore; applyState: ApplyState };
 
-export default function TextToolPanel({ uploadId, store }: Props) {
-  const router = useRouter();
+export default function TextToolPanel({ uploadId, store, applyState }: Props) {
+  const { job, error, working, apply, reset } = applyState;
   const selected = useEditor(store, selectedOverlay);
   /** На телефоне кнопки крупнее — под палец (B60b). */
   const btn = useIsPhone() ? "md" : "sm";
@@ -55,30 +51,10 @@ export default function TextToolPanel({ uploadId, store }: Props) {
   const isLogo = useEditor(store, (s) => s.tool === "logo");
   const hasLogo = useEditor(store, (s) => s.logo !== null);
   const what = isLogo ? "Логотип" : "Надпись";
-  const [job, setJob] = useState<EmbossJob | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Пока сервер наносит надпись — опрашиваем; готово → на страницу результата.
-  useEffect(() => {
-    if (!job) return;
-    if (job.status === "done" && job.result_upload_id) {
-      router.push(`/upload/${job.result_upload_id}`);
-      return;
-    }
-    if (job.status !== "queued" && job.status !== "running") return;
-    const timer = setTimeout(async () => {
-      const r = await fetch(`/api/v1/uploads/${uploadId}/embosses/${job.id}`);
-      if (r.ok) setJob((await r.json()) as EmbossJob);
-    }, POLL_MS);
-    return () => clearTimeout(timer);
-  }, [job, uploadId, router]);
-
   function set(patch: Partial<OverlayDraft>) {
     if (selected) store.dispatch({ type: "update", id: selected.id, patch });
     else store.dispatch({ type: "draft", patch });
-    setJob(null);
-    setError(null);
+    reset();
   }
 
   function rotateBy(deg: number) {
@@ -86,37 +62,6 @@ export default function TextToolPanel({ uploadId, store }: Props) {
     store.dispatch({ type: "move", id: selected.id, placement: rotateUp(selected.placement, (deg * Math.PI) / 180) });
   }
 
-  // B65: «Применить» отправляет все наложения одной сборкой (первое — params, остальные — more).
-  async function apply() {
-    const problem = overlaysProblem(overlays, hasLogo);
-    const body = toEmbossBody(overlays);
-    if (problem || !body) {
-      setError(problem);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await fetch(`/api/v1/uploads/${uploadId}/embosses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const res = (await r.json().catch(() => ({}))) as { detail?: { errors?: Record<string, string> } | string };
-      if (r.status === 422 && typeof res.detail === "object" && res.detail?.errors) {
-        setError(Object.values(res.detail.errors).join(" "));
-        return;
-      }
-      if (!r.ok) throw new Error(typeof res.detail === "string" ? res.detail : `Ошибка ${r.status}.`);
-      setJob(res as EmbossJob);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const working = busy || (job !== null && (job.status === "queued" || job.status === "running"));
   const angleDeg = selected ? Math.round((upAngle(selected.placement) * 180) / Math.PI) : 0;
 
   return (
@@ -216,6 +161,9 @@ export default function TextToolPanel({ uploadId, store }: Props) {
         </>
       )}
 
+      {/* Низ панели прилипает: на телефоне «Применить» всегда на виду над инструментами,
+          а не в конце прокрутки (QA 2026-11-08). */}
+      <div className="sticky -bottom-3 -mx-4 flex flex-col gap-2 border-t px-4 pb-3 pt-2" style={{ background: "var(--surface-raised)", borderColor: "var(--line)" }}>
       {error && (
         <p className="text-sm" role="alert" style={{ color: "var(--danger)" }}>
           {error}
@@ -232,6 +180,7 @@ export default function TextToolPanel({ uploadId, store }: Props) {
       <Button onClick={apply} disabled={working || count === 0} data-testid="apply">
         {working ? "Наносим…" : count > 1 ? `Применить все (${count})` : "Применить"}
       </Button>
+      </div>
     </div>
   );
 }

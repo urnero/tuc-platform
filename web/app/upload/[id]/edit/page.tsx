@@ -6,7 +6,8 @@
  * «Текст» — надпись ставится мышью/пальцем на поверхность (components/editor/EditorCanvas.tsx,
  * панель — TextToolPanel.tsx); «Логотип» — то же для SVG-логотипа (B62, загрузка —
  * editor/LogoUpload.tsx, SVG уже загруженного логотипа берём из GET …/logo); «Цвет» — раскраска по частям (B63,
- * components/PaintPanel.tsx как есть); «Готово» — назад на страницу модели.
+ * components/PaintPanel.tsx как есть); «Готово» — есть наложения: применить их (тот же useApply, что
+ * у «Применить», lib/editor/apply.ts) и уйти на результат; нет — назад на страницу модели.
  * Состояние редактора — одно хранилище lib/editor/store.ts, создаётся на страницу.
  * ?overlay=<job_id> (B60c, «Изменить в редакторе» на странице результата): прошлая надпись или логотип
  * читается из GET /api/v1/uploads/{id}/embosses/{job_id} и снова стоит на модели, выбранная.
@@ -15,10 +16,11 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
+import { useApply } from "@/lib/editor/apply";
 import { gizmoHint } from "@/lib/editor/phone";
 import { createEditorStore, overlaysFromParams, type Tool, toolFromParam, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
@@ -42,6 +44,9 @@ export default function EditorPage() {
   const tool = useEditor(store, (s) => s.tool);
   const hasSelection = useEditor(store, (s) => s.selectedId !== null);
   const gizmo = useEditor(store, (s) => s.gizmo);
+  const overlayCount = useEditor(store, (s) => s.overlays.length);
+  const router = useRouter();
+  const applyState = useApply(id, store);
   const [upload, setUpload] = useState<Upload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoreNote, setRestoreNote] = useState<string | null>(null);
@@ -120,6 +125,17 @@ export default function EditorPage() {
 
   const backHref = `/upload/${id}`;
 
+  // «✓ Готово»: наложения есть — наносим (статус и ошибки видны в панели «Текст»/«Логотип»),
+  // нет — просто назад к модели.
+  function done() {
+    if (overlayCount === 0) {
+      router.push(backHref);
+      return;
+    }
+    if (tool === "color") store.dispatch({ type: "tool", tool: store.getState().overlays[0]?.kind === "logo" ? "logo" : "text" });
+    void applyState.apply();
+  }
+
   if (error) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-16">
@@ -147,12 +163,19 @@ export default function EditorPage() {
       >
         {TOOLS.map((t) =>
           t.value === "done" ? (
-            <Link key={t.value} href={backHref} className="flex flex-1 flex-col items-center gap-1 px-2 py-2 text-xs md:flex-none" data-testid="tool-done">
+            <button
+              key={t.value}
+              type="button"
+              onClick={done}
+              disabled={applyState.working}
+              className="flex flex-1 flex-col items-center gap-1 px-2 py-2 text-xs md:flex-none"
+              data-testid="tool-done"
+            >
               <span className="text-lg leading-none" aria-hidden>
                 {t.icon}
               </span>
-              {t.label}
-            </Link>
+              {applyState.working ? "Наносим…" : t.label}
+            </button>
           ) : (
             <button
               key={t.value}
@@ -218,7 +241,7 @@ export default function EditorPage() {
               {restoreNote}
             </p>
           )}
-          {(tool === "text" || tool === "logo") && <TextToolPanel key={tool} uploadId={upload.id} store={store} />}
+          {(tool === "text" || tool === "logo") && <TextToolPanel key={tool} uploadId={upload.id} store={store} applyState={applyState} />}
         </aside>
       )}
     </main>
