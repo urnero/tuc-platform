@@ -29,6 +29,7 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
 import {
+  hitWithinReach,
   makePlacement,
   modelDirToScene,
   type Placement,
@@ -36,6 +37,7 @@ import {
   type SceneFit,
   sceneDirToModel,
   sceneToModel,
+  snapReach,
   textWidthMm,
   transportUp,
   type Vec3,
@@ -259,13 +261,17 @@ function SelectedOverlay({
     const start = overlay.placement;
     const n = v3(modelDirToScene(start.normal));
     const far = longest * 4;
+    const lift = longest * 2;
+    // Попадание дальше `reach` от точки — уже другая сторона модели (B66: на круглой
+    // подставке надпись «прыгала» через модель); такое не берём, идём по лучу из камеры.
+    const reach = snapReach(overlay.size_mm, longest);
     const tryDir = (origin: THREE.Vector3, dir: THREE.Vector3) => {
       raycaster.set(origin, dir);
       raycaster.far = far;
       const hit = raycaster.intersectObject(target, true)[0];
-      return hit ? hitToPlacement(hit.point, hit.face, hit.object, fit, start.up) : null;
+      if (!hit || !hitWithinReach(hit.distance, lift, reach)) return null;
+      return hitToPlacement(hit.point, hit.face, hit.object, fit, start.up);
     };
-    const lift = longest * 2;
     const along =
       tryDir(pos.clone().addScaledVector(n, lift), n.clone().negate()) ??
       tryDir(pos.clone().addScaledVector(n, -lift), n);
@@ -278,7 +284,7 @@ function SelectedOverlay({
     if (!p) return null;
     const prev = lastSnap.current ?? start;
     return makePlacement(p.point, p.normal, transportUp(prev.up, prev.normal, p.normal));
-  }, [camera, fit, longest, overlay.placement, pointer, raycaster, target]);
+  }, [camera, fit, longest, overlay.placement, overlay.size_mm, pointer, raycaster, target]);
 
   // --- Тянуть надпись прямо пальцем / мышью (B61) и щипок двумя пальцами на телефоне ---
   const gizmoRef = useRef<{ dragging?: boolean } | null>(null);

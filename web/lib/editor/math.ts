@@ -163,3 +163,20 @@ export function textWidthMm(text: string, sizeMm: number): number {
   const chars = Math.max(1, text.trim().length);
   return Math.max(sizeMm, chars * sizeMm * 0.62);
 }
+
+/**
+ * Как далеко от сдвинутой точки луч вдоль нормали ещё считает «ту же грань» (B66).
+ * Плоская грань — поверхность под точкой на 0 мм; слегка вогнутая/выпуклая — на доли размера
+ * надписи. Дальше — это уже другая сторона модели (круглая подставка: сдвиг по касательной
+ * уводит точку за силуэт, и обратный луч находил противоположную стенку — надпись «прыгала»
+ * через модель). Тогда правильнее переход «за угол» по лучу из камеры.
+ */
+export function snapReach(sizeMm: number, longest: number): number {
+  return Math.max(sizeMm, longest * 0.1);
+}
+
+/** Попадание луча вдоль нормали годится, если поверхность не дальше `reach` от точки.
+ *  `distance` — расстояние от начала луча (точка, отнесённая на `lift` вдоль нормали). */
+export function hitWithinReach(distance: number, lift: number, reach: number): boolean {
+  return Math.abs(distance - lift) <= reach;
+}

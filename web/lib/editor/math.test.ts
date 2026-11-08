@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  hitWithinReach,
+  snapReach,
   cross,
   dot,
   frameMatrix,
@@ -132,5 +134,19 @@ describe("переход за угол (B60a)", () => {
   it("та же грань или грань напротив — верх как был", () => {
     expect(close(transportUp([0, 0, 1], [0, -1, 0], [0, -1, 0]), [0, 0, 1])).toBe(true);
     expect(close(transportUp([0, 0, 1], [0, -1, 0], [0, 1, 0]), [0, 0, 1])).toBe(true);
+  });
+});
+
+describe("прилипание при перетаскивании (B66)", () => {
+  it("запас — не меньше размера надписи и 10 % модели", () => {
+    expect(snapReach(10, 90)).toBe(10);
+    expect(snapReach(5, 200)).toBe(20);
+  });
+  it("плоская грань и лёгкий изгиб — годятся, противоположная стенка — нет", () => {
+    const lift = 180; // longest × 2
+    expect(hitWithinReach(180, lift, 10)).toBe(true); // поверхность ровно под точкой
+    expect(hitWithinReach(187, lift, 10)).toBe(true); // слегка ниже (выпуклая грань)
+    expect(hitWithinReach(180 + 90, lift, 10)).toBe(false); // стенка с другой стороны подставки
+    expect(hitWithinReach(180 - 60, lift, 10)).toBe(false);
   });
 });

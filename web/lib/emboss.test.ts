@@ -3,6 +3,7 @@ import {
   WARNING_TEXT,
   DEFAULT_FORM,
   editorHref,
+  embossWarningTexts,
   FACES,
   fmt,
   parseNumber,
@@ -102,5 +103,15 @@ describe("WARNING_TEXT", () => {
     for (const code of ["merged_without_boolean", "normal_flipped", "curved_surface", "edge_overhang"]) {
       expect(WARNING_TEXT[code]).toBeTruthy();
     }
+  });
+});
+
+describe("embossWarningTexts (B66)", () => {
+  it("коды сервера → слова, служебный merged_without_boolean скрыт, неизвестный — как есть", () => {
+    expect(embossWarningTexts(["edge_overhang", "merged_without_boolean", "x_new"])).toEqual([
+      WARNING_TEXT.edge_overhang,
+      "x_new",
+    ]);
+    expect(embossWarningTexts(undefined)).toEqual([]);
   });
 });

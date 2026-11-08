@@ -19,7 +19,7 @@ import SliceCalc from "@/components/SliceCalc";
 import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
 import { editAgainHref } from "@/lib/editor/store";
-import { editorHref } from "@/lib/emboss";
+import { editorHref, embossWarningTexts } from "@/lib/emboss";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
   formatBytes,
@@ -145,6 +145,15 @@ export default function ModelPage() {
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
         </p>
+      )}
+      {/* B66: предупреждения сборки (надпись за краем, изгиб) раньше терялись — редактор уходил
+          сюда сразу после «готово». Клиент должен увидеть их до заказа. */}
+      {fromEmboss && embossWarningTexts(upload.emboss!.warnings).length > 0 && (
+        <ul className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--accent)" }} data-testid="emboss-warnings">
+          {embossWarningTexts(upload.emboss!.warnings).map((w) => (
+            <li key={w}>⚠ {w}</li>
+          ))}
+        </ul>
       )}
       {/* B60c: надпись из редактора можно поправить, не ставя её заново. */}
       {fromEmboss && editHref && (

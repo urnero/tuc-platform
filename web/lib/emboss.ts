@@ -117,6 +117,12 @@ export const WARNING_TEXT: Record<string, string> = {
     "Часть надписи выходит за край модели — эти буквы не напечатаются. Сдвиньте её к центру или уменьшите.",
 };
 
+/** Предупреждения сервера словами для страницы результата (B66): неизвестный код — как есть,
+ *  `merged_without_boolean` клиенту не показываем (о нём и так сказано в проверке сетки). */
+export function embossWarningTexts(warnings: string[] | undefined): string[] {
+  return (warnings ?? []).filter((w) => w !== "merged_without_boolean").map((w) => WARNING_TEXT[w] ?? w);
+}
+
 /** «12,5» → 12.5; пусто → NaN. */
 export function parseNumber(text: string): number {
   const t = text.trim().replace(",", ".");
