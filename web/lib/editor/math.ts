@@ -180,3 +180,35 @@ export function snapReach(sizeMm: number, longest: number): number {
 export function hitWithinReach(distance: number, lift: number, reach: number): boolean {
   return Math.abs(distance - lift) <= reach;
 }
+
+// --- камера редактора ----------------------------------------------------------------------
+
+export type CameraFitResult = { position: Vec3; target: Vec3; distance: number };
+
+/**
+ * Куда поставить камеру, чтобы модель целиком и крупно стояла в центре окна.
+ * `size` — габарит модели в сцене (x, y — высота, z), модель стоит на столе (y = 0)
+ * по центру. `aspect` — ширина/высота окна, `fovDeg` — вертикальный угол камеры.
+ *
+ * Цель — центр габарита. Дистанция — чтобы описанная вокруг модели сфера влезла
+ * в меньший из углов обзора (по высоте или по ширине), с запасом 15 %.
+ * Плоская модель (подставка, брелок: высота < 0,3 ширины) — смотрим круче, ≈ 55° к столу,
+ * чтобы в окне был её верх, а не бортик. Остальные — ≈ 30°, как обычный «вид три четверти».
+ */
+export function fitCamera(size: Vec3, aspect: number, fovDeg: number): CameraFitResult {
+  const [w, h, d] = size.map((v) => Math.max(v, 0.001)) as Vec3;
+  const target: Vec3 = [0, h / 2, 0];
+  const r = Math.sqrt(w * w + h * h + d * d) / 2;
+  const fovV = (fovDeg * Math.PI) / 180;
+  const fovH = 2 * Math.atan(Math.tan(fovV / 2) * Math.max(aspect, 0.1));
+  const distance = (r / Math.sin(Math.min(fovV, fovH) / 2)) * 1.15;
+  const flat = h < 0.3 * Math.max(w, d);
+  const elevation = ((flat ? 55 : 30) * Math.PI) / 180;
+  const horizontal = distance * Math.cos(elevation);
+  const position: Vec3 = [
+    horizontal * Math.SQRT1_2,
+    target[1] + distance * Math.sin(elevation),
+    horizontal * Math.SQRT1_2,
+  ];
+  return { position, target, distance };
+}

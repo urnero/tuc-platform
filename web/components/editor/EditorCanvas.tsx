@@ -40,6 +40,7 @@ import {
   snapReach,
   textWidthMm,
   transportUp,
+  fitCamera,
   type Vec3,
 } from "@/lib/editor/math";
 import { gizmoSize, useIsPhone } from "@/lib/editor/phone";
@@ -457,7 +458,7 @@ function Scene({ url, ext, scale = 1, store }: Props) {
     }
   }, [logo]);
 
-  const { object, fit, longest } = useMemo(() => {
+  const { object, fit, longest, size } = useMemo(() => {
     let obj: THREE.Object3D;
     if (loaded instanceof THREE.BufferGeometry) {
       obj = new THREE.Mesh(loaded, MATERIAL);
@@ -477,7 +478,8 @@ function Scene({ url, ext, scale = 1, store }: Props) {
     wrapper.position.set(-center.x, -box.min.y, -center.z);
     wrapper.updateMatrixWorld(true);
     const f: SceneFit = { offset: [-center.x, -box.min.y, -center.z] };
-    return { object: wrapper, fit: f, longest: Math.max(sz.x, sz.y, sz.z, 1) };
+    const size: Vec3 = [sz.x, sz.y, sz.z];
+    return { object: wrapper, fit: f, longest: Math.max(sz.x, sz.y, sz.z, 1), size };
   }, [loaded, scale]);
 
   const placing = tool === "text" || tool === "logo";
@@ -530,21 +532,29 @@ function Scene({ url, ext, scale = 1, store }: Props) {
         fadeDistance={longest * 6}
         infiniteGrid
       />
-      <CameraFit longest={longest} />
+      <CameraFit size={size} longest={longest} />
     </LogoShapes.Provider>
   );
 }
 
-/** Камера так, чтобы модель целиком попала в кадр (как в ModelViewer). */
-function CameraFit({ longest }: { longest: number }) {
+/** Камера так, чтобы модель целиком и крупно стояла в центре окна (`fitCamera`).
+ *  Ставится один раз на модель: поворот окна или клавиатура телефона вид не сбрасывают. */
+function CameraFit({ size, longest }: { size: Vec3; longest: number }) {
   const camera = useThree((s) => s.camera);
-  const dist = longest * 1.8;
+  const getState = useThree((s) => s.get);
+  const [w, h, d] = size;
+  const fit = useMemo(() => {
+    const { size: view } = getState();
+    const aspect = view.height > 0 ? view.width / view.height : 1;
+    const fov = camera instanceof THREE.PerspectiveCamera ? camera.fov : 45;
+    return fitCamera([w, h, d], aspect, fov);
+  }, [camera, getState, w, h, d]);
   useEffect(() => {
-    camera.position.set(dist, dist * 0.7, dist);
-    camera.lookAt(0, longest * 0.25, 0);
+    camera.position.set(...fit.position);
+    camera.lookAt(...fit.target);
     camera.updateProjectionMatrix();
-  }, [camera, dist, longest]);
-  return <OrbitControls makeDefault target={[0, longest * 0.25, 0]} minDistance={longest * 0.3} maxDistance={dist * 5} />;
+  }, [camera, fit]);
+  return <OrbitControls makeDefault target={fit.target} minDistance={longest * 0.3} maxDistance={fit.distance * 5} />;
 }
 
 export default function EditorCanvas(props: Props) {

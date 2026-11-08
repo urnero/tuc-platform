@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fitCamera,
   hitWithinReach,
   snapReach,
   cross,
@@ -148,5 +149,39 @@ describe("прилипание при перетаскивании (B66)", () =>
     expect(hitWithinReach(187, lift, 10)).toBe(true); // слегка ниже (выпуклая грань)
     expect(hitWithinReach(180 + 90, lift, 10)).toBe(false); // стенка с другой стороны подставки
     expect(hitWithinReach(180 - 60, lift, 10)).toBe(false);
+  });
+});
+
+describe("fitCamera", () => {
+  const angleToTable = (p: number[], t: number[]) =>
+    (Math.atan2(p[1] - t[1], Math.hypot(p[0] - t[0], p[2] - t[2])) * 180) / Math.PI;
+
+  it("куб: цель в центре, сфера влезает в кадр", () => {
+    const f = fitCamera([20, 20, 20], 1, 45);
+    expect(f.target).toEqual([0, 10, 0]);
+    const r = Math.sqrt(3 * 400) / 2;
+    expect(f.distance).toBeCloseTo((r / Math.sin(Math.PI / 8)) * 1.15, 5);
+    const dist = Math.hypot(...f.position.map((v, i) => v - f.target[i]));
+    expect(dist).toBeCloseTo(f.distance, 5);
+    expect(angleToTable(f.position, f.target)).toBeCloseTo(30, 5);
+  });
+
+  it("подставка 90×7×90: цель — середина высоты, камера круче", () => {
+    const f = fitCamera([90, 7, 90], 390 / 409, 45);
+    expect(f.target).toEqual([0, 3.5, 0]);
+    expect(angleToTable(f.position, f.target)).toBeCloseTo(55, 5);
+    // Видимая ширина окна на дистанции камеры — не больше чем вдвое шире подставки.
+    const fovH = 2 * Math.atan(Math.tan(Math.PI / 8) * (390 / 409));
+    const visible = 2 * f.distance * Math.tan(fovH / 2);
+    expect(visible).toBeLessThan(90 * 2);
+    expect(visible).toBeGreaterThan(90);
+  });
+
+  it("высокая стойка: цель на середине высоты, узкое окно отодвигает камеру", () => {
+    const wide = fitCamera([20, 150, 20], 1.6, 45);
+    const narrow = fitCamera([20, 150, 20], 0.5, 45);
+    expect(wide.target[1]).toBe(75);
+    expect(angleToTable(wide.position, wide.target)).toBeCloseTo(30, 5);
+    expect(narrow.distance).toBeGreaterThan(wide.distance);
   });
 });
