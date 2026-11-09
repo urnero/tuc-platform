@@ -18,7 +18,7 @@ import { FONTS, LIMITS, STATUS_TEXT, WARNING_TEXT } from "@/lib/emboss";
 import { fmt } from "@/lib/emboss";
 import type { ApplyState } from "@/lib/editor/apply";
 import { upAngle, rotateUp } from "@/lib/editor/math";
-import { useIsPhone } from "@/lib/editor/phone";
+import { panelHint, useIsPhone } from "@/lib/editor/phone";
 import { PINCH_MAX_MM, PREVIEW_COLORS } from "@/lib/editor/text3d";
 import {
   activeDraft,
@@ -42,7 +42,8 @@ export default function TextToolPanel({ uploadId, store, applyState }: Props) {
   const { job, error, working, apply, reset } = applyState;
   const selected = useEditor(store, selectedOverlay);
   /** На телефоне кнопки крупнее — под палец (B60b). */
-  const btn = useIsPhone() ? "md" : "sm";
+  const phone = useIsPhone();
+  const btn = phone ? "md" : "sm";
   const draft = useEditor(store, activeDraft);
   const gizmo = useEditor(store, (s) => s.gizmo);
   const overlays = useEditor(store, (s) => s.overlays);
@@ -68,13 +69,7 @@ export default function TextToolPanel({ uploadId, store, applyState }: Props) {
     <div className="flex flex-col gap-3" data-testid={isLogo ? "logo-tool" : "text-tool"}>
       <OverlayList store={store} size={btn} />
       <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-        {selected
-          ? `${what} выбран${isLogo ? "" : "а"}: тяните пальцем или мышью по поверхности (или стрелки гизмо), на телефоне — двумя пальцами меняйте размер.`
-          : isLogo && !hasLogo
-            ? "Загрузите SVG-логотип, затем нажмите на модель — он встанет в эту точку и прилипнет к поверхности."
-            : count === 0
-              ? `Наведите на модель и нажмите — ${what.toLowerCase()} встанет в эту точку и прилипнет к поверхности.`
-              : `Нажмите на ${isLogo ? "логотип" : "надпись"}, чтобы изменить, или на свободное место модели — поставить ещё.`}
+        {panelHint({ kind: isLogo ? "logo" : "text", phone, selected: Boolean(selected), hasLogo, count })}
       </p>
 
       {isLogo ? (
