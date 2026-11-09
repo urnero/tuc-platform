@@ -1,0 +1,47 @@
+# Сторож стендов (B54): каждые 30 минут дёргает /health прода и staging.
+# Прод не ответил два раза подряд → issue «Прод не отвечает с <дата>» с меткой outage —
+# GitHub пришлёт владельцу письмо. Ответил → issue закрывается. Логика — deploy/uptime.sh.
+# Токены не нужны: хватает встроенного GITHUB_TOKEN с правом на issues.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Память между запусками («сколько раз подряд не ответил») — файл .uptime-state в кэше.
+      # Ключ уникален для каждого запуска, restore-keys берёт самый свежий из прошлых.
+      - name: Состояние прошлого запуска
+        uses: actions/cache/restore@v4
+        with:
+          path: .uptime-state
+          key: uptime-state-${{ github.run_id }}
+          restore-keys: uptime-state-
+
+      - name: Проверить стенды
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: bash deploy/uptime.sh
+
+      - name: Сохранить состояние
+        if: always() && hashFiles('.uptime-state') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .uptime-state
+          key: uptime-state-${{ github.run_id }}-${{ github.run_attempt }}

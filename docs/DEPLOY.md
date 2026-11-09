@@ -121,6 +121,14 @@ cd /srv/tuc/prod && docker compose up -d
 - **Бэкап** БД прода: каждую ночь в 03:15 в `/srv/tuc/backups/prod-ГГГГ-ММ-ДД.sql.gz`, 14 дней.
   Восстановить: `zcat файл.sql.gz | docker compose exec -T postgres psql -U tuc -d tuc`.
   Папку с моделями `/srv/tuc/prod/data/` бэкап не трогает — при переезде копируйте её отдельно.
+- **Сторож стендов** (`.github/workflows/uptime.yml` + `deploy/uptime.sh`): каждые 30 минут GitHub
+  дёргает `https://broprint3d.ru/health` и `https://staging.broprint3d.ru/health`. Прод не ответил 200 два
+  раза подряд — открывается issue «Прод не отвечает с <дата>» с меткой `outage`, и GitHub присылает вам
+  письмо (если вы «смотрите» репозиторий — Watch → All Activity или хотя бы Issues). Пока прод лежит —
+  напоминание в том же issue раз в сутки; ответил — issue закрывается комментарием «Прод ответил <дата>».
+  Staging отдельного issue не заводит: «не отвечает» / «ответил» — комментарием в issue `outage`.
+  Ни токенов, ни сервера не нужно. Прогнать руками: `DRY_RUN=1 bash deploy/uptime.sh` (только печатает)
+  или без `DRY_RUN` после `gh auth login`. Запустить в GitHub вне расписания: Actions → Uptime → Run workflow.
 - **Цены, профили, каталог и редакторы** (`config/pricing.yaml`, `config/colors.yaml`, `profiles/`, `catalog/`, `editors/`) правятся в репозитории и приезжают деплоем.
   На сервере файлы репозитория не править: `deploy.sh` делает `git reset --hard`, правки пропадут.
 - **Редакторы деталей** (B21): модели строит worker (в его образе есть OpenSCAD), поэтому страница редактора
