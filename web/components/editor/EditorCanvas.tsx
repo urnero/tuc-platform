@@ -44,6 +44,7 @@ import {
   type Vec3,
 } from "@/lib/editor/math";
 import { gizmoSize, useIsPhone } from "@/lib/editor/phone";
+import { useSceneColors } from "@/lib/scene";
 import { buildLogoGeometry, logoAspect, logoShapes, parseLogoSvg } from "@/lib/editor/logo3d";
 import { buildTextGeometry, pinchSize, typefaceUrl } from "@/lib/editor/text3d";
 import { type EditorStore, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
@@ -438,6 +439,7 @@ function SelectedOverlay({
 
 /** Модель + наложения + обработка курсора. */
 function Scene({ url, ext, scale = 1, store }: Props) {
+  const scene = useSceneColors(); // цвета фона и сетки под тему сайта
   const loaded = useLoader(ext === "stl" ? STLLoader : ThreeMFLoader, url);
   const tool = useEditor(store, (s) => s.tool);
   const hover = useEditor(store, (s) => s.hover);
@@ -527,8 +529,8 @@ function Scene({ url, ext, scale = 1, store }: Props) {
         args={[longest * 4, longest * 4]}
         cellSize={longest > 100 ? 50 : longest > 20 ? 10 : 1}
         sectionSize={longest > 100 ? 100 : longest > 20 ? 50 : 10}
-        cellColor="#7a8a84"
-        sectionColor="#4fbfb2"
+        cellColor={scene.cell}
+        sectionColor={scene.section}
         fadeDistance={longest * 6}
         infiniteGrid
       />
@@ -558,9 +560,10 @@ function CameraFit({ size, longest }: { size: Vec3; longest: number }) {
 }
 
 export default function EditorCanvas(props: Props) {
+  const scene = useSceneColors(); // цвета фона и сетки под тему сайта
   return (
     <Canvas camera={{ fov: 45, near: 0.1, far: 100000 }} style={{ touchAction: "none" }} data-testid="editor-canvas">
-      <color attach="background" args={["#1a2220"]} />
+      <color attach="background" args={[scene.background]} />
       <ambientLight intensity={0.6} />
       <directionalLight position={[1, 2, 1]} intensity={1.2} />
       <directionalLight position={[-2, 1, -1]} intensity={0.4} />
