@@ -484,6 +484,11 @@ function Scene({ url, ext, scale = 1, store }: Props) {
     return { object: wrapper, fit: f, longest: Math.max(sz.x, sz.y, sz.z, 1), size };
   }, [loaded, scale]);
 
+  // Размер модели → стартовый размер надписи/логотипа под неё (store: defaultSizeMm).
+  useEffect(() => {
+    store.dispatch({ type: "model", longest: Math.round(longest * 10) / 10 });
+  }, [longest, store]);
+
   const placing = tool === "text" || tool === "logo";
 
   const hoverMatrix = useMemo(

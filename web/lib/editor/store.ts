@@ -52,6 +52,10 @@ export type EditorState = {
    * ползунок, щипок) — один шаг истории, а не сто.
    */
   lastEdit: string | null;
+  /** Самая длинная сторона модели, мм (приходит из 3D-окна, когда сетка загружена). */
+  modelLongest: number | null;
+  /** Клиент сам менял размер в черновике — стартовый размер под модель больше не подставляем. */
+  sizeTouched: boolean;
 };
 
 export type Action =
@@ -67,6 +71,7 @@ export type Action =
   | { type: "restore"; overlay: Overlay }
   | { type: "previewColor"; color: string }
   | { type: "logo"; logo: LogoInfo | null }
+  | { type: "model"; longest: number }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "reorder"; id: string; dir: -1 | 1 };
@@ -96,6 +101,8 @@ export const INITIAL_STATE: EditorState = {
   past: [],
   future: [],
   lastEdit: null,
+  modelLongest: null,
+  sizeTouched: false,
 };
 
 let counter = 0;
@@ -117,13 +124,26 @@ export function clampDraft(patch: Partial<OverlayDraft>): Partial<OverlayDraft> 
 }
 
 /**
- * Черновик под инструмент: «Текст» и «Логотип» — свой вид; при смене вида размер
- * возвращается к привычному (буквы 10 мм, логотип 20 мм в ширину).
+ * Стартовый размер надписи под модель: высота букв ≈ 1/12 самой длинной стороны, шаг 0,5 мм,
+ * от 3 до 20 мм (подставка 90 мм → 7,5; брелок 30 → 3; ваза 200 → 16,5). Логотип (ширина) — вдвое
+ * больше. Модель ещё не загружена (longest = null) — прежние 10 мм / 20 мм.
  */
-function draftFor(draft: OverlayDraft, tool: Tool): OverlayDraft {
+export function defaultSizeMm(longest: number | null, kind: "text" | "logo"): number {
+  if (longest === null || !Number.isFinite(longest) || longest <= 0) {
+    return kind === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm;
+  }
+  const text = clamp(Math.round((longest / 12) * 2) / 2, 3, 20);
+  return kind === "logo" ? text * 2 : text;
+}
+
+/**
+ * Черновик под инструмент: «Текст» и «Логотип» — свой вид; при смене вида размер
+ * возвращается к стартовому под модель (`defaultSizeMm`).
+ */
+function draftFor(draft: OverlayDraft, tool: Tool, longest: number | null): OverlayDraft {
   if (tool !== "text" && tool !== "logo") return draft;
   if (draft.kind === tool) return draft;
-  return { ...draft, kind: tool, size_mm: tool === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm };
+  return { ...draft, kind: tool, size_mm: defaultSizeMm(longest, tool) };
 }
 
 /**
@@ -164,7 +184,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         tool: action.tool,
         selectedId: null,
         hover: null,
-        draft: draftFor(state.draft, action.tool),
+        draft: draftFor(state.draft, action.tool, state.modelLongest),
       };
     case "hover":
       // Пока наложение выбрано, плашка под курсором не нужна — им управляет гизмо.
@@ -179,7 +199,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
       // переключается на его инструмент, иначе править было бы нечем.
       const o = state.overlays.find((x) => x.id === action.id);
       const tool = o && (state.tool === "text" || state.tool === "logo") ? o.kind : state.tool;
-      return { ...state, tool, selectedId: action.id, hover: null, lastEdit: null, draft: draftFor(state.draft, tool) };
+      return { ...state, tool, selectedId: action.id, hover: null, lastEdit: null, draft: draftFor(state.draft, tool, state.modelLongest) };
     }
     case "update": {
       if (!state.overlays.some((o) => o.id === action.id)) return state;
@@ -213,10 +233,21 @@ export function reduce(state: EditorState, action: Action): EditorState {
       return { ...state, gizmo: action.gizmo };
     case "logo":
       return { ...state, logo: action.logo };
+    case "model": {
+      // Сетка загрузилась: подставляем стартовый размер под модель, если клиент его ещё не трогал.
+      if (!(action.longest > 0)) return state;
+      const next = { ...state, modelLongest: action.longest };
+      if (state.sizeTouched) return next;
+      return { ...next, draft: { ...state.draft, size_mm: defaultSizeMm(action.longest, state.draft.kind) } };
+    }
     case "previewColor":
       return /^#[0-9a-f]{6}$/i.test(action.color) ? { ...state, previewColor: action.color } : state;
     case "draft":
-      return { ...state, draft: { ...state.draft, ...clampDraft(action.patch) } };
+      return {
+        ...state,
+        draft: { ...state.draft, ...clampDraft(action.patch) },
+        sizeTouched: state.sizeTouched || action.patch.size_mm !== undefined,
+      };
     case "restore":
       // Вернулись со страницы результата (B60c): прошлая надпись снова на модели и выбрана —
       // её можно двигать и править. Если она уже есть (повторный запрос) — не дублируем.
@@ -228,7 +259,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         overlays: [...state.overlays, action.overlay],
         selectedId: action.overlay.id,
         hover: null,
-        draft: draftFor(state.draft, action.overlay.kind),
+        draft: draftFor(state.draft, action.overlay.kind, state.modelLongest),
       };
     default:
       return state;

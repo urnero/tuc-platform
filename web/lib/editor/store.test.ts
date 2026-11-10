@@ -3,6 +3,7 @@ import { makePlacement } from "./math";
 import {
   activeDraft,
   createEditorStore,
+  defaultSizeMm,
   INITIAL_STATE,
   editAgainHref,
   overlayFromParams,
@@ -291,5 +292,35 @@ describe("история и несколько наложений (B65)", () => 
     expect(overlaysProblem(placed.overlays)).toBeNull();
     expect(overlaysProblem([])).toMatch(/Поставьте наложение/);
     expect(overlaysProblem(Array(MAX_OVERLAYS + 1).fill(a))).toMatch(/Не больше 10/);
+  });
+});
+
+describe("стартовый размер под модель", () => {
+  it("defaultSizeMm: ≈ 1/12 длинной стороны, шаг 0,5, 3–20 мм; логотип ×2", () => {
+    expect(defaultSizeMm(90, "text")).toBe(7.5); // подставка
+    expect(defaultSizeMm(30, "text")).toBe(3); // брелок — не меньше 3
+    expect(defaultSizeMm(200, "text")).toBe(16.5); // ваза
+    expect(defaultSizeMm(500, "text")).toBe(20); // не больше 20
+    expect(defaultSizeMm(90, "logo")).toBe(15);
+    expect(defaultSizeMm(null, "text")).toBe(10); // модель не загружена — как раньше
+    expect(defaultSizeMm(null, "logo")).toBe(20);
+  });
+
+  it("сетка загрузилась — черновик берёт размер под модель, и при смене инструмента тоже", () => {
+    const s = run([{ type: "model", longest: 90 }]);
+    expect(s.draft.size_mm).toBe(7.5);
+    expect(reduce(s, { type: "tool", tool: "logo" }).draft.size_mm).toBe(15);
+    const placed = reduce(s, { type: "place", placement: top });
+    expect(placed.overlays[0].size_mm).toBe(7.5);
+  });
+
+  it("клиент уже менял размер — не трогаем", () => {
+    const s = run([
+      { type: "draft", patch: { size_mm: 12 } },
+      { type: "model", longest: 30 },
+    ]);
+    expect(s.draft.size_mm).toBe(12);
+    // Текст без размера — не считается правкой размера.
+    expect(run([{ type: "draft", patch: { text: "ТУЦ" } }, { type: "model", longest: 30 }]).draft.size_mm).toBe(3);
   });
 });
