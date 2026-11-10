@@ -4,7 +4,8 @@
  * 3D-просмотр, который не тормозит первую загрузку страницы (UX perf /upload/[id]).
  * Правила — в lib/viewer.ts: на десктопе three.js грузится сам, когда окно видно и браузер
  * свободен; на телефоне — карточка с кнопкой «Показать модель в 3D».
- * Пропсы те же, что у ModelViewer.
+ * Пропсы те же, что у ModelViewer, плюс `source` (upload.source): результат надписи/раскраски
+ * грузит 3D сразу и на телефоне.
  */
 
 import dynamic from "next/dynamic";
@@ -17,7 +18,7 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   loading: () => <Box height={420}>Загружаем 3D-просмотр…</Box>,
 });
 
-type Props = ComponentProps<typeof ModelViewer>;
+type Props = ComponentProps<typeof ModelViewer> & { source?: string };
 
 function Box({ height, children }: { height: number; children: ReactNode }) {
   return (
@@ -31,14 +32,14 @@ function Box({ height, children }: { height: number; children: ReactNode }) {
   );
 }
 
-export default function LazyModelViewer(props: Props) {
+export default function LazyModelViewer({ source, ...props }: Props) {
   const height = props.height ?? 420;
   // Решаем сразу при первом рендере (на сервере компонент не рисуется — страница ждёт данные
   // загрузки), чтобы заглушка не меняла высоту после первого кадра (CLS).
   const [auto] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-    return shouldAutoLoad3D({ width: window.innerWidth, saveData: conn?.saveData });
+    return shouldAutoLoad3D({ width: window.innerWidth, saveData: conn?.saveData, source });
   });
   const [show, setShow] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

@@ -188,6 +188,7 @@ export default function ModelPage() {
         ext={upload.ext}
         scale={UNIT_SCALE[upload.units]}
         keepMaterials={Boolean(fromPaint)}
+        source={upload.source}
       />
 
       {/* Вход в редактор сразу под 3D (QA 08.11): раньше он был только в свёрнутом

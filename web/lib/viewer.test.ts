@@ -13,6 +13,15 @@ describe("shouldAutoLoad3D", () => {
   it("экономия трафика — по кнопке даже на десктопе", () => {
     expect(shouldAutoLoad3D({ width: 1440, saveData: true })).toBe(false);
   });
+  it("результат надписи/раскраски — сразу и на телефоне", () => {
+    expect(shouldAutoLoad3D({ width: 390, source: "emboss" })).toBe(true);
+    expect(shouldAutoLoad3D({ width: 390, source: "paint" })).toBe(true);
+    expect(shouldAutoLoad3D({ width: 390, source: "upload" })).toBe(false);
+    expect(shouldAutoLoad3D({ width: 390, source: "catalog" })).toBe(false);
+  });
+  it("результат редактора при экономии трафика — всё равно по кнопке", () => {
+    expect(shouldAutoLoad3D({ width: 390, source: "emboss", saveData: true })).toBe(false);
+  });
 });
 
 describe("placeholderHeight", () => {

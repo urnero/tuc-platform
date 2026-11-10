@@ -7,8 +7,14 @@
  *  - широкий экран (≥ 768 px) и нет «экономии трафика» — 3D грузится сам, но только когда
  *    окно просмотра видно и браузер свободен (после первого кадра);
  *  - телефон или «экономия трафика» — вместо 3D карточка с кнопкой «Показать модель в 3D»,
- *    three.js качается только по нажатию.
+ *    three.js качается только по нажатию;
+ *  - результат редактора (`source` = "emboss" — надпись/логотип, "paint" — раскраска) — 3D
+ *    грузится сам и на телефоне (QA 08.11, персона 4: «я же хочу посмотреть, что получилось»):
+ *    клиент пришёл сюда ради вида модели. Кроме «экономии трафика» — там по-прежнему кнопка.
  */
+
+/** Загрузки, у которых 3D грузится сразу и на телефоне: клиент только что их собрал. */
+export const EAGER_3D_SOURCES = ["emboss", "paint"] as const;
 
 /** Ширина, с которой 3D грузится без нажатия (как Tailwind `md`). */
 export const AUTO_3D_MIN_WIDTH = 768;
@@ -21,11 +27,14 @@ export type ViewerEnv = {
   width: number;
   /** navigator.connection?.saveData — включена «экономия трафика». */
   saveData?: boolean;
+  /** upload.source — откуда модель (upload, catalog, editor, emboss, paint). */
+  source?: string;
 };
 
 /** true — 3D грузится сам; false — ждём нажатия кнопки. */
 export function shouldAutoLoad3D(env: ViewerEnv): boolean {
   if (env.saveData) return false;
+  if (env.source && (EAGER_3D_SOURCES as readonly string[]).includes(env.source)) return true;
   return env.width >= AUTO_3D_MIN_WIDTH;
 }
 
