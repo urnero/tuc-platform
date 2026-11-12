@@ -110,6 +110,8 @@ def test_calc_qty_and_batch(simple):
     assert q.k_batch == 0.9
     assert q.unit_price == 945
     assert q.print_subtotal == 9450
+    # разбивка скидки считается в API: до скидки 1050 × 10, скидка 1050
+    assert (q.unit_price_full, q.print_subtotal_full, q.discount_rub) == (1050, 10500, 1050)
     assert q.postprocess_cost == 1500
     assert q.total == 10950
 
@@ -340,3 +342,13 @@ def test_estimate_price_uses_calc_price():
     grams, seconds = estimate_print(500.0, 600.0)
     q = estimate_price(p, material="PLA", volume_cm3=500.0, surface_cm2=600.0)
     assert q.total == calc_price(p, material="PLA", material_g=grams, print_time_s=seconds).total
+
+
+def test_batch_discount_breakdown_has_no_penny_tail(simple):
+    # без скидки: «до» = «после», скидка 0
+    q1 = calc_price(simple, material="PLA", material_g=50, print_time_s=7200, qty=1)
+    assert q1.unit_price_full == q1.unit_price and q1.discount_rub == 0
+    # со скидкой: «до» − скидка = «после» копейка в копейку
+    q = calc_price(simple, material="PLA", material_g=33.3, print_time_s=5000, qty=50)
+    assert q.k_batch < 1
+    assert round(q.print_subtotal_full - q.discount_rub, 2) == q.print_subtotal

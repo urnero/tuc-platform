@@ -81,6 +81,9 @@ describe("quoteLines", () => {
       k_batch: 0.9,
       unit_price: 614.79,
       print_subtotal: 6147.9,
+      unit_price_full: 683.1,
+      print_subtotal_full: 6831,
+      discount_rub: 683.1,
       postprocess: "sanding",
       postprocess_cost: 1500,
       delivery: "courier_moscow",
@@ -104,13 +107,17 @@ describe("quoteLines", () => {
     expect(quoteLines(q)[6].value).toBe("400 ₽");
   });
   it("тираж 50 шт −20 %: строки сходятся (UX 05.11, персона 3)", () => {
-    const q: Quote = { ...base, qty: 50, k_batch: 0.8, unit_price: 61.72, print_subtotal: 3086, total: 3086 };
+    const q: Quote = { ...base, qty: 50, k_batch: 0.8, unit_price: 61.72, print_subtotal: 3086, unit_price_full: 77.15, print_subtotal_full: 3857.5, discount_rub: 771.5, total: 3086 };
     expect(quoteLines(q).slice(0, 4)).toEqual([
       { label: "Цена за штуку без скидки", value: "77,15 ₽" },
       { label: "Печать × 50 шт", value: "3 857,50 ₽" },
       { label: "Скидка за тираж −20 %", value: "−771,50 ₽" },
       { label: "Печать со скидкой (61,72 ₽ за шт)", value: "3 086 ₽" },
     ]);
+  });
+  it("старый заказ без разбивки скидки: строки «до скидки» пропускаем", () => {
+    const q: Quote = { ...base, qty: 50, k_batch: 0.8, unit_price: 61.72, print_subtotal: 3086, total: 3086 };
+    expect(quoteLines(q)[0].label).toBe("Печать со скидкой (61,72 ₽ за шт)");
   });
   it("тираж без скидки: цена за штуку с копейками × тираж = сумма", () => {
     const q: Quote = { ...base, qty: 3, unit_price: 61.72, print_subtotal: 185.16, total: 500, min_order_applied: true };

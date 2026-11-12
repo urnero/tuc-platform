@@ -41,6 +41,10 @@ export type Quote = {
   machine_cost: number;
   unit_price: number;
   print_subtotal: number;
+  // Разбивка скидки за тираж приходит из API (старые заказы в БД её не содержат).
+  unit_price_full?: number;
+  print_subtotal_full?: number;
+  discount_rub?: number;
   min_order_applied: boolean;
   postprocess_cost: number;
   delivery_cost: number;
@@ -94,7 +98,6 @@ export function batchHint(batch: Pricing["batch"]): string {
 export function quoteLines(q: Quote): { label: string; value: string }[] {
   const lines: { label: string; value: string }[] = [];
   const perItem = q.qty > 1 ? ` × ${q.qty} шт` : "";
-  const r2 = (v: number) => Math.round(v * 100) / 100;
   if (q.qty === 1) {
     lines.push({ label: "Печать одного изделия", value: formatPrice(q.unit_price) });
   } else if (q.k_batch >= 1) {
@@ -106,12 +109,11 @@ export function quoteLines(q: Quote): { label: string; value: string }[] {
     // поэтому показываем цену за штуку ДО скидки, сумму до скидки, скидку в рублях
     // и итог. Скидка = «до» − «после», так строки сходятся копейка в копейку.
     const percent = Math.round((1 - q.k_batch) * 100);
-    const fullUnit = r2(q.unit_price / q.k_batch);
-    const fullSubtotal = r2(fullUnit * q.qty);
-    const discount = r2(fullSubtotal - q.print_subtotal);
-    lines.push({ label: "Цена за штуку без скидки", value: formatPriceExact(fullUnit) });
-    lines.push({ label: `Печать${perItem}`, value: formatPriceExact(fullSubtotal) });
-    lines.push({ label: `Скидка за тираж −${percent} %`, value: `−${formatPriceExact(discount)}` });
+    if (q.unit_price_full != null && q.print_subtotal_full != null && q.discount_rub != null) {
+      lines.push({ label: "Цена за штуку без скидки", value: formatPriceExact(q.unit_price_full) });
+      lines.push({ label: `Печать${perItem}`, value: formatPriceExact(q.print_subtotal_full) });
+      lines.push({ label: `Скидка за тираж −${percent} %`, value: `−${formatPriceExact(q.discount_rub)}` });
+    }
     lines.push({
       label: `Печать со скидкой (${formatPriceExact(q.unit_price)} за шт)`,
       value: formatPriceExact(q.print_subtotal),
