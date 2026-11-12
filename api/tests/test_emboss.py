@@ -838,3 +838,21 @@ def test_logo_aspect_from_svg(client):
     assert em._svg_aspect(uid) == 1.0  # логотипа нет
     em.logo_path(uid).write_bytes(SVG_OK)
     assert em._svg_aspect(uid) == pytest.approx(0.6)  # viewBox 100 × 60
+
+
+
+def test_svg_aspect_no_external_entities(client, tmp_path):
+    """QA 12.11: логотип хранится как прислал клиент — повторное чтение (пропорции) идёт через
+    тот же безопасный парсер: внешняя сущность (файл с сервера) не подставляется."""
+    uid = _upload(client)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("200")
+    svg = (
+        b'<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY w SYSTEM "file://'
+        + str(secret).encode()
+        + b'">]><svg xmlns="http://www.w3.org/2000/svg" width="&w;" height="100">'
+        b'<path d="M0 0 L10 0 L10 10 Z"/></svg>'
+    )
+    assert em.check_svg(svg) is not None  # загрузку такой файл не проходит
+    em.logo_path(uid).write_bytes(svg)  # а если всё же лёг на диск — чтение его не раскрывает
+    assert em._svg_aspect(uid) == 1.0  # файл не прочитан → пропорции по умолчанию

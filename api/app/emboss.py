@@ -141,13 +141,18 @@ def _local(tag: object) -> str:
     return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
 
 
+def safe_parser() -> etree.XMLParser:
+    """Парсер для чужого SVG: без подстановки сущностей (<!ENTITY …>), без сети, без огромных
+    деревьев. Логотип хранится как прислал клиент, поэтому каждое чтение — только через него."""
+    return etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+
+
 def check_svg(data: bytes) -> str | None:
     """Проверяет SVG-логотип. Возвращает текст ошибки или None, если файл годится."""
     if len(data) > MAX_LOGO_BYTES:
         return "Логотип больше 1 МБ."
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
     try:
-        root = etree.fromstring(data, parser)
+        root = etree.fromstring(data, safe_parser())
     except etree.XMLSyntaxError:
         return "Не удалось прочитать файл как SVG."
     if _local(root.tag) != "svg":
@@ -520,7 +525,7 @@ def _svg_aspect(upload_id: str | None) -> float:
     if not upload_id:
         return 1.0
     try:
-        root = etree.fromstring(logo_path(upload_id).read_bytes())
+        root = etree.fromstring(logo_path(upload_id).read_bytes(), safe_parser())
     except (OSError, etree.XMLSyntaxError):
         return 1.0
     box = (root.get("viewBox") or "").replace(",", " ").split()
