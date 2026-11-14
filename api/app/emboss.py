@@ -15,6 +15,7 @@
    такие операции на больших сетках минутами и падает на незамкнутых).
 
 POST   /api/v1/uploads/{id}/logo              — загрузить SVG-логотип (≤ 1 МБ) к загрузке.
+GET    /api/v1/uploads/{id}/logo              — сам SVG (редактор B62 рисует его на модели).
 DELETE /api/v1/uploads/{id}/logo              — убрать логотип.
 POST   /api/v1/uploads/{id}/embosses          — тело {"params": {...}}: проверка параметров
                                                 (422 с ошибками по полям), сборка. Размещение из
@@ -43,7 +44,7 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from lxml import etree
 from pydantic import BaseModel
@@ -112,6 +113,20 @@ COORD_MAX = 10_000.0  # мм: координаты точки размещени
 # B64: точка размещения должна лежать на поверхности модели с таким допуском (мм) — запас
 # overlap в emboss.scad 0,3 мм плюс погрешность округления и «толщина» грубой сетки клиента.
 CONTACT_TOL_MM = 1.0
+# B64a: изогнутая поверхность — нормали треугольников в радиусе размера надписи вокруг точки
+# расходятся с нормалью в точке больше чем на столько градусов. Тогда запас overlap в
+# emboss.scad поднимаем до глубины надписи, чтобы края букв не повисли над поверхностью.
+CURVED_MAX_DEG = 15.0
+OVERLAP_MM = 0.3  # обычный запас (как в emboss.scad)
+# Край модели под надписью (BUG QA 05.11): углы и середины сторон прямоугольника надписи
+# проецируем лучом на модель. Если под какой-то из этих точек поверхности нет или она ниже
+# плоскости надписи больше чем на допуск (CONTACT_TOL_MM + запас overlap) — буквы частично
+# висят за краем модели: предупреждение «edge_overhang».
+EDGE_FACE_COS = math.cos(math.radians(80))  # грань под ≥ 80° к нормали — край, не изгиб
+TEXT_CHAR_WIDTH = 0.62  # ширина буквы ≈ 0,62 размера — та же прикидка, что textWidthMm на сайте
+# B65: несколько наложений из редактора — одной сборкой. Первое лежит в params, остальные —
+# в params["more"] (каждое со своим размещением), наносятся по порядку списка.
+MAX_OVERLAYS = 10
 
 
 class EmbossError(ValueError):
@@ -126,13 +141,18 @@ def _local(tag: object) -> str:
     return tag.rsplit("}", 1)[-1] if isinstance(tag, str) else ""
 
 
+def safe_parser() -> etree.XMLParser:
+    """Парсер для чужого SVG: без подстановки сущностей (<!ENTITY …>), без сети, без огромных
+    деревьев. Логотип хранится как прислал клиент, поэтому каждое чтение — только через него."""
+    return etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+
+
 def check_svg(data: bytes) -> str | None:
     """Проверяет SVG-логотип. Возвращает текст ошибки или None, если файл годится."""
     if len(data) > MAX_LOGO_BYTES:
         return "Логотип больше 1 МБ."
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
     try:
-        root = etree.fromstring(data, parser)
+        root = etree.fromstring(data, safe_parser())
     except etree.XMLSyntaxError:
         return "Не удалось прочитать файл как SVG."
     if _local(root.tag) != "svg":
@@ -175,6 +195,28 @@ async def upload_logo(upload_id: str, file: UploadFile) -> dict:
     meta["logo"] = {"name": name, "size_bytes": len(data)}
     _save_meta(upload_dir(upload_id), meta)
     return meta
+
+
+@router.get("/api/v1/uploads/{upload_id}/logo")
+def get_logo(upload_id: str) -> Response:
+    """Отдать SVG-логотип модели — редактор (B62) выдавливает его контуры в окне просмотра.
+
+    Файл проверен при загрузке (check_svg: без скриптов и ссылок), но на всякий случай
+    запрещаем браузеру что-либо исполнять, если SVG откроют напрямую по ссылке.
+    """
+    load_meta(upload_id)  # 404, если модели нет
+    path = logo_path(upload_id)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Логотип не загружен.")
+    return Response(
+        content=path.read_bytes(),
+        media_type="image/svg+xml",
+        headers={
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.delete("/api/v1/uploads/{upload_id}/logo")
@@ -391,7 +433,36 @@ def surface_distance(mesh: trimesh.Trimesh, point) -> tuple[float, int]:
     return float(dist[i]), i
 
 
-def check_contact(mesh: trimesh.Trimesh, placement: dict) -> tuple[dict, list[str]]:
+def surface_spread(mesh: trimesh.Trimesh, point, normal, radius_mm: float) -> float:
+    """B64a: насколько изогнута поверхность вокруг точки — наибольший угол (градусы) между
+    нормалью в точке и нормалями треугольников, у которых есть точка ближе radius_mm.
+
+    Треугольники, смотрящие «назад» (угол больше 90°), не считаем: это обратная сторона
+    тонкой стенки, а не изгиб под надписью; почти перпендикулярные (≥ 80°) — тоже: это
+    соседняя грань у края модели. Вырожденные треугольники (нулевая нормаль) —
+    тоже пропускаем.
+    """
+    p = np.asarray(point, dtype=float)
+    n = np.asarray(normal, dtype=float)
+    tris = mesh.triangles
+    if len(tris) == 0:
+        return 0.0
+    closest = trimesh.triangles.closest_point(tris, np.repeat(p[None, :], len(tris), axis=0))
+    near = np.linalg.norm(closest - p, axis=1) <= radius_mm
+    normals = mesh.face_normals[near]
+    normals = normals[np.linalg.norm(normals, axis=1) > 0.5]
+    cos = normals @ n
+    # Обратная сторона тонкой стенки (> 90°) — не изгиб. Соседняя грань под прямым углом
+    # (≥ 80°) — это край модели, а не изгиб: его ловит edge_overhang.
+    cos = cos[cos > EDGE_FACE_COS]
+    if len(cos) == 0:
+        return 0.0
+    return float(np.degrees(np.arccos(np.clip(cos.min(), -1.0, 1.0))))
+
+
+def check_contact(
+    mesh: trimesh.Trimesh, placement: dict, size_mm: float | None = None
+) -> tuple[dict, list[str]]:
     """B64: размещение из редактора касается поверхности? Иначе EmbossError (→ 422).
 
     Точка дальше CONTACT_TOL_MM от сетки — надпись «висит в воздухе» (клиент тянул гизмо за
@@ -411,7 +482,132 @@ def check_contact(mesh: trimesh.Trimesh, placement: dict) -> tuple[dict, list[st
         x, up, normal = tangent_frame(-np.asarray(placement["normal"]), np.asarray(placement["up"]))
         placement = {**placement, "normal": _round_vec(normal, 6), "up": _round_vec(up, 6)}
         warnings.append("normal_flipped")
+    # B64a: изогнутая поверхность под надписью (size_mm — размер надписи/ширина логотипа).
+    if size_mm and surface_spread(mesh, placement["point"], placement["normal"], size_mm) > (
+        CURVED_MAX_DEG
+    ):
+        warnings.append("curved_surface")
     return placement, warnings
+
+
+def ray_hits(mesh: trimesh.Trimesh, origin, direction) -> np.ndarray:
+    """Расстояния вдоль луча до всех треугольников, которые он пересекает (по возрастанию).
+
+    Алгоритм Мёллера — Трумбора разом на numpy по всем треугольникам: rtree/embree, которые
+    нужны trimesh.ray, в зависимостях нет, а несколько лучей на 500 тыс. треугольников —
+    доли секунды.
+    """
+    o = np.asarray(origin, dtype=float)
+    d = np.asarray(direction, dtype=float)
+    tris = mesh.triangles
+    if len(tris) == 0:
+        return np.zeros(0)
+    v0 = tris[:, 0]
+    e1 = tris[:, 1] - v0
+    e2 = tris[:, 2] - v0
+    pvec = np.cross(d, e2)
+    det = np.einsum("ij,ij->i", e1, pvec)
+    ok = np.abs(det) > 1e-12
+    inv = np.zeros_like(det)
+    inv[ok] = 1.0 / det[ok]
+    tvec = o - v0
+    u = np.einsum("ij,ij->i", tvec, pvec) * inv
+    qvec = np.cross(tvec, e1)
+    v = (qvec @ d) * inv
+    t = np.einsum("ij,ij->i", e2, qvec) * inv
+    eps = 1e-9
+    hit = ok & (u >= -eps) & (v >= -eps) & (u + v <= 1 + eps) & (t > 0)
+    return np.sort(t[hit])
+
+
+def _svg_aspect(upload_id: str | None) -> float:
+    """Высота / ширина загруженного логотипа (по viewBox или width/height); не вышло — 1."""
+    if not upload_id:
+        return 1.0
+    try:
+        root = etree.fromstring(logo_path(upload_id).read_bytes(), safe_parser())
+    except (OSError, etree.XMLSyntaxError):
+        return 1.0
+    box = (root.get("viewBox") or "").replace(",", " ").split()
+    try:
+        if len(box) == 4 and float(box[2]) > 0:
+            return float(box[3]) / float(box[2])
+        w = float(re.sub(r"[a-z%]+$", "", root.get("width") or ""))
+        h = float(re.sub(r"[a-z%]+$", "", root.get("height") or ""))
+        return h / w if w > 0 and h > 0 else 1.0
+    except ValueError:
+        return 1.0
+
+
+def footprint_mm(params: dict, logo_aspect: float = 1.0) -> tuple[float, float]:
+    """Ширина и высота наложения в его плоскости (мм), без поворота angle.
+
+    Надпись — прикидка как у сайта (textWidthMm в web/lib/editor/math.ts): буква ≈ 0,62
+    размера, не уже одной буквы-квадрата; высота = размер. Логотип: ширина = size_mm,
+    высота — по пропорциям SVG.
+    """
+    size = float(params["size_mm"])
+    if params.get("kind") == "logo":
+        return size, size * logo_aspect
+    chars = max(1, len((params.get("text") or "").strip()))
+    return max(size, chars * size * TEXT_CHAR_WIDTH), size
+
+
+def edge_overhang(
+    mesh: trimesh.Trimesh,
+    placement: dict,
+    width: float,
+    height: float,
+    angle_deg: float = 0.0,
+    max_gap: float = CONTACT_TOL_MM + OVERLAP_MM,
+) -> float:
+    """Насколько (мм) прямоугольник надписи «висит» над моделью — 0, если лежит на ней.
+
+    Берём 4 угла и 4 середины сторон прямоугольника в плоскости надписи (касательная
+    плоскость в точке размещения) и пускаем из каждой луч внутрь модели (против нормали),
+    начиная чуть выше — на высоту надписи. Под точкой нет поверхности — висит на всю высоту
+    луча; поверхность ниже плоскости больше чем на max_gap — висит на эту разницу.
+    Поверхность выше плоскости (вогнутая) — не страшно: буквы утонут в модели.
+    """
+    x, y, n = tangent_frame(np.asarray(placement["normal"]), np.asarray(placement["up"]))
+    a = math.radians(angle_deg)
+    rx = math.cos(a) * x + math.sin(a) * y  # поворот angle в плоскости (как rotate в .scad)
+    ry = -math.sin(a) * x + math.cos(a) * y
+    p = np.asarray(placement["point"], dtype=float)
+    lift = max(width, height)  # начало луча над плоскостью надписи
+    worst = 0.0
+    for sx, sy in ((-1, -1), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0)):
+        sample = p + rx * (sx * width / 2) + ry * (sy * height / 2)
+        hits = ray_hits(mesh, sample + n * lift, -n)
+        if len(hits) == 0:
+            worst = max(worst, lift)
+            continue
+        gap = float(hits[0]) - lift  # > 0 — поверхность ниже плоскости надписи
+        if gap > max_gap:
+            worst = max(worst, gap)
+    return worst
+
+
+def _check_one(
+    mesh: trimesh.Trimesh, params: dict, upload_id: str | None = None
+) -> tuple[dict, list[str]]:
+    fixed, warnings = check_contact(mesh, params["placement"], params.get("size_mm"))
+    params = {**params, "placement": fixed}
+    curved = "curved_surface" in warnings
+    if curved:
+        # Запас «внутрь модели» = вся глубина: на изгибе края букв отходят от поверхности.
+        params["overlap_mm"] = max(OVERLAP_MM, float(params["depth_mm"]))
+    if params.get("size_mm"):
+        aspect = _svg_aspect(upload_id) if params.get("kind") == "logo" else 1.0
+        width, height = footprint_mm(params, aspect)
+        # На изогнутой поверхности края и так отходят (об этом curved_surface) — там ловим
+        # только «под краем надписи нет модели совсем».
+        overlap = params.get("overlap_mm", OVERLAP_MM)
+        max_gap = max(width, height) if curved else CONTACT_TOL_MM + overlap
+        angle = float(params.get("angle") or 0)
+        if edge_overhang(mesh, fixed, width, height, angle, max_gap) > 0:
+            warnings.append("edge_overhang")
+    return params, warnings
 
 
 def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, list[str]]:
@@ -419,14 +615,59 @@ def check_placement(upload_id: str, meta: dict, params: dict) -> tuple[dict, lis
 
     Загружает модель клиента целиком — так же, как inspect_file при загрузке; для файлов до
     100 МБ это секунды, зато клиент получает 422 сразу, а не ошибку сборки через минуту.
+    Несколько наложений (B65, params["more"]) проверяются на той же загруженной модели;
+    ошибка второго и дальше — с номером: «Наложение 2: …».
     """
-    placement = params.get("placement")
-    if not placement:
+    if not params.get("placement"):
         return params, []
     model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
     mesh = load_model(model_file, meta.get("units", "mm"))
-    fixed, warnings = check_contact(mesh, placement)
-    return {**params, "placement": fixed}, warnings
+    params, warnings = _check_one(mesh, params, upload_id)
+    more = []
+    for i, extra in enumerate(params.get("more") or [], start=2):
+        try:
+            extra, extra_warnings = _check_one(mesh, extra, upload_id)
+        except EmbossError as e:
+            raise EmbossError(f"Наложение {i}: {e}") from None
+        more.append(extra)
+        warnings += [w for w in extra_warnings if w not in warnings]
+    if more:
+        params["more"] = more
+    return params, warnings
+
+
+def validate_overlays(
+    raw_more: object, primary: dict, has_logo: bool
+) -> tuple[list[dict], dict[str, str]]:
+    """B65: остальные наложения из редактора (поле `more` запроса) → (чистые; ошибки).
+
+    Каждое — те же параметры, что у первого, и обязательно с размещением; первое тоже
+    должно быть из редактора. Ошибки — с номером наложения: «more.0.text».
+    """
+    if raw_more is None or raw_more == []:
+        return [], {}
+    if not isinstance(raw_more, list):
+        return [], {"more": "Ожидался список наложений."}
+    if len(raw_more) + 1 > MAX_OVERLAYS:
+        return [], {"more": f"Не больше {MAX_OVERLAYS} наложений за одну сборку."}
+    if not primary.get("placement"):
+        return [], {"more": "Несколько наложений — только из редактора (нужно размещение)."}
+    out: list[dict] = []
+    errors: dict[str, str] = {}
+    for i, raw in enumerate(raw_more):
+        clean, errs = validate_params(raw, has_logo)
+        if not errs and not clean.get("placement"):
+            errs = {"placement": "Нужно размещение на модели."}
+        for key, msg in errs.items():
+            errors[f"more.{i}.{key}"] = f"Наложение {i + 2}: {msg}"
+        out.append(clean)
+    return out, errors
+
+
+def all_overlays(params: dict) -> list[dict]:
+    """Все наложения сборки по порядку: первое (сами params) и остальные из params["more"]."""
+    first = {k: v for k, v in params.items() if k != "more"}
+    return [first, *(params.get("more") or [])]
 
 
 def _fmt(value: float) -> str:
@@ -442,6 +683,11 @@ def describe(params: dict, logo_name: str = "") -> str:
         font = FONT_LABELS[params["font"]] + (", жирный" if params["bold"] else "")
         what = f"Надпись «{params['text']}» ({font}) {_fmt(params['size_mm'])} мм"
         how = "выпуклая" if params["style"] == "raised" else "углублённая"
+    more = params.get("more") or []
+    if more:
+        # B65: несколько наложений — описания через «;».
+        first = {k: v for k, v in params.items() if k != "more"}
+        return "; ".join(describe(p, logo_name) for p in [first, *more])
     parts = [what, f"{how} {_fmt(params['depth_mm'])} мм"]
     placement = params.get("placement")
     if placement:
@@ -482,7 +728,9 @@ def job_id_for(upload_id: str, meta: dict, params: dict) -> str:
         [
             upload_id,
             meta.get("units", "mm"),
-            logo.stat().st_mtime_ns if params["kind"] == "logo" and logo.is_file() else 0,
+            logo.stat().st_mtime_ns
+            if any(p["kind"] == "logo" for p in all_overlays(params)) and logo.is_file()
+            else 0,
             params,
         ],
         sort_keys=True,
@@ -624,6 +872,8 @@ def _scad_params(params: dict, upload_id: str) -> dict:
         "style": params["style"],
         "logo_file": str(logo_path(upload_id).resolve()) if params["kind"] == "logo" else "",
         "angle": params["angle"],
+        # B64a: на изогнутой поверхности запас больше (см. check_placement)
+        "overlap": params.get("overlap_mm", OVERLAP_MM),
     }
 
 
@@ -631,6 +881,8 @@ def build_result_name(original_name: str, params: dict) -> str:
     """«bracket.stl» + надпись «ТУЦ» → «bracket + ТУЦ.stl»; логотип → «bracket + логотип.stl»."""
     stem = Path(original_name).stem[:120] or "model"
     what = f"«{params['text']}»" if params["kind"] == "text" else "логотип"
+    if params.get("more"):
+        what += f" и ещё {len(params['more'])}"
     return f"{stem} + {what}.stl"[:200]
 
 
@@ -644,21 +896,28 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
     params = record["params"]
     try:
         meta = load_meta(upload_id)
-        dec_file = decoration_path(upload_id, job_id)
-        run_openscad(SCAD_PATH, dec_file, _scad_params(params, upload_id))
-        dec = trimesh.load(dec_file, file_type="stl", force="mesh")
-        if not isinstance(dec, trimesh.Trimesh) or dec.is_empty:
-            raise EmbossError("Тиснение получилось пустым — проверьте надпись или логотип.")
         model_file = upload_dir(upload_id) / f"model.{meta['ext']}"
-        model = load_model(model_file, meta.get("units", "mm"))
-        placement = params.get("placement")
-        if placement:
-            # Редактор (B60): точка, нормаль и «верх» в мм в системе модели.
-            matrix = placement_transform(placement["point"], placement["normal"], placement["up"])
-        else:
-            matrix = face_transform(model.bounds, params["face"], params["dx"], params["dy"])
-        dec.apply_transform(matrix)
-        result, merge_warnings = merge(model, dec, params["style"])
+        result = load_model(model_file, meta.get("units", "mm"))
+        merge_warnings: list[str] = []
+        # B65: наложения по порядку, каждое — на результат предыдущего (врезанное после
+        # выпуклого прорежет и его). Обычно наложение одно.
+        for i, one in enumerate(all_overlays(params)):
+            dec_file = decoration_path(upload_id, job_id if i == 0 else f"{job_id}-{i}")
+            run_openscad(SCAD_PATH, dec_file, _scad_params(one, upload_id))
+            dec = trimesh.load(dec_file, file_type="stl", force="mesh")
+            if not isinstance(dec, trimesh.Trimesh) or dec.is_empty:
+                raise EmbossError("Тиснение получилось пустым — проверьте надпись или логотип.")
+            placement = one.get("placement")
+            if placement:
+                # Редактор (B60): точка, нормаль и «верх» в мм в системе модели.
+                matrix = placement_transform(
+                    placement["point"], placement["normal"], placement["up"]
+                )
+            else:
+                matrix = face_transform(result.bounds, one["face"], one["dx"], one["dy"])
+            dec.apply_transform(matrix)
+            result, step_warnings = merge(result, dec, one["style"])
+            merge_warnings += [w for w in step_warnings if w not in merge_warnings]
         warnings = [
             w for w in record.get("warnings", []) if w != "merged_without_boolean"
         ] + merge_warnings
@@ -723,6 +982,8 @@ def run_emboss(upload_id: str, job_id: str) -> dict:
 
 class EmbossRequest(BaseModel):
     params: dict = {}
+    # B65: остальные наложения из редактора (у каждого своё размещение) — одной сборкой.
+    more: list = []
 
 
 async def _enqueue(request: Request, upload_id: str, job_id: str, attempt: int = 0) -> None:
@@ -754,7 +1015,12 @@ def emboss_options() -> dict:
 )
 async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -> dict:
     meta = load_meta(upload_id)
-    params, errors = validate_params(body.params, has_logo=logo_path(upload_id).is_file())
+    has_logo = logo_path(upload_id).is_file()
+    params, errors = validate_params(body.params, has_logo=has_logo)
+    if not errors:
+        more, errors = validate_overlays(body.more, params, has_logo)
+        if more:
+            params["more"] = more
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors})
     try:
@@ -780,7 +1046,7 @@ async def create_emboss(upload_id: str, body: EmbossRequest, request: Request) -
     attempt = jobs.next_attempt(record)  # была ошибка/брошена → повтор под новым id задачи
     record = new_job(upload_id, job_id, params)
     record["attempt"] = attempt
-    record["warnings"] = contact_warnings  # «normal_flipped» — дополнится при сборке
+    record["warnings"] = contact_warnings  # предупреждения проверки; дополнятся при сборке
     save_job(record)
     if settings.redis_url:
         try:

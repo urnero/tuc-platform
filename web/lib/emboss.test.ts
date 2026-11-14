@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  WARNING_TEXT,
   DEFAULT_FORM,
+  EDITOR_CHIPS,
+  editorHref,
+  embossWarningTexts,
   FACES,
   fmt,
   parseNumber,
@@ -85,5 +89,41 @@ describe("мелочи", () => {
   it("грани — все шесть, спереди первая", () => {
     expect(FACES.map((f) => f.value).sort()).toEqual(["back", "bottom", "front", "left", "right", "top"]);
     expect(FACES[0].value).toBe("front");
+  });
+});
+
+describe("ссылка на редактор (B62a)", () => {
+  it("без инструмента и сразу с инструментом «Логотип»", () => {
+    expect(editorHref("abc")).toBe("/upload/abc/edit");
+    expect(editorHref("abc", "logo")).toBe("/upload/abc/edit?tool=logo");
+    expect(editorHref("abc", "text")).toBe("/upload/abc/edit?tool=text");
+    expect(editorHref("abc", "color")).toBe("/upload/abc/edit?tool=color");
+  });
+
+  it("чипы под 3D ведут в три инструмента редактора", () => {
+    expect(EDITOR_CHIPS.map((c) => c.label)).toEqual(["Надпись", "Логотип", "Цвет"]);
+    expect(EDITOR_CHIPS.map((c) => editorHref("u1", c.tool))).toEqual([
+      "/upload/u1/edit?tool=text",
+      "/upload/u1/edit?tool=logo",
+      "/upload/u1/edit?tool=color",
+    ]);
+  });
+});
+
+describe("WARNING_TEXT", () => {
+  it("есть понятный текст для всех предупреждений сервера", () => {
+    for (const code of ["merged_without_boolean", "normal_flipped", "curved_surface", "edge_overhang"]) {
+      expect(WARNING_TEXT[code]).toBeTruthy();
+    }
+  });
+});
+
+describe("embossWarningTexts (B66)", () => {
+  it("коды сервера → слова, служебный merged_without_boolean скрыт, неизвестный — как есть", () => {
+    expect(embossWarningTexts(["edge_overhang", "merged_without_boolean", "x_new"])).toEqual([
+      WARNING_TEXT.edge_overhang,
+      "x_new",
+    ]);
+    expect(embossWarningTexts(undefined)).toEqual([]);
   });
 });

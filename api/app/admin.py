@@ -9,7 +9,8 @@ GET  /admin/orders/{id}             — карточка: клиент, сост
 POST /admin/orders/{id}/status      — поставить статус (форма из карточки).
 GET  /admin/orders/{id}/file        — файл модели клиента (STL/3MF).
 GET  /admin/orders/{id}/gcode       — G-code, если расчёт печати делал настоящий слайсер.
-GET  /admin/leads                   — заявки «цена по запросу» (смолы, B44), новые сверху.
+GET  /admin/leads                   — все заявки (B44, B52), новые сверху.
+GET  /admin/leads/{id}/photo        — фото из заявки «без модели» (B52).
 
 Почему HTML из FastAPI, а не страница в Next: basic auth сам работает в браузере при
 переходе по ссылке (на скачивание файла тоже), не нужен ни вход, ни сессии, ни JS.
@@ -40,6 +41,7 @@ from app.config import settings
 from app.db import get_db
 from app.events import funnel, funnel_percents
 from app.export import COLUMNS, MSK, fmt_dt, order_rows, paid_at_by_order
+from app.leads import KIND_TITLES, lead_photo_path
 from app.models import ORDER_STATUSES, Lead, Order, Payment
 from app.orders import StatusError, change_status, order_number, parse_order_number
 from app.telegram import (
@@ -388,12 +390,29 @@ def download_gcode(_: Admin, db: Db, order_id: int) -> FileResponse:
 
 @router.get("/leads", include_in_schema=False)
 def leads_page(request: Request, user: Admin, db: Db):
-    """Заявки «цена по запросу» (B44). Здесь они видны, даже если Telegram не настроен."""
+    """Все заявки (B44, B52). Здесь они видны, даже если Telegram не настроен."""
     leads = list(db.scalars(select(Lead).order_by(Lead.id.desc()).limit(LEADS_LIMIT)))
     total = db.scalar(select(func.count()).select_from(Lead)) or 0
     names = {key: m.name for key, m in materials.load_materials().items()}
     return templates.TemplateResponse(
         request,
         "admin/leads.html",
-        {"user": user, "leads": leads, "total": total, "limit": LEADS_LIMIT, "names": names},
+        {
+            "user": user,
+            "leads": leads,
+            "total": total,
+            "limit": LEADS_LIMIT,
+            "names": names,
+            "kinds": KIND_TITLES,
+        },
     )
+
+
+@router.get("/leads/{lead_id}/photo", include_in_schema=False)
+def lead_photo(lead_id: int, _: Admin, db: Db) -> FileResponse:
+    """Фото из заявки «без модели» (B52) — только владельцу, ссылка есть в Telegram и письме."""
+    lead = db.get(Lead, lead_id)
+    path = lead_photo_path(lead) if lead else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="Фото нет.")
+    return FileResponse(path, filename=f"lead-{lead_id}{path.suffix}")

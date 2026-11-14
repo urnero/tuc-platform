@@ -4,21 +4,22 @@
  * Страница загруженной модели (B03): 3D-просмотр, габариты, объём, предупреждения,
  * переключатель «файл в мм / в дюймах» (сохраняется на сервере — PATCH /api/v1/uploads/{id}),
  * блок «Расчёт печати и цены» (B04 + B05, components/SliceCalc.tsx) — сразу под габаритами,
- * ниже свёрнутое «Дополнительно»: надпись или логотип (B30, components/EmbossPanel.tsx)
+ * ниже свёрнутое «Дополнительно»: ссылки в редактор (надпись B61, логотип B62 — старая форма логотипа убрана в B62a)
  * и раскраска по частям (B31, components/PaintPanel.tsx).
  * Повтор заказа из кабинета (B32): параметры прошлого заказа приходят в адресе
  * (?material=…&qty=…, lib/account.ts: parsePreset) и подставляются в калькулятор.
  */
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import EmbossPanel from "@/components/EmbossPanel";
+import LazyModelViewer from "@/components/LazyModelViewer";
 import PaintPanel from "@/components/PaintPanel";
 import SliceCalc from "@/components/SliceCalc";
 import { Button } from "@/components/ui";
 import { parsePreset, type Preset } from "@/lib/account";
+import { editAgainHref } from "@/lib/editor/store";
+import { EDITOR_CHIPS, editorHref, embossWarningTexts } from "@/lib/emboss";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import {
   formatBytes,
@@ -28,19 +29,6 @@ import {
   type Upload,
   warningText,
 } from "@/lib/mesh";
-
-// Three.js работает только в браузере — не рендерим на сервере.
-const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
-  ssr: false,
-  loading: () => (
-    <div
-      className="flex h-[420px] items-center justify-center rounded-lg border"
-      style={{ borderColor: "var(--ink-muted)" }}
-    >
-      Загружаем 3D-просмотр…
-    </div>
-  ),
-});
 
 export default function ModelPage() {
   const { id } = useParams<{ id: string }>();
@@ -88,7 +76,7 @@ export default function ModelPage() {
     );
   }
   if (!upload) {
-    return <main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>;
+    return <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-16">Загружаем…</main>;
   }
 
   const m = upload.mesh;
@@ -99,10 +87,11 @@ export default function ModelPage() {
   const fromEditor = upload.source === "editor" && upload.editor;
   const fromEmboss = upload.source === "emboss" && upload.emboss;
   const fromPaint = upload.source === "paint" && upload.paint;
+  const editHref = fromEmboss ? editAgainHref(upload.emboss) : null;
   const knownUnits = fromCatalog || fromEditor || fromEmboss || fromPaint;
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-16">
       {fromCatalog ? (
         <Link
           href={`/catalog/${upload.catalog!.slug}`}
@@ -157,6 +146,23 @@ export default function ModelPage() {
           Это копия модели «{upload.emboss!.parent_name}» с тиснением: {upload.emboss!.summary}.
         </p>
       )}
+      {/* B66: предупреждения сборки (надпись за краем, изгиб) раньше терялись — редактор уходил
+          сюда сразу после «готово». Клиент должен увидеть их до заказа. */}
+      {fromEmboss && embossWarningTexts(upload.emboss!.warnings).length > 0 && (
+        <ul className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--accent)" }} data-testid="emboss-warnings">
+          {embossWarningTexts(upload.emboss!.warnings).map((w) => (
+            <li key={w}>⚠ {w}</li>
+          ))}
+        </ul>
+      )}
+      {/* B60c: надпись из редактора можно поправить, не ставя её заново. */}
+      {fromEmboss && editHref && (
+        <div>
+          <Button href={editHref} variant="secondary" size="sm">
+            Изменить в редакторе
+          </Button>
+        </div>
+      )}
       {fromPaint && (
         <div className="flex flex-col gap-2 text-sm" style={{ color: "var(--ink-muted)" }}>
           <p>
@@ -177,12 +183,29 @@ export default function ModelPage() {
         </div>
       )}
 
-      <ModelViewer
+      <LazyModelViewer
         url={fileUrl}
         ext={upload.ext}
         scale={UNIT_SCALE[upload.units]}
         keepMaterials={Boolean(fromPaint)}
+        source={upload.source}
       />
+
+      {/* Вход в редактор сразу под 3D (QA 08.11): раньше он был только в свёрнутом
+          «Дополнительно» ниже калькулятора. Раскрашенную модель в редактор не ведём —
+          см. пояснение в «Дополнительно». */}
+      {!fromPaint && (
+        <nav className="flex flex-wrap items-center gap-2" aria-label="Редактор модели" data-testid="editor-chips">
+          <span className="text-sm" style={{ color: "var(--ink-muted)" }}>
+            Добавить:
+          </span>
+          {EDITOR_CHIPS.map((c) => (
+            <Button key={c.tool} href={editorHref(upload.id, c.tool)} variant="ghost" size="sm">
+              {c.label}
+            </Button>
+          ))}
+        </nav>
+      )}
 
       <section
         className="flex flex-col gap-4 rounded-lg border p-6"
@@ -276,17 +299,22 @@ export default function ModelPage() {
             </p>
           ) : (
             <>
-              {/* Интерактивный редактор (B60): надпись ставится мышью прямо на поверхность. */}
-              <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
+              {/* Интерактивный редактор (B60): надпись и логотип ставятся мышью прямо на поверхность.
+                  Старой формы «Логотип на модели» больше нет (B62a) — только ссылки в редактор. */}
+              <div className="flex flex-col gap-3 rounded-lg border p-3" style={{ borderColor: "var(--line)" }} data-testid="editor-cta">
                 <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-                  Новый редактор: надпись ставится мышью или пальцем прямо на поверхность модели и
-                  двигается по ней.
+                  Надпись или логотип — в редакторе: ставятся мышью или пальцем прямо на поверхность,
+                  объёмные, видно сразу. Логотип — файл SVG.
                 </p>
-                <Button href={`/upload/${upload.id}/edit`} variant="secondary" size="sm">
-                  Открыть редактор
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button href={editorHref(upload.id)} variant="secondary" size="sm">
+                    Подписать в редакторе
+                  </Button>
+                  <Button href={editorHref(upload.id, "logo")} variant="secondary" size="sm">
+                    Логотип в редакторе
+                  </Button>
+                </div>
               </div>
-              <EmbossPanel uploadId={upload.id} logoName={upload.logo?.name ?? null} />
               {/* key: после смены «мм → дюймы» сервер удаляет разборку на детали — начинаем заново. */}
               <PaintPanel key={upload.units} uploadId={upload.id} />
             </>

@@ -9,6 +9,7 @@
 
 import { useSyncExternalStore } from "react";
 import { LIMITS, type EmbossFont, type EmbossParams, type EmbossStyle } from "../emboss";
+import { LOGO_DEFAULT_MM } from "./logo3d";
 import { type Placement, roundPlacement } from "./math";
 
 export type Tool = "text" | "logo" | "color" | "done";
@@ -27,6 +28,9 @@ export type OverlayDraft = {
 
 export type Overlay = OverlayDraft & { id: string; placement: Placement };
 
+/** Логотип модели (B62): один на загрузку, лежит на сервере (POST/GET …/uploads/{id}/logo). */
+export type LogoInfo = { name: string; svg: string };
+
 export type EditorState = {
   tool: Tool;
   overlays: Overlay[];
@@ -36,6 +40,22 @@ export type EditorState = {
   gizmo: Gizmo;
   /** Параметры для следующего наложения; при выборе наложения панель правит его, а не черновик. */
   draft: OverlayDraft;
+  /** Цвет надписей в окне (B61) — только для просмотра, на сервер не уходит. */
+  previewColor: string;
+  /** Загруженный SVG-логотип — его контуры видны в окне; null — ещё не загружен. */
+  logo: LogoInfo | null;
+  /** История (B65): прошлые списки наложений для «Отменить» и отменённые — для «Повторить». */
+  past: Overlay[][];
+  future: Overlay[][];
+  /**
+   * Ключ последней правки: подряд идущие правки одного поля одного наложения (набор текста,
+   * ползунок, щипок) — один шаг истории, а не сто.
+   */
+  lastEdit: string | null;
+  /** Самая длинная сторона модели, мм (приходит из 3D-окна, когда сетка загружена). */
+  modelLongest: number | null;
+  /** Клиент сам менял размер в черновике — стартовый размер под модель больше не подставляем. */
+  sizeTouched: boolean;
 };
 
 export type Action =
@@ -47,7 +67,17 @@ export type Action =
   | { type: "move"; id: string; placement: Placement }
   | { type: "remove"; id: string }
   | { type: "gizmo"; gizmo: Gizmo }
-  | { type: "draft"; patch: Partial<OverlayDraft> };
+  | { type: "draft"; patch: Partial<OverlayDraft> }
+  | { type: "restore"; overlay: Overlay }
+  | { type: "previewColor"; color: string }
+  | { type: "logo"; logo: LogoInfo | null }
+  | { type: "model"; longest: number }
+  | { type: "undo" }
+  | { type: "redo" }
+  | { type: "reorder"; id: string; dir: -1 | 1 };
+
+/** Сколько шагов назад помнит «Отменить». */
+export const HISTORY_MAX = 50;
 
 export const DEFAULT_DRAFT: OverlayDraft = {
   kind: "text",
@@ -66,6 +96,13 @@ export const INITIAL_STATE: EditorState = {
   hover: null,
   gizmo: "translate",
   draft: DEFAULT_DRAFT,
+  previewColor: "#f26a1b",
+  logo: null,
+  past: [],
+  future: [],
+  lastEdit: null,
+  modelLongest: null,
+  sizeTouched: false,
 };
 
 let counter = 0;
@@ -86,6 +123,58 @@ export function clampDraft(patch: Partial<OverlayDraft>): Partial<OverlayDraft> 
   return out;
 }
 
+/**
+ * Стартовый размер надписи под модель: высота букв ≈ 1/12 самой длинной стороны, шаг 0,5 мм,
+ * от 3 до 20 мм (подставка 90 мм → 7,5; брелок 30 → 3; ваза 200 → 16,5). Логотип (ширина) — вдвое
+ * больше. Модель ещё не загружена (longest = null) — прежние 10 мм / 20 мм.
+ */
+export function defaultSizeMm(longest: number | null, kind: "text" | "logo"): number {
+  if (longest === null || !Number.isFinite(longest) || longest <= 0) {
+    return kind === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm;
+  }
+  const text = clamp(Math.round((longest / 12) * 2) / 2, 3, 20);
+  return kind === "logo" ? text * 2 : text;
+}
+
+/**
+ * Черновик под инструмент: «Текст» и «Логотип» — свой вид; при смене вида размер
+ * возвращается к стартовому под модель (`defaultSizeMm`).
+ */
+function draftFor(draft: OverlayDraft, tool: Tool, longest: number | null): OverlayDraft {
+  if (tool !== "text" && tool !== "logo") return draft;
+  if (draft.kind === tool) return draft;
+  return { ...draft, kind: tool, size_mm: defaultSizeMm(longest, tool) };
+}
+
+/**
+ * Новый список наложений с записью в историю (B65). key — для склейки подряд идущих правок
+ * одного поля (null — всегда отдельный шаг). Выбор, если выбранного больше нет, снимается.
+ */
+function commit(state: EditorState, overlays: Overlay[], key: string | null, extra: Partial<EditorState> = {}): EditorState {
+  const same = key !== null && key === state.lastEdit;
+  const past = same ? state.past : [...state.past, state.overlays].slice(-HISTORY_MAX);
+  return { ...state, ...extra, overlays, past, future: [], lastEdit: key };
+}
+
+/** Шаг по истории: список наложений из стопки `from`, текущий — в стопку `to`. */
+function travel(state: EditorState, dir: "undo" | "redo"): EditorState {
+  const from = dir === "undo" ? state.past : state.future;
+  if (from.length === 0) return state;
+  const overlays = from[from.length - 1];
+  const rest = from.slice(0, -1);
+  const to = [...(dir === "undo" ? state.future : state.past), state.overlays];
+  const selectedId = overlays.some((o) => o.id === state.selectedId) ? state.selectedId : null;
+  return {
+    ...state,
+    overlays,
+    selectedId,
+    hover: null,
+    lastEdit: null,
+    past: dir === "undo" ? rest : to,
+    future: dir === "undo" ? to : rest,
+  };
+}
+
 export function reduce(state: EditorState, action: Action): EditorState {
   switch (action.type) {
     case "tool":
@@ -95,10 +184,7 @@ export function reduce(state: EditorState, action: Action): EditorState {
         tool: action.tool,
         selectedId: null,
         hover: null,
-        draft:
-          action.tool === "text" || action.tool === "logo"
-            ? { ...state.draft, kind: action.tool }
-            : state.draft,
+        draft: draftFor(state.draft, action.tool, state.modelLongest),
       };
     case "hover":
       // Пока наложение выбрано, плашка под курсором не нужна — им управляет гизмо.
@@ -106,30 +192,75 @@ export function reduce(state: EditorState, action: Action): EditorState {
     case "place": {
       if (state.tool !== "text" && state.tool !== "logo") return state;
       const overlay: Overlay = { ...state.draft, kind: state.tool, id: nextId(), placement: action.placement };
-      return { ...state, overlays: [...state.overlays, overlay], selectedId: overlay.id, hover: null };
+      return commit(state, [...state.overlays, overlay], null, { selectedId: overlay.id, hover: null });
     }
-    case "select":
-      return { ...state, selectedId: action.id, hover: null };
-    case "update":
-      return {
-        ...state,
-        overlays: state.overlays.map((o) => (o.id === action.id ? { ...o, ...clampDraft(action.patch) } : o)),
-      };
+    case "select": {
+      // Выбрали логотип, стоя на «Тексте» (из списка или кликом в окне), — панель
+      // переключается на его инструмент, иначе править было бы нечем.
+      const o = state.overlays.find((x) => x.id === action.id);
+      const tool = o && (state.tool === "text" || state.tool === "logo") ? o.kind : state.tool;
+      return { ...state, tool, selectedId: action.id, hover: null, lastEdit: null, draft: draftFor(state.draft, tool, state.modelLongest) };
+    }
+    case "update": {
+      if (!state.overlays.some((o) => o.id === action.id)) return state;
+      const patch = clampDraft(action.patch);
+      const key = `update:${action.id}:${Object.keys(patch).sort().join(",")}`;
+      return commit(state, state.overlays.map((o) => (o.id === action.id ? { ...o, ...patch } : o)), key);
+    }
     case "move":
-      return {
-        ...state,
-        overlays: state.overlays.map((o) => (o.id === action.id ? { ...o, placement: action.placement } : o)),
-      };
+      if (!state.overlays.some((o) => o.id === action.id)) return state;
+      // Перемещение приходит один раз в конце перетаскивания — каждое отдельный шаг.
+      return commit(state, state.overlays.map((o) => (o.id === action.id ? { ...o, placement: action.placement } : o)), null);
     case "remove":
-      return {
-        ...state,
-        overlays: state.overlays.filter((o) => o.id !== action.id),
+      if (!state.overlays.some((o) => o.id === action.id)) return state;
+      return commit(state, state.overlays.filter((o) => o.id !== action.id), null, {
         selectedId: state.selectedId === action.id ? null : state.selectedId,
-      };
+      });
+    case "reorder": {
+      // Порядок = порядок нанесения на сервере: врезанное после выпуклого прорежет и его.
+      const i = state.overlays.findIndex((o) => o.id === action.id);
+      const j = i + action.dir;
+      if (i < 0 || j < 0 || j >= state.overlays.length) return state;
+      const next = [...state.overlays];
+      [next[i], next[j]] = [next[j], next[i]];
+      return commit(state, next, null);
+    }
+    case "undo":
+      return travel(state, "undo");
+    case "redo":
+      return travel(state, "redo");
     case "gizmo":
       return { ...state, gizmo: action.gizmo };
+    case "logo":
+      return { ...state, logo: action.logo };
+    case "model": {
+      // Сетка загрузилась: подставляем стартовый размер под модель, если клиент его ещё не трогал.
+      if (!(action.longest > 0)) return state;
+      const next = { ...state, modelLongest: action.longest };
+      if (state.sizeTouched) return next;
+      return { ...next, draft: { ...state.draft, size_mm: defaultSizeMm(action.longest, state.draft.kind) } };
+    }
+    case "previewColor":
+      return /^#[0-9a-f]{6}$/i.test(action.color) ? { ...state, previewColor: action.color } : state;
     case "draft":
-      return { ...state, draft: { ...state.draft, ...clampDraft(action.patch) } };
+      return {
+        ...state,
+        draft: { ...state.draft, ...clampDraft(action.patch) },
+        sizeTouched: state.sizeTouched || action.patch.size_mm !== undefined,
+      };
+    case "restore":
+      // Вернулись со страницы результата (B60c): прошлая надпись снова на модели и выбрана —
+      // её можно двигать и править. Если она уже есть (повторный запрос) — не дублируем.
+      if (state.overlays.some((o) => o.id === action.overlay.id)) return state;
+      // В историю не пишем: это стартовое состояние страницы, «Отменить» его не убирает.
+      return {
+        ...state,
+        tool: action.overlay.kind,
+        overlays: [...state.overlays, action.overlay],
+        selectedId: action.overlay.id,
+        hover: null,
+        draft: draftFor(state.draft, action.overlay.kind, state.modelLongest),
+      };
     default:
       return state;
   }
@@ -166,12 +297,109 @@ export function toEmbossParams(o: Overlay): EmbossParams & { placement: Placemen
   };
 }
 
-/** Почему наложение нельзя отправить на сервер (null — можно). */
-export function overlayProblem(o: Overlay | null): string | null {
-  if (!o) return "Поставьте надпись на модель: наведите на поверхность и нажмите.";
-  if (o.kind === "text" && !o.text.trim()) return "Введите текст надписи.";
-  if (o.kind === "logo") return "Загрузка логотипа появится в следующей версии редактора.";
+/**
+ * Все наложения → тело запроса POST …/embosses (B65): первое в `params`, остальные в `more`.
+ * Сервер наносит их одной сборкой по порядку списка.
+ */
+export function toEmbossBody(overlays: Overlay[]): { params: ReturnType<typeof toEmbossParams>; more: ReturnType<typeof toEmbossParams>[] } | null {
+  if (overlays.length === 0) return null;
+  const [first, ...rest] = overlays;
+  return { params: toEmbossParams(first), more: rest.map(toEmbossParams) };
+}
+
+/** Подпись наложения в списке: «Надпись «Маше»» / «Логотип». */
+export function overlayLabel(o: OverlayDraft): string {
+  if (o.kind === "logo") return "Логотип";
+  const t = o.text.trim();
+  return t ? `Надпись «${t.length > 18 ? `${t.slice(0, 17)}…` : t}»` : "Надпись (пустая)";
+}
+
+/** Почему все наложения нельзя отправить (null — можно); у второго и дальше — с номером. */
+export function overlaysProblem(overlays: Overlay[], hasLogo = false): string | null {
+  if (overlays.length === 0) return overlayProblem(null);
+  if (overlays.length > MAX_OVERLAYS) return `Не больше ${MAX_OVERLAYS} наложений за одну сборку — уберите лишние.`;
+  for (let i = 0; i < overlays.length; i++) {
+    const problem = overlayProblem(overlays[i], hasLogo);
+    if (problem) return overlays.length > 1 ? `${i + 1}. ${overlayLabel(overlays[i])}: ${problem}` : problem;
+  }
   return null;
+}
+
+/** Не больше наложений за одну сборку — как MAX_OVERLAYS в api/app/emboss.py. */
+export const MAX_OVERLAYS = 10;
+
+/** Почему наложение нельзя отправить на сервер (null — можно). hasLogo — SVG уже загружен. */
+export function overlayProblem(o: Overlay | null, hasLogo = false): string | null {
+  if (!o) return "Поставьте наложение на модель: наведите на поверхность и нажмите.";
+  if (o.kind === "text" && !o.text.trim()) return "Введите текст надписи.";
+  if (o.kind === "logo" && !hasLogo) return "Сначала загрузите логотип (SVG).";
+  return null;
+}
+
+const isVec3 = (v: unknown): v is [number, number, number] =>
+  Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x));
+
+/**
+ * Обратно к `toEmbossParams` (B60c): параметры прошлой сборки (GET …/embosses/{job_id}) →
+ * наложение для стора. null — сборка старой формой (без `placement`): такую в редакторе
+ * не поставить, клиент правит её на странице модели. Логотип (B62) тоже возвращается —
+ * его SVG редактор берёт с сервера (GET …/uploads/{id}/logo).
+ * id наложения — `job-<job_id>`, чтобы повторная загрузка не добавила вторую копию.
+ */
+export function overlayFromParams(jobId: string, params: Record<string, unknown> | null | undefined): Overlay | null {
+  if (!params || (params.kind !== "text" && params.kind !== "logo")) return null;
+  const kind = params.kind;
+  const pl = params.placement as Record<string, unknown> | undefined;
+  if (!pl || !isVec3(pl.point) || !isVec3(pl.normal) || !isVec3(pl.up)) return null;
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  const mode = pl.mode === "engraved" || params.style === "engraved" ? "engraved" : "raised";
+  const font = params.font === "serif" || params.font === "mono" ? params.font : "sans";
+  const draft = clampDraft({
+    text: kind === "text" && typeof params.text === "string" ? params.text : "",
+    size_mm: num(pl.size_mm, num(params.size_mm, kind === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm)),
+    depth_mm: num(pl.depth_mm, num(params.depth_mm, DEFAULT_DRAFT.depth_mm)),
+  });
+  return {
+    ...DEFAULT_DRAFT,
+    ...draft,
+    kind,
+    font,
+    bold: params.bold !== false,
+    mode,
+    id: `job-${jobId}`,
+    placement: { point: pl.point, normal: pl.normal, up: pl.up },
+  };
+}
+
+/**
+ * Все наложения прошлой сборки (B65): первое из params, остальные из params.more.
+ * id остальных — `job-<job_id>-<номер>`. Пустой список — сборка старой формой.
+ */
+export function overlaysFromParams(jobId: string, params: Record<string, unknown> | null | undefined): Overlay[] {
+  const first = overlayFromParams(jobId, params);
+  if (!first || !params) return [];
+  const more = Array.isArray(params.more) ? params.more : [];
+  const rest = more
+    .map((p, i) => overlayFromParams(`${jobId}-${i + 1}`, p as Record<string, unknown>))
+    .filter((o): o is Overlay => o !== null);
+  return [first, ...rest];
+}
+
+/**
+ * ?tool=<инструмент> в ссылке на редактор (B62a): со страницы модели «Логотип в редакторе»
+ * открывает сразу инструмент «Логотип». Неизвестное значение — null (инструмент по умолчанию).
+ */
+export function toolFromParam(value: string | null | undefined): Tool | null {
+  return value === "text" || value === "logo" || value === "color" ? value : null;
+}
+
+/**
+ * Ссылка «Изменить в редакторе» со страницы результата (B60c): редактор исходной модели
+ * с прошлой надписью или логотипом. null — тиснение сделано старой формой.
+ */
+export function editAgainHref(emboss: { parent_id: string; job_id: string; params: Record<string, unknown> } | null | undefined): string | null {
+  if (!emboss || !overlayFromParams(emboss.job_id, emboss.params)) return null;
+  return `/upload/${encodeURIComponent(emboss.parent_id)}/edit?overlay=${encodeURIComponent(emboss.job_id)}`;
 }
 
 // --- хранилище для React -------------------------------------------------------------------

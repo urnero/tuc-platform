@@ -123,15 +123,15 @@ export default async function EditorPage({ params }: Params) {
         </ol>
         <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
           Материал по умолчанию — {editor.material}; при расчёте его можно поменять. Нужна другая деталь? Посмотрите{" "}
-          <Link href="/editors" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
+          <Link href="/editors" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             остальные редакторы
           </Link>
           ,{" "}
-          <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
+          <Link href="/catalog" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             каталог готовых моделей
           </Link>{" "}
           или{" "}
-          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
+          <Link href="/upload" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             загрузите свою
           </Link>
           .

@@ -83,6 +83,24 @@ export function rotateAround(v: Vec3, axis: Vec3, angle: number): Vec3 {
   return add(add(scale(v, c), scale(cross(k, v), s)), scale(k, dot(k, v) * (1 - c)));
 }
 
+/**
+ * Переход «за угол» (B60a): надпись переезжает с грани с нормалью fromNormal на грань с
+ * нормалью toNormal. «Верх» поворачиваем тем же наименьшим поворотом, который переводит
+ * старую нормаль в новую (как если бы плашку перегнули через ребро), — тогда буквы
+ * не переворачиваются и не крутятся, даже если старый верх смотрел ровно в новую нормаль
+ * (переезд с передней грани на крышку). Возвращает «верх», уже лежащий в новой плоскости.
+ */
+export function transportUp(up: Vec3, fromNormal: Vec3, toNormal: Vec3): Vec3 {
+  const a = normalize(fromNormal);
+  const b = normalize(toNormal);
+  const axis = cross(a, b);
+  const s = length(axis);
+  const c = dot(a, b);
+  // Грани почти параллельны — поворачивать нечего (или грань «напротив»: держим старый верх).
+  const turned = s < EPS ? up : rotateAround(up, axis, Math.atan2(s, c));
+  return tangentFrame(b, turned).up;
+}
+
 /** Повернуть «верх» наложения вокруг нормали на угол (радианы, против часовой, если смотреть снаружи). */
 export function rotateUp(p: Placement, angle: number): Placement {
   return makePlacement(p.point, p.normal, rotateAround(p.up, p.normal, angle));
@@ -144,4 +162,53 @@ export function roundPlacement(p: Placement): Placement {
 export function textWidthMm(text: string, sizeMm: number): number {
   const chars = Math.max(1, text.trim().length);
   return Math.max(sizeMm, chars * sizeMm * 0.62);
+}
+
+/**
+ * Как далеко от сдвинутой точки луч вдоль нормали ещё считает «ту же грань» (B66).
+ * Плоская грань — поверхность под точкой на 0 мм; слегка вогнутая/выпуклая — на доли размера
+ * надписи. Дальше — это уже другая сторона модели (круглая подставка: сдвиг по касательной
+ * уводит точку за силуэт, и обратный луч находил противоположную стенку — надпись «прыгала»
+ * через модель). Тогда правильнее переход «за угол» по лучу из камеры.
+ */
+export function snapReach(sizeMm: number, longest: number): number {
+  return Math.max(sizeMm, longest * 0.1);
+}
+
+/** Попадание луча вдоль нормали годится, если поверхность не дальше `reach` от точки.
+ *  `distance` — расстояние от начала луча (точка, отнесённая на `lift` вдоль нормали). */
+export function hitWithinReach(distance: number, lift: number, reach: number): boolean {
+  return Math.abs(distance - lift) <= reach;
+}
+
+// --- камера редактора ----------------------------------------------------------------------
+
+export type CameraFitResult = { position: Vec3; target: Vec3; distance: number };
+
+/**
+ * Куда поставить камеру, чтобы модель целиком и крупно стояла в центре окна.
+ * `size` — габарит модели в сцене (x, y — высота, z), модель стоит на столе (y = 0)
+ * по центру. `aspect` — ширина/высота окна, `fovDeg` — вертикальный угол камеры.
+ *
+ * Цель — центр габарита. Дистанция — чтобы описанная вокруг модели сфера влезла
+ * в меньший из углов обзора (по высоте или по ширине), с запасом 15 %.
+ * Плоская модель (подставка, брелок: высота < 0,3 ширины) — смотрим круче, ≈ 55° к столу,
+ * чтобы в окне был её верх, а не бортик. Остальные — ≈ 30°, как обычный «вид три четверти».
+ */
+export function fitCamera(size: Vec3, aspect: number, fovDeg: number): CameraFitResult {
+  const [w, h, d] = size.map((v) => Math.max(v, 0.001)) as Vec3;
+  const target: Vec3 = [0, h / 2, 0];
+  const r = Math.sqrt(w * w + h * h + d * d) / 2;
+  const fovV = (fovDeg * Math.PI) / 180;
+  const fovH = 2 * Math.atan(Math.tan(fovV / 2) * Math.max(aspect, 0.1));
+  const distance = (r / Math.sin(Math.min(fovV, fovH) / 2)) * 1.15;
+  const flat = h < 0.3 * Math.max(w, d);
+  const elevation = ((flat ? 55 : 30) * Math.PI) / 180;
+  const horizontal = distance * Math.cos(elevation);
+  const position: Vec3 = [
+    horizontal * Math.SQRT1_2,
+    target[1] + distance * Math.sin(elevation),
+    horizontal * Math.SQRT1_2,
+  ];
+  return { position, target, distance };
 }

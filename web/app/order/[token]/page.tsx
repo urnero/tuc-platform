@@ -33,7 +33,7 @@ import { DELIVERY_LABELS, POSTPROCESS_LABELS } from "@/lib/pricing";
 export default function OrderPage() {
   // useSearchParams требует Suspense в Next 15 при сборке статической страницы.
   return (
-    <Suspense fallback={<main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>}>
+    <Suspense fallback={<main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-16">Загружаем…</main>}>
       <OrderStatus />
     </Suspense>
   );
@@ -105,7 +105,7 @@ function OrderStatus() {
       </main>
     );
   }
-  if (!order) return <main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>;
+  if (!order) return <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-16">Загружаем…</main>;
 
   const stepIndex = STATUS_STEPS.indexOf(order.status);
   const cancelled = order.status === "cancelled";
@@ -113,7 +113,7 @@ function OrderStatus() {
   const notifications = notificationsBlock(order);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-16">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-bold leading-tight">Заказ {order.number}</h1>
         <span className="text-sm" style={{ color: "var(--ink-muted)" }}>

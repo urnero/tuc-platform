@@ -89,11 +89,19 @@ def test_logo_upload_and_delete(client):
     assert (settings.data_dir / "uploads" / uid / "logo.svg").read_bytes() == SVG_OK
     # в meta.json тоже
     assert client.get(f"/api/v1/uploads/{uid}").json()["logo"]["name"] == "Лого.svg"
+    # сам SVG — для редактора (B62); браузеру запрещено что-либо исполнять
+    r = client.get(f"/api/v1/uploads/{uid}/logo")
+    assert r.status_code == 200
+    assert r.content == SVG_OK
+    assert r.headers["content-type"].startswith("image/svg+xml")
+    assert "default-src 'none'" in r.headers["content-security-policy"]
 
     r = client.delete(f"/api/v1/uploads/{uid}/logo")
     assert r.status_code == 200
     assert "logo" not in r.json()
     assert not (settings.data_dir / "uploads" / uid / "logo.svg").exists()
+    assert client.get(f"/api/v1/uploads/{uid}/logo").status_code == 404
+    assert client.get("/api/v1/uploads/nope/logo").status_code == 404
 
 
 def test_logo_upload_rejects(client):
@@ -584,6 +592,43 @@ def test_surface_distance_and_contact_on_cube():
     assert flipped["normal"] == [1, 0, 0] and flipped["up"] == [0, 0, 1]
 
 
+def test_curved_surface_sphere_vs_cube():
+    """B64a: сфера r=20 с надписью 15 мм — изогнута; середина грани куба — нет."""
+    sphere = trimesh.creation.icosphere(subdivisions=4, radius=20)
+    top = {"point": [0, 0, 20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    assert em.surface_spread(sphere, top["point"], top["normal"], 15) > 30
+    assert em.check_contact(sphere, top, 15)[1] == ["curved_surface"]
+    assert em.check_contact(sphere, top)[1] == []  # без размера — не проверяем
+
+    cube = trimesh.creation.box(extents=(40, 40, 40))
+    face = {"point": [20, 0, 0], "normal": [1, 0, 0], "up": [0, 0, 1]}
+    assert em.surface_spread(cube, face["point"], face["normal"], 15) == pytest.approx(0.0)
+    assert em.check_contact(cube, face, 15)[1] == []
+    # тонкая пластина 2 мм: обратная сторона рядом, но это не изгиб
+    plate = trimesh.creation.box(extents=(60, 60, 2))
+    assert (
+        em.check_contact(
+            plate, {**face, "point": [0, 0, 1], "normal": [0, 0, 1], "up": [0, 1, 0]}, 15
+        )[1]
+        == []
+    )
+
+
+def test_scad_params_overlap():
+    base = {
+        "kind": "text",
+        "text": "Я",
+        "font": "sans",
+        "bold": False,
+        "size_mm": 10,
+        "depth_mm": 2.0,
+        "style": "raised",
+        "angle": 0,
+    }
+    assert em._scad_params(base, "x")["overlap"] == em.OVERLAP_MM
+    assert em._scad_params({**base, "overlap_mm": 2.0}, "x")["overlap"] == 2.0
+
+
 def test_contact_check_is_fast_on_big_sphere():
     """Проверка касания на ~330 тыс. треугольников — доли секунды (без rtree, чистый numpy)."""
     import time
@@ -606,7 +651,9 @@ def test_emboss_by_placement_on_sphere(client, fake_openscad):
     body = {"params": {"kind": "text", "text": "ТУЦ", "placement": placement}}
     job = client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()
     assert job["status"] == "done", job
-    assert job["warnings"] == []
+    # B64a: сфера r=20 под надписью 10 мм изогнута — предупреждение и запас = глубине
+    assert job["warnings"] == ["curved_surface"]
+    assert job["params"]["overlap_mm"] == job["params"]["depth_mm"]
     after = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()["mesh"]
     assert after["bbox_mm"]["z"] == pytest.approx(before["bbox_mm"]["z"] + 5, abs=0.2)
 
@@ -637,7 +684,7 @@ def test_emboss_by_placement_on_sphere(client, fake_openscad):
         },
     ).json()
     assert inward["status"] == "done", inward
-    assert inward["warnings"] == ["normal_flipped"]
+    assert inward["warnings"] == ["normal_flipped", "curved_surface"]
     assert inward["params"]["placement"]["normal"] == [0, 0, 1]
     assert inward["id"] == job["id"]  # после разворота — то же размещение, та же сборка
 
@@ -655,3 +702,157 @@ def test_emboss_placement_off_surface_422(client, fake_openscad):
     assert r.status_code == 422, r.text
     assert "не касается поверхности" in r.json()["detail"]["errors"]["placement.point"]
     assert not list(em.jobs_dir(uid).glob("*.json"))  # сборка не создавалась
+
+
+# --- B65: несколько наложений одной сборкой ------------------------------------------------
+
+
+def _pl(point, normal, up=(0, 0, 1), **extra):
+    return {"point": list(point), "normal": list(normal), "up": list(up), "size_mm": 8, **extra}
+
+
+def test_emboss_several_overlays_one_build(client, fake_openscad):
+    """Две надписи — на правой (+X) и левой (−X) гранях коробки 40×30×20: торчат с обеих сторон."""
+    uid = _upload(client)
+    body = {
+        "params": {"kind": "text", "text": "ТУЦ", "placement": _pl((20, 0, 0), (1, 0, 0))},
+        "more": [{"kind": "text", "text": "BRO", "placement": _pl((-20, 0, 0), (-1, 0, 0))}],
+    }
+    r = client.post(f"/api/v1/uploads/{uid}/embosses", json=body)
+    assert r.status_code == 202, r.text
+    job = r.json()
+    assert job["status"] == "done", job
+    assert len(job["params"]["more"]) == 1
+    meta = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()
+    assert meta["mesh"]["bbox_mm"] == {"x": 50, "y": 30, "z": 20}
+    assert "«ТУЦ»" in meta["emboss"]["summary"] and "«BRO»" in meta["emboss"]["summary"]
+    assert "; " in meta["emboss"]["summary"]
+    assert "и ещё 1" in meta["original_name"]
+    # другой порядок — другая сборка (порядок нанесения важен)
+    swapped = {"params": {**body["more"][0]}, "more": [body["params"]]}
+    again = client.post(f"/api/v1/uploads/{uid}/embosses", json=swapped)
+    assert again.status_code == 202 and again.json()["id"] != job["id"]
+
+
+def test_emboss_several_overlays_validation(client, fake_openscad):
+    uid = _upload(client)
+    first = {"kind": "text", "text": "ТУЦ", "placement": _pl((20, 0, 0), (1, 0, 0))}
+    second = {"kind": "text", "text": "", "placement": _pl((-20, 0, 0), (-1, 0, 0))}
+    url = f"/api/v1/uploads/{uid}/embosses"
+    # у второго нет текста → ошибка с номером
+    r = client.post(url, json={"params": first, "more": [second]})
+    assert r.status_code == 422
+    assert r.json()["detail"]["errors"]["more.0.text"].startswith("Наложение 2:")
+    # второе без размещения
+    r = client.post(url, json={"params": first, "more": [{"kind": "text", "text": "A"}]})
+    assert "more.0.placement" in r.json()["detail"]["errors"]
+    # первое без размещения (старая форма) — несколько нельзя
+    r = client.post(url, json={"params": {"kind": "text", "text": "A"}, "more": [first]})
+    assert "more" in r.json()["detail"]["errors"]
+    # слишком много
+    many = [first] * em.MAX_OVERLAYS
+    r = client.post(url, json={"params": first, "more": many})
+    assert "more" in r.json()["detail"]["errors"]
+    # второе висит в воздухе → 422 с номером, сборки нет
+    off = {"kind": "text", "text": "A", "placement": _pl((-30, 0, 0), (-1, 0, 0))}
+    r = client.post(url, json={"params": first, "more": [off]})
+    assert r.status_code == 422
+    assert r.json()["detail"]["errors"]["placement.point"].startswith("Наложение 2:")
+    assert not list(em.jobs_dir(uid).glob("*.json"))
+
+
+def test_all_overlays_and_describe():
+    p = {"kind": "text", "text": "A", "font": "sans", "bold": True, "size_mm": 5.0,
+         "depth_mm": 1.0, "style": "raised", "face": "top", "dx": 0.0, "dy": 0.0,
+         "angle": 0.0, "placement": None}
+    assert em.all_overlays(p) == [p]
+    both = {**p, "more": [{**p, "text": "B", "style": "engraved"}]}
+    assert [o["text"] for o in em.all_overlays(both)] == ["A", "B"]
+    assert "more" not in em.all_overlays(both)[0]
+    text = em.describe(both)
+    assert text.startswith("Надпись «A»") and "Надпись «B»" in text and "углублённая" in text
+
+
+# --- Край модели под надписью (BUG QA 05.11: буквы висели за краем грани) -------------------
+
+
+def test_footprint_text_and_logo():
+    w, h = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 10})
+    assert (w, h) == (pytest.approx(18.6), 10.0)  # 3 буквы × 0,62 × 10 — как textWidthMm
+    assert em.footprint_mm({"kind": "text", "text": "Я", "size_mm": 10}) == (10.0, 10.0)
+    assert em.footprint_mm({"kind": "logo", "size_mm": 20}, 0.6) == (20.0, pytest.approx(12.0))
+
+
+def test_edge_overhang_on_box():
+    """Коробка 40×30×20: «ТУЦ» 10 мм у верхнего правого угла передней грани (y = −15) висит
+    за краем; в центре грани — нет; повёрнутая на 90° узкая надпись у края — тоже висит."""
+    box = trimesh.creation.box(extents=(40, 30, 20))
+    w, h = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 10})
+    corner = {"point": [15, -15, 8.3], "normal": [0, -1, 0], "up": [0, 0, 1]}
+    assert em.edge_overhang(box, corner, w, h) > 3
+    assert em.edge_overhang(box, {**corner, "point": [0, -15, 0]}, w, h) == 0.0
+    # «I» 6 мм шириной 6 × 6 — влезает у края по X, но повернём длинную «ТУЦ» 6 мм на 90°:
+    # ширина 11,2 мм встаёт вертикально, а до верха грани всего 5 мм от точки (z = 5)
+    w6, h6 = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 6})
+    mid = {"point": [0, -15, 5], "normal": [0, -1, 0], "up": [0, 0, 1]}
+    assert em.edge_overhang(box, mid, w6, h6) == 0.0  # 11,2 × 6: верх на z = 8 — на грани
+    assert em.edge_overhang(box, mid, w6, h6, 90) > 0  # 6 × 11,2: верх на z = 10,6 — за краем
+
+
+def test_edge_overhang_curved_and_concave():
+    """Сфера: края надписи отходят (это curved_surface), но модель под ними есть — с большим
+    допуском не висит; с обычным допуском — висит. Вогнутость (буквы утонут) — не висит."""
+    sphere = trimesh.creation.icosphere(subdivisions=4, radius=20)
+    top = {"point": [0, 0, 20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    w, h = em.footprint_mm({"kind": "text", "text": "ТУЦ", "size_mm": 10})
+    assert em.edge_overhang(sphere, top, w, h, 0, max(w, h)) == 0.0
+    assert em.edge_overhang(sphere, top, w, h) > 2
+    # внутренняя поверхность чаши: точка на дне сферы изнутри, нормаль вверх (в полость)
+    bowl = {"point": [0, 0, -20], "normal": [0, 0, 1], "up": [0, 1, 0]}
+    assert em.edge_overhang(sphere, bowl, w, h) == 0.0
+
+
+def test_ray_hits():
+    box = trimesh.creation.box(extents=(10, 10, 10))
+    hits = em.ray_hits(box, [1, 2, 20], [0, 0, -1])  # не по диагонали треугольников
+    assert hits.tolist() == pytest.approx([15.0, 25.0])  # верхняя и нижняя грани
+    assert len(em.ray_hits(box, [20, 0, 20], [0, 0, -1])) == 0
+
+
+def test_emboss_edge_overhang_warning(client, fake_openscad):
+    """Через API: надпись у края грани собирается, но с предупреждением edge_overhang;
+    в центре грани — без предупреждений."""
+    uid = _upload(client)
+    edge = _pl((15, -15, 8.3), (0, -1, 0), size_mm=10)
+    body = {"params": {"kind": "text", "text": "ТУЦ", "placement": edge}}
+    job = client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()
+    assert job["status"] == "done", job
+    assert job["warnings"] == ["edge_overhang"]
+    center = _pl((0, -15, 0), (0, -1, 0), size_mm=10)
+    body = {"params": {"kind": "text", "text": "ТУЦ", "placement": center}}
+    assert client.post(f"/api/v1/uploads/{uid}/embosses", json=body).json()["warnings"] == []
+
+
+def test_logo_aspect_from_svg(client):
+    uid = _upload(client)
+    assert em._svg_aspect(uid) == 1.0  # логотипа нет
+    em.logo_path(uid).write_bytes(SVG_OK)
+    assert em._svg_aspect(uid) == pytest.approx(0.6)  # viewBox 100 × 60
+
+
+
+def test_svg_aspect_no_external_entities(client, tmp_path):
+    """QA 12.11: логотип хранится как прислал клиент — повторное чтение (пропорции) идёт через
+    тот же безопасный парсер: внешняя сущность (файл с сервера) не подставляется."""
+    uid = _upload(client)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("200")
+    svg = (
+        b'<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY w SYSTEM "file://'
+        + str(secret).encode()
+        + b'">]><svg xmlns="http://www.w3.org/2000/svg" width="&w;" height="100">'
+        b'<path d="M0 0 L10 0 L10 10 Z"/></svg>'
+    )
+    assert em.check_svg(svg) is not None  # загрузку такой файл не проходит
+    em.logo_path(uid).write_bytes(svg)  # а если всё же лёг на диск — чтение его не раскрывает
+    assert em._svg_aspect(uid) == 1.0  # файл не прочитан → пропорции по умолчанию

@@ -65,6 +65,7 @@
 ## Как это сделано на сайте (B40)
 
 - Токены — `web/app/globals.css`: `:root` (светлая), `@media (prefers-color-scheme: dark)` под `:root:not([data-theme="light"])` и `:root[data-theme="dark"]`. Те же токены отданы Tailwind через `@theme inline`, поэтому работают утилиты `bg-filament`, `text-ink-muted`, `border-line`, `font-display`, `hover:bg-sand` и т. д. База (шрифты заголовков) и компоненты лежат в `@layer base` / `@layer components`, чтобы утилиты Tailwind могли их переопределять.
+- Запасные шрифты (B53): `"Manrope Fallback"` и `"Unbounded Fallback"` в начале `globals.css` — системный Arial/Roboto с `size-adjust`/`ascent-override` под размеры наших шрифтов, стоят вторыми в `--font-sans`/`--font-display`. Пока шрифт грузится, строки переносятся так же, страница не прыгает (CLS). Сменили шрифт бренда — пересчитать числа `python web/scripts/fallback_metrics.py` (нужны `fonttools`, `brotli`).
 - Алиасы `--bg/--fg/--muted/--accent` → `surface/ink/ink-muted/filament-text`; все страницы до B40 переведены на токены напрямую (`var(--ink-muted)` и т. п.), кнопки действия — `var(--filament)` + `var(--on-filament)`.
 - Добавлен токен `--danger` (ошибки форм, статус «Отменён»): в брендбуке его нет, светлая `#B3261E`, тёмная `#FF7B72` (запись в DECISIONS.md).
 - Шрифты — `app/layout.tsx` импортирует `@fontsource/unbounded/700.css` и `@fontsource-variable/manrope` (семейство в CSS — `"Manrope Variable"`). Заголовки `h1/h2/h3` — Unbounded через базовые стили; классы `.t-display .t-heading .t-title .t-lead .t-caption` — для текста, который не заголовок.
@@ -78,6 +79,7 @@
 - Каталог — `components/CatalogBrowser.tsx`: «чипы» фильтра по категории и материалу (`aria-pressed`, активный — оранжевый), на телефоне ряд прокручивается вбок. Фильтр пишется в адрес `?cat=…&mat=…` (логика — `lib/catalog.ts`: `filterModels`, `parseFilter`, `filterQuery`). Без фильтра — разделы по категориям, с фильтром — одна сетка и «Нашли N моделей · Сбросить».
 - Карточка модели — `.card` без отступов, превью на `--sand`, материал бейджем поверх превью, кнопка «Заказать» — `.btn-sm`.
 - Страница модели — `components/ModelGallery.tsx`: вкладки-миниатюры «снимки + 3D»; Three.js грузится только по клику на «3D». Справа (на телефоне — ниже) липкая карточка с данными и «Заказать», внизу «Ещё в этой категории».
+- Окна 3D (`ModelViewer`, `EditorCanvas`) — фон `--surface`, мелкая сетка `--line`, крупная `--steel`; хук `useSceneColors` (`web/lib/scene.ts`) перекрашивает сцену при смене темы (переключатель или система).
 - Редактор — превью пересобирается само через `AUTO_BUILD_MS` (900 мс) после правки; пока строится новая версия, видна прошлая с бейджем «Обновляем превью…». У чисел с обеими границами — ползунок + поле, под полем «от X до Y мм · подсказка» (`lib/editors.ts::rangeHint`). На телефоне превью над формой.
 
 ## Главная как воронка (B41)

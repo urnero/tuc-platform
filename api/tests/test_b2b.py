@@ -197,3 +197,120 @@ def test_admin_shows_company_and_finds_by_inn(client, pricing_file, fake_slicer,
     assert found.text.count("BP-") >= 1 and "BP-2" not in found.text.split("<tbody>")[1]
     found = client.get("/admin/orders", params={"q": "ромашка"}, headers=auth)
     assert "по счёту" in found.text
+
+
+# --- Подсказка по ИНН (DaData) ---
+
+DADATA_ORG = {
+    "suggestions": [
+        {
+            "value": "ПАО СБЕРБАНК",
+            "data": {
+                "type": "LEGAL",
+                "kpp": "773601001",
+                "name": {"short_with_opf": "ПАО СБЕРБАНК"},
+                "address": {
+                    "value": "г Москва, ул Вавилова, д 19",
+                    "unrestricted_value": "117312, г Москва, ул Вавилова, д 19",
+                },
+                "state": {"status": "ACTIVE"},
+            },
+        }
+    ]
+}
+DADATA_IP = {
+    "suggestions": [
+        {
+            "value": "ИП Иванов Иван Иванович",
+            "data": {
+                "type": "INDIVIDUAL",
+                "kpp": None,
+                "name": {"short_with_opf": "ИП Иванов Иван Иванович"},
+                "address": {"value": "г Москва"},
+                "state": {"status": "LIQUIDATED"},
+            },
+        }
+    ]
+}
+
+
+@pytest.fixture
+def dadata(monkeypatch):
+    """Поддельная DaData: отвечает по ИНН из запроса, считает обращения."""
+    from app import b2b
+
+    calls: list[dict] = []
+    answers = {"7707083893": DADATA_ORG, "500100732259": DADATA_IP}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
+        body = json.loads(request.content)
+        calls.append({"body": body, "auth": request.headers.get("authorization")})
+        if body["query"] == "7736207543":
+            return httpx.Response(500)
+        return httpx.Response(200, json=answers.get(body["query"], {"suggestions": []}))
+
+    b2b.clear_cache()
+    monkeypatch.setattr(settings, "dadata_api_key", "test-key")
+    monkeypatch.setattr(b2b, "TRANSPORT", httpx.MockTransport(handler))
+    yield calls
+    b2b.clear_cache()
+
+
+def test_lookup_without_key_is_off(client, monkeypatch):
+    monkeypatch.setattr(settings, "dadata_api_key", "")
+    r = client.get("/api/v1/company/lookup", params={"inn": "7707083893"})
+    assert r.status_code == 200
+    assert r.json() == {"enabled": False, "found": False}
+
+
+def test_lookup_org(client, dadata):
+    r = client.get("/api/v1/company/lookup", params={"inn": "7707 083893"})
+    assert r.status_code == 200
+    assert r.json() == {
+        "enabled": True,
+        "found": True,
+        "name": "ПАО СБЕРБАНК",
+        "kpp": "773601001",
+        "address": "117312, г Москва, ул Вавилова, д 19",
+        "status": "ACTIVE",
+        "active": True,
+    }
+    assert dadata[0]["auth"] == "Token test-key"
+    assert dadata[0]["body"] == {"query": "7707083893", "branch_type": "MAIN"}
+    # Повтор того же ИНН — из памяти, DaData не дёргаем.
+    client.get("/api/v1/company/lookup", params={"inn": "7707083893"})
+    assert len(dadata) == 1
+
+
+def test_lookup_ip_has_no_kpp_and_flags_inactive(client, dadata):
+    body = client.get("/api/v1/company/lookup", params={"inn": "500100732259"}).json()
+    assert body["name"] == "ИП Иванов Иван Иванович"
+    assert body["kpp"] is None
+    assert body["active"] is False
+
+
+def test_lookup_not_found_and_errors_are_quiet(client, dadata):
+    assert client.get("/api/v1/company/lookup", params={"inn": "7728168971"}).json() == {
+        "enabled": True,
+        "found": False,
+    }
+    # DaData упала — не 500, а «не нашли».
+    assert client.get("/api/v1/company/lookup", params={"inn": "7736207543"}).json() == {
+        "enabled": True,
+        "found": False,
+    }
+
+
+def test_lookup_rejects_bad_inn(client, dadata):
+    r = client.get("/api/v1/company/lookup", params={"inn": "7707083890"})
+    assert r.status_code == 422
+    assert dadata == []
+
+
+def test_lookup_rate_limited(client, dadata, monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_lookup_per_min", 2)
+    for _ in range(2):
+        assert client.get("/api/v1/company/lookup", params={"inn": "7707083893"}).status_code == 200
+    assert client.get("/api/v1/company/lookup", params={"inn": "7707083893"}).status_code == 429

@@ -93,6 +93,24 @@ export const DEFAULT_FORM: EmbossForm = {
   angle: "0",
 };
 
+/**
+ * Ссылка на интерактивный редактор модели. tool — сразу открыть инструмент
+ * (B62a: «Логотип в редакторе» на странице модели вместо старой формы).
+ */
+export function editorHref(uploadId: string, tool?: "text" | "logo" | "color"): string {
+  return `/upload/${uploadId}/edit${tool ? `?tool=${tool}` : ""}`;
+}
+
+/**
+ * Чипы под окном 3D на странице модели (QA 08.11: вход в редактор был спрятан в свёрнутом
+ * «Дополнительно» ниже калькулятора). Каждый ведёт сразу в нужный инструмент редактора.
+ */
+export const EDITOR_CHIPS: { tool: "text" | "logo" | "color"; label: string }[] = [
+  { tool: "text", label: "Надпись" },
+  { tool: "logo", label: "Логотип" },
+  { tool: "color", label: "Цвет" },
+];
+
 export const STATUS_TEXT: Record<EmbossStatus, string> = {
   queued: "В очереди…",
   running: "Наносим…",
@@ -104,7 +122,16 @@ export const WARNING_TEXT: Record<string, string> = {
   merged_without_boolean:
     "Сетка модели не замкнута, поэтому надпись просто приложена к ней — слайсер соединит их при печати.",
   normal_flipped: "Поверхность модели в этой точке «вывернута»; надпись развернули наружу.",
+  curved_surface: "Поверхность изогнута — края надписи могут быть тоньше.",
+  edge_overhang:
+    "Часть надписи выходит за край модели — эти буквы не напечатаются. Сдвиньте её к центру или уменьшите.",
 };
+
+/** Предупреждения сервера словами для страницы результата (B66): неизвестный код — как есть,
+ *  `merged_without_boolean` клиенту не показываем (о нём и так сказано в проверке сетки). */
+export function embossWarningTexts(warnings: string[] | undefined): string[] {
+  return (warnings ?? []).filter((w) => w !== "merged_without_boolean").map((w) => WARNING_TEXT[w] ?? w);
+}
 
 /** «12,5» → 12.5; пусто → NaN. */
 export function parseNumber(text: string): number {

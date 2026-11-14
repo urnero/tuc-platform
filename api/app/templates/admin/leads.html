@@ -1,9 +1,9 @@
 {% extends "admin/base.html" %}
 {% block title %}Заявки{% endblock %}
 {% block content %}
-<h1>Заявки «цена по запросу» <span class="muted">({{ total }})</span></h1>
-{# Смолы и всё, что слайсер не считает (B44). Позвонить клиенту, посмотреть модель, назвать цену. #}
-<p class="muted">Клиент выбрал материал без автоматического расчёта и оставил контакты. Посмотрите модель и назовите цену.
+<h1>Заявки <span class="muted">({{ total }})</span></h1>
+{# «Цена по запросу» — смолы (B44); «перезвонить» — выходной попап; «без модели» — фото/описание (B52). #}
+<p class="muted">«Цена по запросу» — клиент выбрал смолу, посмотрите модель и назовите цену. «Перезвонить» — ушёл с сайта, не оформив заказ, оставил телефон. «Без модели» — файла нет, есть описание и, может быть, фото.
   {% if total > limit %}Показаны последние {{ limit }} — остальные SQL из docs/ANALYTICS.md.{% endif %}</p>
 
 {% if not leads %}
@@ -13,7 +13,7 @@
 <table>
   <thead>
     <tr>
-      <th>№</th><th>Создана (МСК)</th><th>Материал</th><th>Клиент</th><th>Комментарий</th><th>Модель</th><th>Telegram</th>
+      <th>№</th><th>Создана (МСК)</th><th>Вид</th><th>Материал</th><th>Клиент</th><th>Комментарий</th><th>Модель</th><th>Telegram</th>
     </tr>
   </thead>
   <tbody>
@@ -21,14 +21,15 @@
     <tr>
       <td><b>{{ l.id }}</b></td>
       <td>{{ l.created_at|dt }}</td>
-      <td>{{ names.get(l.material, l.material) }} × {{ l.qty }} шт</td>
+      <td>{{ kinds.get(l.kind, l.kind) }}{% if l.page %}<br><span class="muted">{{ l.page }}</span>{% endif %}</td>
+      <td>{% if l.material %}{{ names.get(l.material, l.material) }} × {{ l.qty }} шт{% elif l.qty > 1 %}{{ l.qty }} шт{% endif %}</td>
       {% if l.anonymized_at %}
       <td class="muted">обезличено {{ l.anonymized_at|dt }}</td><td></td>
       {% else %}
-      <td class="wrap">{{ l.name }}<br><a href="tel:{{ l.phone }}">{{ l.phone|phone }}</a>{% if l.email %}<br><a href="mailto:{{ l.email }}">{{ l.email }}</a>{% endif %}</td>
+      <td class="wrap">{{ l.name or '—' }}<br><a href="tel:{{ l.phone }}">{{ l.phone|phone }}</a>{% if l.email %}<br><a href="mailto:{{ l.email }}">{{ l.email }}</a>{% endif %}</td>
       <td class="wrap">{{ l.comment or '' }}</td>
       {% endif %}
-      <td><a href="/upload/{{ l.upload_id }}" target="_blank" rel="noopener">3D-просмотр ↗</a></td>
+      <td>{% if l.upload_id %}<a href="/upload/{{ l.upload_id }}" target="_blank" rel="noopener">3D-просмотр ↗</a>{% endif %}{% if l.photo %}{% if l.upload_id %}<br>{% endif %}<a href="/admin/leads/{{ l.id }}/photo" target="_blank" rel="noopener">Фото ↗</a>{% endif %}</td>
       <td>{% if l.telegram_sent %}✓ отправлена{% else %}<span class="muted" title="Бот не настроен (TELEGRAM_BOT_TOKEN) — заявка есть только здесь">—</span>{% endif %}</td>
     </tr>
   {% endfor %}

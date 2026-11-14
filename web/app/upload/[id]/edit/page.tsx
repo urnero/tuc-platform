@@ -4,19 +4,25 @@
  * Интерактивный редактор модели (B60, docs/EDITOR.md): /upload/[id]/edit.
  * Окно 3D-просмотра на весь экран, панель инструментов сбоку (десктоп) или снизу (телефон):
  * «Текст» — надпись ставится мышью/пальцем на поверхность (components/editor/EditorCanvas.tsx,
- * панель — TextToolPanel.tsx); «Логотип» — придёт в B62; «Цвет» — раскраска по частям (B63,
- * components/PaintPanel.tsx как есть); «Готово» — назад на страницу модели.
+ * панель — TextToolPanel.tsx); «Логотип» — то же для SVG-логотипа (B62, загрузка —
+ * editor/LogoUpload.tsx, SVG уже загруженного логотипа берём из GET …/logo); «Цвет» — раскраска по частям (B63,
+ * components/PaintPanel.tsx как есть); «Готово» — есть наложения: применить их (тот же useApply, что
+ * у «Применить», lib/editor/apply.ts) и уйти на результат; нет — назад на страницу модели.
  * Состояние редактора — одно хранилище lib/editor/store.ts, создаётся на страницу.
+ * ?overlay=<job_id> (B60c, «Изменить в редакторе» на странице результата): прошлая надпись или логотип
+ * читается из GET /api/v1/uploads/{id}/embosses/{job_id} и снова стоит на модели, выбранная.
+ * ?tool=logo|text|color (B62a): сразу открыть инструмент — так ведёт кнопка «Логотип в редакторе».
  */
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import TextToolPanel from "@/components/editor/TextToolPanel";
 import PaintPanel from "@/components/PaintPanel";
-import { Button } from "@/components/ui";
-import { createEditorStore, type Tool, useEditor } from "@/lib/editor/store";
+import { useApply } from "@/lib/editor/apply";
+import { gizmoHint } from "@/lib/editor/phone";
+import { createEditorStore, overlaysFromParams, type Tool, toolFromParam, useEditor } from "@/lib/editor/store";
 import { apiErrorText, caughtErrorText } from "@/lib/errors";
 import { UNIT_SCALE, type Upload } from "@/lib/mesh";
 
@@ -36,8 +42,14 @@ export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const store = useMemo(() => createEditorStore(), []);
   const tool = useEditor(store, (s) => s.tool);
+  const hasSelection = useEditor(store, (s) => s.selectedId !== null);
+  const gizmo = useEditor(store, (s) => s.gizmo);
+  const overlayCount = useEditor(store, (s) => s.overlays.length);
+  const router = useRouter();
+  const applyState = useApply(id, store);
   const [upload, setUpload] = useState<Upload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [restoreNote, setRestoreNote] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/v1/uploads/${id}`)
@@ -48,12 +60,62 @@ export default function EditorPage() {
       .catch((e: unknown) => setError(caughtErrorText(e)));
   }, [id]);
 
-  // Esc снимает выбор, Delete убирает выбранную надпись.
+  // У модели уже есть логотип (загружали раньше или старой формой) — берём его SVG,
+  // чтобы окно сразу показало контуры (B62). Не получилось — клиент загрузит заново.
+  const logoName = upload?.logo?.name;
+  useEffect(() => {
+    if (!logoName) return;
+    const ctrl = new AbortController();
+    fetch(`/api/v1/uploads/${id}/logo`, { signal: ctrl.signal })
+      .then(async (r) => {
+        if (r.ok) store.dispatch({ type: "logo", logo: { name: logoName, svg: await r.text() } });
+      })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [id, logoName, store]);
+
+  // ?tool=logo — со страницы модели «Логотип в редакторе» (B62a): сразу нужный инструмент.
+  useEffect(() => {
+    const tool = toolFromParam(new URLSearchParams(window.location.search).get("tool"));
+    if (tool) store.dispatch({ type: "tool", tool });
+  }, [store]);
+
+  // Вернулись с результата: кладём прошлую надпись в стор (B60c). Ошибка — не беда:
+  // редактор работает как обычно, клиент просто ставит надпись заново.
+  useEffect(() => {
+    const jobId = new URLSearchParams(window.location.search).get("overlay");
+    if (!jobId) return;
+    const ctrl = new AbortController();
+    fetch(`/api/v1/uploads/${id}/embosses/${encodeURIComponent(jobId)}`, { signal: ctrl.signal })
+      .then(async (r) => {
+        if (!r.ok) throw new Error("job");
+        const job = (await r.json()) as { params?: Record<string, unknown> };
+        // B65: в сборке могло быть несколько наложений — возвращаем все, по порядку.
+        const overlays = overlaysFromParams(jobId, job.params);
+        if (overlays.length === 0) throw new Error("params");
+        overlays.forEach((overlay) => store.dispatch({ type: "restore", overlay }));
+      })
+      .catch((e: unknown) => {
+        if ((e as Error)?.name === "AbortError") return;
+        setRestoreNote("Прошлое наложение открыть не удалось — поставьте его заново.");
+      });
+    return () => ctrl.abort();
+  }, [id, store]);
+
+  // Esc снимает выбор, Delete убирает выбранную надпись, Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y) —
+  // отменить / повторить (B65; на Mac — Cmd).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       const s = store.getState();
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (key === "z" || key === "y" || key === "я" || key === "н")) {
+        e.preventDefault();
+        const redo = key === "y" || key === "н" || e.shiftKey;
+        store.dispatch({ type: redo ? "redo" : "undo" });
+        return;
+      }
       if (e.key === "Escape") store.dispatch({ type: "select", id: null });
       if ((e.key === "Delete" || e.key === "Backspace") && s.selectedId) store.dispatch({ type: "remove", id: s.selectedId });
     }
@@ -62,6 +124,17 @@ export default function EditorPage() {
   }, [store]);
 
   const backHref = `/upload/${id}`;
+
+  // «✓ Готово»: наложения есть — наносим (статус и ошибки видны в панели «Текст»/«Логотип»),
+  // нет — просто назад к модели.
+  function done() {
+    if (overlayCount === 0) {
+      router.push(backHref);
+      return;
+    }
+    if (tool === "color") store.dispatch({ type: "tool", tool: store.getState().overlays[0]?.kind === "logo" ? "logo" : "text" });
+    void applyState.apply();
+  }
 
   if (error) {
     return (
@@ -90,12 +163,19 @@ export default function EditorPage() {
       >
         {TOOLS.map((t) =>
           t.value === "done" ? (
-            <Link key={t.value} href={backHref} className="flex flex-1 flex-col items-center gap-1 px-2 py-2 text-xs md:flex-none" data-testid="tool-done">
+            <button
+              key={t.value}
+              type="button"
+              onClick={done}
+              disabled={applyState.working}
+              className="flex flex-1 flex-col items-center gap-1 px-2 py-2 text-xs md:flex-none"
+              data-testid="tool-done"
+            >
               <span className="text-lg leading-none" aria-hidden>
                 {t.icon}
               </span>
-              {t.label}
-            </Link>
+              {applyState.working ? "Наносим…" : t.label}
+            </button>
           ) : (
             <button
               key={t.value}
@@ -137,6 +217,16 @@ export default function EditorPage() {
             <EditorCanvas url={`/api/v1/uploads/${upload.id}/file`} ext={upload.ext} scale={UNIT_SCALE[upload.units]} store={store} />
           </div>
         )}
+        {/* Подсказка на телефоне (B60b): наведения пальцем нет, поэтому говорим, что делать. */}
+        {upload && (tool === "text" || tool === "logo") && (
+          <p
+            className="pointer-events-none absolute bottom-2 left-2 right-2 z-10 rounded-lg px-3 py-1.5 text-center text-xs md:hidden"
+            style={{ background: "rgba(0,0,0,.55)", color: "#f3efe7" }}
+            data-testid="editor-phone-hint"
+          >
+            {hasSelection ? gizmoHint(gizmo, tool === "logo" ? "logo" : "text") : tool === "logo" ? "Коснитесь модели, чтобы поставить логотип" : "Коснитесь модели, чтобы поставить надпись"}
+          </p>
+        )}
       </section>
 
       {/* Панель параметров выбранного инструмента: справа на десктопе, над инструментами на телефоне. */}
@@ -146,18 +236,12 @@ export default function EditorPage() {
           style={{ borderColor: "var(--line)", background: "var(--surface-raised)" }}
           aria-label="Параметры инструмента"
         >
-          {tool === "text" && <TextToolPanel uploadId={upload.id} store={store} />}
-          {tool === "logo" && (
-            <div className="flex flex-col gap-3 text-sm" data-testid="logo-tool">
-              <p>Логотип в этом окне — скоро: SVG будет ложиться на поверхность так же, как надпись.</p>
-              <p style={{ color: "var(--ink-muted)" }}>
-                Пока логотип можно нанести по старой форме на странице модели, раздел «Дополнительно».
-              </p>
-              <Button href={backHref} variant="secondary" size="sm">
-                К форме логотипа
-              </Button>
-            </div>
+          {restoreNote && (tool === "text" || tool === "logo") && (
+            <p className="mb-2 text-sm" role="status" style={{ color: "var(--ink-muted)" }} data-testid="restore-note">
+              {restoreNote}
+            </p>
           )}
+          {(tool === "text" || tool === "logo") && <TextToolPanel key={tool} uploadId={upload.id} store={store} applyState={applyState} />}
         </aside>
       )}
     </main>

@@ -14,6 +14,7 @@ import {
   type Account,
   type AccountOrder,
   cleanCode,
+  fetchAccount,
   type LoginStep,
   loginError,
   ordersCountLabel,
@@ -30,13 +31,14 @@ export default function AccountPage() {
   const [account, setAccount] = useState<Account | null | undefined>(undefined); // undefined — ещё не знаем
 
   useEffect(() => {
-    fetch("/api/v1/account")
-      .then(async (r) => setAccount(r.ok ? ((await r.json()) as Account) : null))
-      .catch(() => setAccount(null));
+    fetchAccount().then(setAccount);
   }, []);
 
-  if (account === undefined) return <main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>;
-  if (account === null) return <LoginForm onLoggedIn={setAccount} />;
+  // Пока не знаем, вошёл ли клиент, — сразу показываем форму входа (она же в HTML с сервера):
+  // почти все, кто открывает /account, ещё не вошли. Раньше здесь было одно слово «Загружаем…»,
+  // главный текст появлялся только после запроса к API, а форма потом сдвигала подвал вниз —
+  // Lighthouse mobile давал 0.80 (B53). Вошедший клиент увидит форму на долю секунды, потом заказы.
+  if (account === undefined || account === null) return <LoginForm onLoggedIn={setAccount} />;
   return <Orders account={account} onLoggedOut={() => setAccount(null)} />;
 }
 

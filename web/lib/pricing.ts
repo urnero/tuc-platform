@@ -1,6 +1,6 @@
 /** Цена (B05): типы ответов API /pricing и /quote, подписи вариантов, строки разложения суммы. */
 
-import { formatPrice } from "./format";
+import { formatPrice, formatPriceExact } from "./format";
 
 /** GET /api/v1/pricing — прайс для формы. Числа — ₽. */
 export type Pricing = {
@@ -41,6 +41,10 @@ export type Quote = {
   machine_cost: number;
   unit_price: number;
   print_subtotal: number;
+  // Разбивка скидки за тираж приходит из API (старые заказы в БД её не содержат).
+  unit_price_full?: number;
+  print_subtotal_full?: number;
+  discount_rub?: number;
   min_order_applied: boolean;
   postprocess_cost: number;
   delivery_cost: number;
@@ -94,12 +98,26 @@ export function batchHint(batch: Pricing["batch"]): string {
 export function quoteLines(q: Quote): { label: string; value: string }[] {
   const lines: { label: string; value: string }[] = [];
   const perItem = q.qty > 1 ? ` × ${q.qty} шт` : "";
-  lines.push({ label: "Печать одного изделия", value: formatPrice(q.unit_price) });
-  if (q.qty > 1) {
-    lines.push({ label: `Печать${perItem}`, value: formatPrice(q.print_subtotal) });
-  }
-  if (q.k_batch < 1) {
-    lines.push({ label: "Скидка за тираж", value: `−${Math.round((1 - q.k_batch) * 100)} %` });
+  if (q.qty === 1) {
+    lines.push({ label: "Печать одного изделия", value: formatPrice(q.unit_price) });
+  } else if (q.k_batch >= 1) {
+    // Тираж без скидки: цена за штуку × тираж = сумма (с копейками, чтобы сходилось).
+    lines.push({ label: "Цена за штуку", value: formatPriceExact(q.unit_price) });
+    lines.push({ label: `Печать${perItem}`, value: formatPriceExact(q.print_subtotal) });
+  } else {
+    // Тираж со скидкой (UX 05.11, персона 3): unit_price из API уже со скидкой,
+    // поэтому показываем цену за штуку ДО скидки, сумму до скидки, скидку в рублях
+    // и итог. Скидка = «до» − «после», так строки сходятся копейка в копейку.
+    const percent = Math.round((1 - q.k_batch) * 100);
+    if (q.unit_price_full != null && q.print_subtotal_full != null && q.discount_rub != null) {
+      lines.push({ label: "Цена за штуку без скидки", value: formatPriceExact(q.unit_price_full) });
+      lines.push({ label: `Печать${perItem}`, value: formatPriceExact(q.print_subtotal_full) });
+      lines.push({ label: `Скидка за тираж −${percent} %`, value: `−${formatPriceExact(q.discount_rub)}` });
+    }
+    lines.push({
+      label: `Печать со скидкой (${formatPriceExact(q.unit_price)} за шт)`,
+      value: formatPriceExact(q.print_subtotal),
+    });
   }
   if (q.supports) {
     lines.push({ label: "Поддержки", value: `×${q.k_supports.toString().replace(".", ",")}` });

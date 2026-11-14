@@ -1,6 +1,30 @@
 @import "tailwindcss";
 
 /*
+ * Запасные шрифты с поправками размеров (B53, CLS). Пока Manrope/Unbounded грузятся, текст рисуется
+ * системным Arial/Roboto, подогнанным под ширину и высоту строк нашего шрифта, — после загрузки
+ * строки не переносятся заново и страница не прыгает. Числа считает web/scripts/fallback_metrics.py.
+ */
+@font-face {
+  font-family: "Manrope Fallback";
+  src: local("Arial"), local("ArialMT"), local("Roboto"), local("Liberation Sans");
+  font-weight: 400;
+  size-adjust: 100.45%;
+  ascent-override: 106.12%;
+  descent-override: 29.87%;
+  line-gap-override: 0.00%;
+}
+@font-face {
+  font-family: "Unbounded Fallback";
+  src: local("Arial Bold"), local("Arial-BoldMT"), local("Roboto Bold"), local("Liberation Sans Bold");
+  font-weight: 700;
+  size-adjust: 130.90%;
+  ascent-override: 76.01%;
+  descent-override: 18.72%;
+  line-gap-override: 0.00%;
+}
+
+/*
  * Дизайн-система BroPrint (B40). Источник значений — docs/DESIGN.md и docs/brand-tokens.json.
  * Менять цвета только там и здесь.
  *
@@ -30,8 +54,8 @@
   --danger: #b3261e; /* ошибки форм и отменённый заказ (в брендбуке нет — см. DECISIONS.md) */
 
   /* --- Шрифты (подключены в app/layout.tsx из npm, не с Google Fonts) --- */
-  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
-  --font-sans: "Manrope Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Unbounded", "Unbounded Fallback", "Arial Black", system-ui, sans-serif;
+  --font-sans: "Manrope Variable", "Manrope Fallback", "Segoe UI", system-ui, sans-serif;
 
   /* --- Отступы и радиусы --- */
   --space-1: 4px;
