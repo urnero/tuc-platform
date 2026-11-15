@@ -856,3 +856,125 @@ def test_svg_aspect_no_external_entities(client, tmp_path):
     assert em.check_svg(svg) is not None  # загрузку такой файл не проходит
     em.logo_path(uid).write_bytes(svg)  # а если всё же лёг на диск — чтение его не раскрывает
     assert em._svg_aspect(uid) == 1.0  # файл не прочитан → пропорции по умолчанию
+
+
+# --- текстуры (B68) ---------------------------------------------------------------------
+
+
+def test_validate_pattern():
+    clean, errors = validate_params(
+        {"kind": "pattern", "pattern": "hex", "size_mm": 40, "pitch_mm": "2,5"}, False
+    )
+    assert errors == {}
+    assert clean["kind"] == "pattern" and clean["pattern"] == "hex"
+    assert clean["pitch_mm"] == 2.5 and clean["text"] == ""  # текст текстуре не нужен
+    # размещение из редактора: размер участка берётся из placement, шаг — из параметров
+    clean, errors = validate_params(
+        {
+            "kind": "pattern",
+            "pattern": "dots",
+            "pitch_mm": 4,
+            "placement": {"point": [0, 0, 10], "normal": [0, 0, 1], "up": [0, 1, 0], "size_mm": 50},
+        },
+        False,
+    )
+    assert errors == {} and clean["size_mm"] == 50 and clean["pitch_mm"] == 4
+
+    _, errors = validate_params({"kind": "pattern", "pattern": "fur", "pitch_mm": 0.5}, False)
+    assert errors == {"pattern": "Выберите один из вариантов.", "pitch_mm": "Не меньше 1 мм."}
+    _, errors = validate_params({"kind": "pattern", "size_mm": 10, "pitch_mm": 12}, False)
+    assert errors == {"pitch_mm": "Шаг узора не больше размера участка."}
+    _, errors = validate_params({"kind": "pattern", "size_mm": 200, "pitch_mm": 1}, False)
+    assert errors == {
+        "pitch_mm": "Слишком мелкий узор для такого участка: не меньше 4 мм."
+    }
+    # у надписи шаг узора просто не проверяется на размер участка
+    assert validate_params({"text": "ТУЦ", "size_mm": 200, "pitch_mm": 1}, False)[1] == {}
+
+
+def test_pattern_describe_footprint_and_name():
+    clean, _ = validate_params(
+        {"kind": "pattern", "pattern": "grid", "size_mm": 40, "pitch_mm": 2.5, "depth_mm": 0.6},
+        False,
+    )
+    assert describe(clean) == (
+        "Текстура «сетка» на участке 40 мм, шаг 2,5 мм, выпуклая 0,6 мм, спереди"
+    )
+    clean["style"] = "engraved"
+    assert describe(clean).startswith("Текстура «сетка» на участке 40 мм, шаг 2,5 мм, врезанная")
+    assert em.footprint_mm(clean) == (40.0, 40.0)
+    assert em.build_result_name("coaster.stl", clean) == "coaster + текстура.stl"
+    scad = em._scad_params(clean, "x")
+    assert scad["kind"] == "pattern" and scad["pattern"] == "grid" and scad["pitch_mm"] == 2.5
+
+
+def test_options_patterns(client):
+    body = client.get("/api/v1/emboss/options").json()
+    assert [p["value"] for p in body["patterns"]] == list(em.PATTERNS)
+    assert body["patterns"][3] == {"value": "hex", "label": "соты"}
+    assert [k["value"] for k in body["kinds"]] == ["text", "logo", "pattern"]
+    assert body["pitch_mm"] == {"min": 1.0, "max": 50.0, "max_repeats": 50}
+    assert body["defaults"]["pattern"] == "lines" and body["defaults"]["pitch_mm"] == 3.0
+
+
+def test_emboss_pattern_by_placement(client, fake_openscad, db):
+    """Текстура по размещению из редактора идёт тем же путём, что надпись (fake OpenSCAD)."""
+    uid = _upload(client, box_stl(60, 40, 20))
+    body = {
+        "kind": "pattern",
+        "pattern": "hex",
+        "pitch_mm": 3,
+        "placement": {
+            "point": [0, 0, 10],  # коробка 60×40×20 по центру начала координат: крышка z = 10
+            "normal": [0, 0, 1],
+            "up": [0, 1, 0],
+            "size_mm": 30,
+            "depth_mm": 0.8,
+            "mode": "raised",
+        },
+    }
+    r = client.post(f"/api/v1/uploads/{uid}/embosses", json={"params": body})
+    assert r.status_code == 202, r.text
+    job = r.json()
+    assert job["status"] == "done", job
+    result = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()
+    assert result["source"] == "emboss"
+    assert result["emboss"]["summary"].startswith("Текстура «соты» на участке 30 мм, шаг 3 мм")
+    assert result["original_name"] == "box + текстура.stl"
+    assert [e.props["kind"] for e in _events(db) if e.props.get("source") == "emboss"] == [
+        "pattern"
+    ]
+    # участок 30 мм целиком на крышке 60×40 — за край не выходит
+    assert "edge_overhang" not in job["warnings"]
+    # а участок 50 мм со стороной больше крышки (40) — выходит
+    body["placement"]["size_mm"] = 50
+    job = client.post(f"/api/v1/uploads/{uid}/embosses", json={"params": body}).json()
+    assert "edge_overhang" in job["warnings"]
+
+
+@pytest.mark.skipif(shutil.which("openscad") is None, reason="нужен настоящий OpenSCAD")
+@pytest.mark.parametrize("pattern", em.PATTERNS)
+def test_pattern_with_real_openscad(client, monkeypatch, pattern):
+    """Каждый узор строится, замкнут и занимает 40–80 % площади участка (B68)."""
+    monkeypatch.setattr(settings, "openscad_bin", "openscad")
+    monkeypatch.setattr(settings, "redis_url", "")
+    uid = _upload(client, box_stl(60, 40, 30))
+    before = client.get(f"/api/v1/uploads/{uid}").json()["mesh"]
+    job = _emboss(
+        client, uid, kind="pattern", pattern=pattern, pitch_mm=3, size_mm=30, depth_mm=1, face="top"
+    ).json()
+    assert job["status"] == "done", job
+    after = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()["mesh"]
+    assert after["watertight"] is True
+    added_cm3 = after["volume_cm3"] - before["volume_cm3"]
+    fill = added_cm3 * 1000 / (30 * 30 * 1.0)  # доля участка под рельефом
+    assert 0.4 <= fill <= 0.8, (pattern, fill)
+    assert after["bbox_mm"] == {"x": 60, "y": 40, "z": 31}
+    # врезанный узор тех же размеров убирает столько же, сколько выпуклый прибавил
+    job = _emboss(
+        client, uid, kind="pattern", pattern=pattern, pitch_mm=3, size_mm=30, depth_mm=1,
+        face="top", style="engraved",
+    ).json()
+    assert job["status"] == "done", job
+    cut = client.get(f"/api/v1/uploads/{job['result_upload_id']}").json()["mesh"]
+    assert cut["volume_cm3"] == pytest.approx(before["volume_cm3"] - added_cm3, abs=0.05)

@@ -1,4 +1,4 @@
-"""Тиснение надписи или логотипа на загруженной модели (B30).
+"""Тиснение надписи, логотипа или текстуры на загруженной модели (B30, B68).
 
 Клиент загрузил модель (или взял её из каталога / построил в редакторе), открыл её страницу и
 хочет нанести на одну из граней надпись или свой логотип (SVG) — выпуклые или углублённые.
@@ -6,8 +6,9 @@
 заказ — как у любой загрузки. Исходная загрузка не меняется, к ней можно вернуться.
 
 Как строится:
-1. OpenSCAD (app/scad/emboss.scad) делает само тиснение — плоскую фигуру (text() или
-   import() SVG), вытянутую в толщину. Это быстро: модель клиента OpenSCAD не трогает.
+1. OpenSCAD (app/scad/emboss.scad) делает само тиснение — плоскую фигуру (text(),
+   import() SVG или участок узора-текстуры, B68), вытянутую в толщину. Это быстро: модель
+   клиента OpenSCAD не трогает.
 2. Python (trimesh + manifold3d) ставит фигуру на нужную грань — по центру
    ограничивающего параллелепипеда, со сдвигом dx/dy — и соединяет с моделью:
    выпуклое тиснение прибавляет (union), углублённое вырезает (difference).
@@ -64,7 +65,16 @@ router = APIRouter(tags=["emboss"])
 SCAD_PATH = Path(__file__).parent / "scad" / "emboss.scad"
 JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
-KINDS = ("text", "logo")
+KINDS = ("text", "logo", "pattern")
+KIND_LABELS = {"text": "надпись", "logo": "логотип", "pattern": "текстура"}
+# B68: текстура — повторяющийся рельеф на квадратном участке со стороной size_mm, шаг узора
+# pitch_mm. Узоры рисует emboss.scad (module pattern2d), здесь — только список и границы.
+PATTERNS = ("lines", "grid", "dots", "hex")
+PATTERN_LABELS = {"lines": "полосы", "grid": "сетка", "dots": "точки", "hex": "соты"}
+PITCH_MIN, PITCH_MAX = 1.0, 50.0  # мм: шаг узора (1 мм = прут 0,5 мм — предел сопла 0,4)
+# Сколько повторов узора умещается по стороне участка (size_mm / pitch_mm): больше —
+# OpenSCAD строит тысячи фигур минутами, а на печати мелочь всё равно сливается.
+PATTERN_MAX_REPEATS = 50
 FONTS = ("sans", "serif", "mono")
 STYLES = ("raised", "engraved")
 # Грань модели: по ограничивающему параллелепипеду, «спереди» = сторона −Y (ближняя к зрителю
@@ -102,6 +112,9 @@ DEFAULTS = {
     "dx": 0.0,
     "dy": 0.0,
     "angle": 0.0,
+    # B68, только для kind = "pattern": узор и его шаг.
+    "pattern": "lines",
+    "pitch_mm": 3.0,
     # Размещение из интерактивного редактора (B60, docs/EDITOR.md): точка на поверхности,
     # нормаль наружу и вектор «верх» надписи — всё в мм, в системе модели (Z вверх).
     # Если задано — face/dx/dy не используются. Внутри могут быть size_mm, depth_mm и mode
@@ -261,7 +274,13 @@ def validate_params(raw: dict | None, has_logo: bool) -> tuple[dict, dict[str, s
             errors[str(name)] = "Неизвестный параметр."
     values = {**DEFAULTS, **{k: v for k, v in raw.items() if k in DEFAULTS}}
 
-    for name, options in (("kind", KINDS), ("font", FONTS), ("style", STYLES), ("face", FACES)):
+    for name, options in (
+        ("kind", KINDS),
+        ("font", FONTS),
+        ("style", STYLES),
+        ("face", FACES),
+        ("pattern", PATTERNS),
+    ):
         if str(values[name]) not in options:
             errors[name] = "Выберите один из вариантов."
         else:
@@ -279,6 +298,7 @@ def validate_params(raw: dict | None, has_logo: bool) -> tuple[dict, dict[str, s
         ("dx", -SHIFT_MAX, SHIFT_MAX, "мм"),
         ("dy", -SHIFT_MAX, SHIFT_MAX, "мм"),
         ("angle", -180.0, 180.0, "°"),
+        ("pitch_mm", PITCH_MIN, PITCH_MAX, "мм"),
     ):
         num, error = _number(values[name], lo, hi, unit)
         if error:
@@ -312,6 +332,16 @@ def validate_params(raw: dict | None, has_logo: bool) -> tuple[dict, dict[str, s
                     clean[key] = placement[key]
             if "mode" in placement:
                 clean["style"] = placement["mode"]
+    if clean.get("kind") == "pattern" and "size_mm" in clean and "pitch_mm" in clean:
+        # Шаг больше участка — узор не поместится ни разу; слишком мелкий — см.
+        # PATTERN_MAX_REPEATS.
+        if clean["pitch_mm"] > clean["size_mm"]:
+            errors["pitch_mm"] = "Шаг узора не больше размера участка."
+        elif clean["size_mm"] / clean["pitch_mm"] > PATTERN_MAX_REPEATS:
+            errors["pitch_mm"] = (
+                f"Слишком мелкий узор для такого участка: не меньше "
+                f"{_fmt(clean['size_mm'] / PATTERN_MAX_REPEATS)} мм."
+            )
     return clean, errors
 
 
@@ -549,6 +579,8 @@ def footprint_mm(params: dict, logo_aspect: float = 1.0) -> tuple[float, float]:
     size = float(params["size_mm"])
     if params.get("kind") == "logo":
         return size, size * logo_aspect
+    if params.get("kind") == "pattern":
+        return size, size  # B68: квадратный участок
     chars = max(1, len((params.get("text") or "").strip()))
     return max(size, chars * size * TEXT_CHAR_WIDTH), size
 
@@ -676,7 +708,13 @@ def _fmt(value: float) -> str:
 
 def describe(params: dict, logo_name: str = "") -> str:
     """Параметры словами: «Надпись «ТУЦ» (без засечек, жирный) 10 мм, выпуклая 1 мм, спереди»."""
-    if params["kind"] == "logo":
+    if params["kind"] == "pattern":
+        what = (
+            f"Текстура «{PATTERN_LABELS[params['pattern']]}» на участке "
+            f"{_fmt(params['size_mm'])} мм, шаг {_fmt(params['pitch_mm'])} мм"
+        )
+        how = "выпуклая" if params["style"] == "raised" else "врезанная"
+    elif params["kind"] == "logo":
         what = f"Логотип {logo_name or 'SVG'} шириной {_fmt(params['size_mm'])} мм"
         how = "выпуклый" if params["style"] == "raised" else "углублённый"
     else:
@@ -872,6 +910,9 @@ def _scad_params(params: dict, upload_id: str) -> dict:
         "style": params["style"],
         "logo_file": str(logo_path(upload_id).resolve()) if params["kind"] == "logo" else "",
         "angle": params["angle"],
+        # B68: текстура — узор и шаг (для надписи/логотипа OpenSCAD их не читает)
+        "pattern": params.get("pattern", DEFAULTS["pattern"]),
+        "pitch_mm": params.get("pitch_mm", DEFAULTS["pitch_mm"]),
         # B64a: на изогнутой поверхности запас больше (см. check_placement)
         "overlap": params.get("overlap_mm", OVERLAP_MM),
     }
@@ -880,7 +921,7 @@ def _scad_params(params: dict, upload_id: str) -> dict:
 def build_result_name(original_name: str, params: dict) -> str:
     """«bracket.stl» + надпись «ТУЦ» → «bracket + ТУЦ.stl»; логотип → «bracket + логотип.stl»."""
     stem = Path(original_name).stem[:120] or "model"
-    what = f"«{params['text']}»" if params["kind"] == "text" else "логотип"
+    what = f"«{params['text']}»" if params["kind"] == "text" else KIND_LABELS[params["kind"]]
     if params.get("more"):
         what += f" и ещё {len(params['more'])}"
     return f"{stem} + {what}.stl"[:200]
@@ -1000,6 +1041,10 @@ def emboss_options() -> dict:
         "defaults": DEFAULTS,
         "faces": [{"value": f, "label": FACE_LABELS[f]} for f in FACES],
         "fonts": [{"value": f, "label": FONT_LABELS[f]} for f in FONTS],
+        "kinds": [{"value": k, "label": KIND_LABELS[k]} for k in KINDS],
+        # B68: текстуры — список узоров и границы шага для панели «Текстура»
+        "patterns": [{"value": p, "label": PATTERN_LABELS[p]} for p in PATTERNS],
+        "pitch_mm": {"min": PITCH_MIN, "max": PITCH_MAX, "max_repeats": PATTERN_MAX_REPEATS},
         "text_maxlen": TEXT_MAXLEN,
         "size_mm": {"min": SIZE_MIN, "max": SIZE_MAX},
         "depth_mm": {"min": DEPTH_MIN, "max": DEPTH_MAX},
