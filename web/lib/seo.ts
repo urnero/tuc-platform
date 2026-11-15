@@ -84,6 +84,7 @@ export const STATIC_PAGES: { path: string; priority: number; changeFrequency: "w
   { path: "/editors", priority: 0.9, changeFrequency: "weekly" },
   { path: "/catalog", priority: 0.9, changeFrequency: "weekly" },
   { path: "/upload", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/request", priority: 0.6, changeFrequency: "monthly" },
   { path: "/about", priority: 0.5, changeFrequency: "monthly" },
   { path: "/contacts", priority: 0.5, changeFrequency: "monthly" },
   { path: "/offer", priority: 0.3, changeFrequency: "yearly" },

@@ -36,6 +36,7 @@ from app import drive
 from app.cleanup import CLOSED_STATUSES
 from app.config import settings
 from app.db import session_factory
+from app.leads import delete_lead_photo
 from app.models import Lead, Order, Payment
 
 log = logging.getLogger(__name__)
@@ -54,7 +55,8 @@ BLANK_ORDER_FIELDS: dict = {
     "company_address": None,
     "telegram_chat_id": None,
 }
-BLANK_LEAD_FIELDS: dict = {"name": "", "phone": "", "email": None, "comment": None}
+# photo — фото заявки «без модели» (B52): файл стираем с диска, ссылку — NULL.
+BLANK_LEAD_FIELDS: dict = {"name": "", "phone": "", "email": None, "comment": None, "photo": None}
 
 
 @dataclass
@@ -123,6 +125,8 @@ def anonymize_orders(
             .values(**BLANK_LEAD_FIELDS, anonymized_at=now)
         )
         db.commit()
+        for lead_id in report.leads:
+            delete_lead_photo(lead_id)
     if report.leads:
         log.info(
             "Обезличивание: заявок «цена по запросу» %s — %d",

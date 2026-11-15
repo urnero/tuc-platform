@@ -159,6 +159,11 @@ class Quote:
     machine_cost: float  # работа принтера на весь тираж, до наценки
     unit_price: float  # цена одного изделия с коэффициентами и наценкой
     print_subtotal: float  # unit_price × qty
+    # Разбивка скидки за тираж (считает API, сайт только показывает). Без скидки
+    # (k_batch >= 1) цена «до» равна цене «после», скидка 0.
+    unit_price_full: float  # цена изделия до скидки за тираж
+    print_subtotal_full: float  # unit_price_full × qty
+    discount_rub: float  # print_subtotal_full − print_subtotal
     min_order_applied: bool  # печать вышла дешевле минимального заказа
     postprocess_cost: float  # постобработка на весь тираж
     delivery_cost: float
@@ -214,6 +219,11 @@ def calc_price(
     total = math.floor(print_part + postprocess_cost + delivery_cost + 0.5)
 
     r2 = lambda v: round(v, 2)  # noqa: E731 — короткая запись для сумм в ответе
+    # До скидки считаем от исходной цены, а не делением округлённой (99,99 / 0,9 дало бы хвост).
+    k_discount = min(k_batch, 1.0)
+    unit_price_full = r2(unit_price / k_discount) if k_discount else r2(unit_price)
+    print_subtotal_full = r2(unit_price_full * qty)
+    discount_rub = r2(print_subtotal_full - r2(print_subtotal)) if k_batch < 1 else 0.0
     return Quote(
         currency=pricing.currency,
         material=material,
@@ -234,6 +244,9 @@ def calc_price(
         machine_cost=r2(print_h * machine_rate * qty),
         unit_price=r2(unit_price),
         print_subtotal=r2(print_subtotal),
+        unit_price_full=unit_price_full,
+        print_subtotal_full=print_subtotal_full,
+        discount_rub=discount_rub,
         min_order_applied=min_order_applied,
         postprocess_cost=r2(postprocess_cost),
         delivery_cost=r2(delivery_cost),

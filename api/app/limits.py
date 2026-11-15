@@ -7,6 +7,7 @@
   в минуту с одного IP (429) и на диске есть хотя бы MIN_FREE_DISK_GB (иначе 503).
 - ``orders_guard`` — на оформление заказа: RATE_LIMIT_ORDERS_PER_MIN в минуту с одного IP (429).
   Каждый заказ — строка в БД и сообщение владельцу в Telegram, мусор там хуже всего.
+- ``lookup_guard`` — на подсказку реквизитов по ИНН (DaData): RATE_LIMIT_LOOKUP_PER_MIN в минуту.
 - ``login_guard`` — на вход в кабинет (B32): запрос кода и ввод кода, RATE_LIMIT_LOGIN_PER_MIN
   в минуту с одного IP — чтобы код нельзя было подобрать и чужую почту завалить письмами.
 
@@ -117,6 +118,11 @@ def uploads_guard(request: Request) -> None:
 
 def orders_guard(request: Request) -> None:
     _check_rate(request, "orders", settings.rate_limit_orders_per_min, "заказов")
+
+
+def lookup_guard(request: Request) -> None:
+    """Подсказка по ИНН (DaData): у бесплатного тарифа суточный лимит, не даём его выжечь."""
+    _check_rate(request, "lookup", settings.rate_limit_lookup_per_min, "запросов реквизитов")
 
 
 def login_guard(request: Request) -> None:

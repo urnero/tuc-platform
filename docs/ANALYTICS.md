@@ -9,11 +9,12 @@
 
 | `name` | Когда пишется | Ключ шага | Что в `props` |
 |---|---|---|---|
-| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) или в редакторе (B21) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug`; из редактора — `source = "editor"`, `editor_slug`, `build_id`; у модели с тиснением (B30) — `source = "emboss"`, `parent_upload_id` (исходная загрузка), `job_id`, `kind` (text / logo), `style` (raised / engraved) |
+| `upload` | клиент загрузил модель, файл принят и проверен — или нажал «Заказать» в каталоге (B20) или в редакторе (B21) | `upload_id` | `ext`, `size_bytes`, `watertight`, `warnings`; у модели из каталога ещё `source = "catalog"` и `catalog_slug`; из редактора — `source = "editor"`, `editor_slug`, `build_id`; у модели с тиснением (B30) — `source = "emboss"`, `parent_upload_id` (исходная загрузка), `job_id`, `kind` (text / logo / pattern — текстура, B68), `style` (raised / engraved) |
 | `editor_build` | клиент нажал «Построить модель» в редакторе (B21) — ещё до загрузки, поэтому не шаг воронки и в сводке админки не показывается | — (`props.build_id`) | `editor_slug`, `build_id`, `params`, `cached` (true — такие параметры уже строили, OpenSCAD не запускался) |
 | `emboss_build` | клиент нажал «Нанести» на странице модели (B30) — тиснение надписи/логотипа; как и `editor_build`, не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `params` (kind, text, font, bold, size_mm, depth_mm, style, face, dx, dy, angle) |
 | `paint_build` | клиент нажал «Собрать модель в цветах» на странице модели (B31) — раскраска по частям; не шаг воронки | `upload_id` (исходная загрузка; `props.job_id`) | `job_id`, `cached`, `parts` (сколько деталей), `colors` (сколько разных цветов) |
 | `material_request` | клиент оставил заявку «цена по запросу» — выбрал смолу (SLA) на странице модели (B44); не шаг воронки, оплаты нет | `upload_id` | `material`, `qty`, `lead_id` (контакты клиента — в таблице `leads`, не здесь; с 29.10, миграция 0008 перенесла старые) |
+| `quick_lead` | быстрая заявка (B52): `kind = callback` — телефон из выходного попапа на страницах загрузки/каталога/редакторов, `brief` — заявка без модели со страницы /request (описание и фото); не шаг воронки | `upload_id` (у callback со страницы модели, иначе пусто) | `kind`, `lead_id`, `page` (путь страницы, без ?…), `has_photo`; контакты — только в `leads` |
 | `account_login` | клиент вошёл в кабинет по коду из письма (B32); не шаг воронки, ключей нет — считаем только факт и время (кто вошёл — в `client_sessions`) | — | — |
 | `quote` | посчитана цена (`POST /uploads/{id}/quote`) | `upload_id`, `quote_id` | `material`, `supports`, `qty`, `postprocess`, `delivery`, `total` |
 | `order` | заказ создан (в той же транзакции, что строка в `orders`) | `upload_id`, `quote_id`, `order_id` | `total`, `delivery`, `qty`, `payment_method` (`online` — карта через ЮKassa, `invoice` — по счёту), `b2b` (true — заказ от организации или ИП, B33) |
@@ -295,4 +296,24 @@ select props->>'material' as material, count(*) as leads, sum((props->>'qty')::i
 from events
 where name = 'material_request' and created_at > now() - interval '30 days'
 group by 1 order by 2 desc;
+```
+
+Быстрые заявки (B52) за 30 дней: сколько и с каких страниц уходили, оставив телефон:
+
+```sql
+select props->>'kind' as kind, props->>'page' as page, count(*) as leads
+from events
+where name = 'quick_lead' and created_at > now() - interval '30 days'
+group by 1, 2 order by 3 desc;
+```
+
+Сколько быстрых заявок стали заказами (тот же телефон оформил заказ в течение 14 дней после заявки):
+
+```sql
+select l.kind, count(distinct l.id) as leads, count(distinct o.id) as orders
+from leads l
+left join orders o
+  on o.phone = l.phone and o.created_at between l.created_at and l.created_at + interval '14 days'
+where l.kind in ('callback', 'brief') and l.created_at > now() - interval '60 days'
+group by 1;
 ```

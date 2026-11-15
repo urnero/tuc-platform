@@ -17,6 +17,7 @@ import { Suspense, useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader.js";
+import { useSceneColors } from "@/lib/scene";
 
 /** Диапазон треугольников STL одного цвета (раскраска по частям, B31). */
 export type PartColor = { start: number; count: number; hex: string };
@@ -76,6 +77,7 @@ export function applyPartColors(geometry: THREE.BufferGeometry, parts: PartColor
 
 /** Загружает модель, центрирует её и ставит на «пол» (z = 0 → y = 0 в сцене). */
 function Model({ url, ext, scale = 1, partColors, keepMaterials, onFaceHover, onFaceClick }: Props) {
+  const scene = useSceneColors(); // цвета фона и сетки под тему сайта
   // STL → геометрия, 3MF → группа объектов. Приводим к одному виду: Object3D.
   const loaded = useLoader(ext === "stl" ? STLLoader : ThreeMFLoader, url);
   const painted = Boolean(partColors && loaded instanceof THREE.BufferGeometry);
@@ -139,8 +141,8 @@ function Model({ url, ext, scale = 1, partColors, keepMaterials, onFaceHover, on
         args={[longest * 4, longest * 4]}
         cellSize={longest > 100 ? 50 : longest > 20 ? 10 : 1}
         sectionSize={longest > 100 ? 100 : longest > 20 ? 50 : 10}
-        cellColor="#7a8a84"
-        sectionColor="#4fbfb2"
+        cellColor={scene.cell}
+        sectionColor={scene.section}
         fadeDistance={longest * 6}
         infiniteGrid
       />
@@ -170,13 +172,14 @@ function CameraFit({ longest }: { longest: number }) {
 }
 
 export default function ModelViewer(props: Props) {
+  const scene = useSceneColors(); // цвета фона и сетки под тему сайта
   return (
     <div
       className="w-full overflow-hidden rounded-lg border"
       style={{ borderColor: "var(--ink-muted)", height: props.height ?? 420 }}
     >
       <Canvas camera={{ fov: 45, near: 0.1, far: 100000 }}>
-        <color attach="background" args={["#1a2220"]} />
+        <color attach="background" args={[scene.background]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[1, 2, 1]} intensity={1.2} />
         <directionalLight position={[-2, 1, -1]} intensity={0.4} />

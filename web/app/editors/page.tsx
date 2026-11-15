@@ -67,11 +67,11 @@ export default async function EditorsPage() {
         <p className="max-w-prose" style={{ color: "var(--ink-muted)" }}>
           Нет своей 3D-модели? Выберите деталь, впишите размеры — модель построится на сервере, вы увидите её в
           3D и сразу перейдёте к расчёту и заказу. Готовые модели без настройки — в{" "}
-          <Link href="/catalog" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
+          <Link href="/catalog" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             каталоге
           </Link>
           , своя модель —{" "}
-          <Link href="/upload" className="underline-offset-2 hover:underline" style={{ color: "var(--filament-text)" }}>
+          <Link href="/upload" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             в загрузке
           </Link>
           .
@@ -81,7 +81,7 @@ export default async function EditorsPage() {
       {!editors && (
         <p role="alert" className="card">
           Редакторы временно недоступны. Попробуйте обновить страницу чуть позже или{" "}
-          <Link href="/upload" style={{ color: "var(--filament-text)" }}>
+          <Link href="/upload" className="underline underline-offset-2" style={{ color: "var(--filament-text)" }}>
             загрузите свою модель
           </Link>
           .

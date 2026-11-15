@@ -24,7 +24,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Preset } from "@/lib/account";
 import { caughtErrorText, responseErrorText, sliceErrorText } from "@/lib/errors";
 import { reachGoal } from "@/lib/metrika";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, shortQuoteNo } from "@/lib/format";
+import { leadTimeText } from "@/lib/leadtime";
 import { FALLBACK_MATERIALS, materialHint, materialOptionLabel, type MaterialsResponse } from "@/lib/materials";
 import {
   batchHint,
@@ -364,8 +365,18 @@ export default function SliceCalc({ uploadId, defaultMaterial = "PLA", preset = 
                   </div>
                 ))}
               </dl>
+              {leadTimeText(quote.print_time_s, quote.qty, quote.postprocess) && (
+                <p className="font-semibold" data-testid="lead-time">
+                  {leadTimeText(quote.print_time_s, quote.qty, quote.postprocess)}
+                  {quote.delivery !== "pickup" && (
+                    <span className="font-normal" style={{ color: "var(--ink-muted)" }}>
+                      {" "}+ доставка
+                    </span>
+                  )}
+                </p>
+              )}
               <p style={{ color: "var(--ink-muted)" }}>
-                Расчёт № <code className="break-all">{quote.id}</code>. Цены предварительные: менеджер подтвердит их при заказе.
+                Расчёт № <span title={quote.id}>{shortQuoteNo(quote.id)}</span>. Цены предварительные: менеджер подтвердит их при заказе.
               </p>
               {stale ? (
                 <span className="text-sm" style={{ color: "var(--ink-muted)" }}>

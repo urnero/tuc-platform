@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyCompanyLookup,
+  companyLookupHint,
   EMPTY_FORM,
   formatDate,
   formatPhone,
@@ -270,5 +272,54 @@ describe("liveFieldError", () => {
   });
   it("исправили — ошибки нет", () => {
     expect(liveFieldError({ ...EMPTY, phone: "+7 999 123-45-67" }, "pickup", "phone", true)).toBeUndefined();
+  });
+});
+
+describe("подсказка реквизитов по ИНН", () => {
+  const ORG_FOUND = {
+    enabled: true,
+    found: true,
+    name: "ПАО СБЕРБАНК",
+    kpp: "773601001",
+    address: "117312, г Москва, ул Вавилова, д 19",
+    status: "ACTIVE",
+    active: true,
+  };
+  const base = { ...EMPTY_FORM, b2b: true, inn: "7707083893" };
+
+  it("заполняет пустые поля и пишет, что подставили", () => {
+    const { form, filled } = applyCompanyLookup(base, ORG_FOUND);
+    expect(form.companyName).toBe("ПАО СБЕРБАНК");
+    expect(form.kpp).toBe("773601001");
+    expect(form.companyAddress).toBe("117312, г Москва, ул Вавилова, д 19");
+    expect(companyLookupHint(ORG_FOUND, filled)).toBe(
+      "Нашли: ПАО СБЕРБАНК — подставили наименование, КПП и адрес. Проверьте.",
+    );
+  });
+
+  it("не трогает то, что клиент вписал сам", () => {
+    const { form, filled } = applyCompanyLookup({ ...base, companyName: "Сбер, бухгалтерия" }, ORG_FOUND);
+    expect(form.companyName).toBe("Сбер, бухгалтерия");
+    expect(filled.companyName).toBeUndefined();
+    expect(companyLookupHint(ORG_FOUND, filled)).toBe("Нашли: ПАО СБЕРБАНК — подставили КПП и адрес. Проверьте.");
+  });
+
+  it("при смене ИНН заменяет подставленное раньше, у ИП КПП убирает", () => {
+    const first = applyCompanyLookup(base, ORG_FOUND);
+    const ip = { enabled: true, found: true, name: "ИП Иванов Иван Иванович", kpp: null, address: "г Москва", active: true };
+    const { form } = applyCompanyLookup({ ...first.form, inn: "500100732259" }, ip, first.filled);
+    expect(form.companyName).toBe("ИП Иванов Иван Иванович");
+    expect(form.kpp).toBe("");
+    expect(form.companyAddress).toBe("г Москва");
+  });
+
+  it("ничего не нашли или подсказки нет — форма та же, строки нет", () => {
+    const { form } = applyCompanyLookup(base, { enabled: false, found: false });
+    expect(form).toEqual(base);
+    expect(companyLookupHint({ enabled: true, found: false }, {})).toBeNull();
+  });
+
+  it("предупреждает о ликвидированной организации", () => {
+    expect(companyLookupHint({ ...ORG_FOUND, active: false, status: "LIQUIDATED" }, {})).toMatch(/ликвидирован/);
   });
 });

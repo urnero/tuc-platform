@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  WARNING_TEXT,
   DEFAULT_FORM,
+  EDITOR_CHIPS,
+  editorHref,
+  embossWarningTexts,
   FACES,
   fmt,
+  DEFAULT_OPTIONS,
+  parseEmbossOptions,
+  patternLabel,
   parseNumber,
   toParams,
   validateForm,
@@ -85,5 +92,60 @@ describe("мелочи", () => {
   it("грани — все шесть, спереди первая", () => {
     expect(FACES.map((f) => f.value).sort()).toEqual(["back", "bottom", "front", "left", "right", "top"]);
     expect(FACES[0].value).toBe("front");
+  });
+});
+
+describe("ссылка на редактор (B62a)", () => {
+  it("без инструмента и сразу с инструментом «Логотип»", () => {
+    expect(editorHref("abc")).toBe("/upload/abc/edit");
+    expect(editorHref("abc", "logo")).toBe("/upload/abc/edit?tool=logo");
+    expect(editorHref("abc", "text")).toBe("/upload/abc/edit?tool=text");
+    expect(editorHref("abc", "color")).toBe("/upload/abc/edit?tool=color");
+  });
+
+  it("чипы под 3D ведут в три инструмента редактора", () => {
+    expect(EDITOR_CHIPS.map((c) => c.label)).toEqual(["Надпись", "Логотип", "Цвет"]);
+    expect(EDITOR_CHIPS.map((c) => editorHref("u1", c.tool))).toEqual([
+      "/upload/u1/edit?tool=text",
+      "/upload/u1/edit?tool=logo",
+      "/upload/u1/edit?tool=color",
+    ]);
+  });
+});
+
+describe("WARNING_TEXT", () => {
+  it("есть понятный текст для всех предупреждений сервера", () => {
+    for (const code of ["merged_without_boolean", "normal_flipped", "curved_surface", "edge_overhang"]) {
+      expect(WARNING_TEXT[code]).toBeTruthy();
+    }
+  });
+});
+
+describe("embossWarningTexts (B66)", () => {
+  it("коды сервера → слова, служебный merged_without_boolean скрыт, неизвестный — как есть", () => {
+    expect(embossWarningTexts(["edge_overhang", "merged_without_boolean", "x_new"])).toEqual([
+      WARNING_TEXT.edge_overhang,
+      "x_new",
+    ]);
+    expect(embossWarningTexts(undefined)).toEqual([]);
+  });
+});
+
+describe("варианты текстуры из /emboss/options (B68)", () => {
+  it("читает узоры и границы шага; мусор отбрасывает, пустое — по умолчанию", () => {
+    const o = parseEmbossOptions({
+      patterns: [{ value: "hex", label: "соты" }, { value: "zigzag", label: "?" }, { value: "dots" }],
+      pitch_mm: { min: 1, max: 50, max_repeats: 50 },
+    });
+    expect(o.patterns).toEqual([{ value: "hex", label: "соты" }, { value: "dots", label: "dots" }]);
+    expect(o.pitch_mm).toEqual({ min: 1, max: 50, max_repeats: 50 });
+    expect(parseEmbossOptions(null)).toEqual(DEFAULT_OPTIONS);
+    expect(parseEmbossOptions({ pitch_mm: { min: "x", max: -1 } }).pitch_mm).toEqual(DEFAULT_OPTIONS.pitch_mm);
+    expect(DEFAULT_OPTIONS.patterns.map((p) => p.value)).toEqual(["lines", "grid", "dots", "hex"]);
+    expect(patternLabel("grid")).toBe("сетка");
+  });
+
+  it("старая форма: kind = pattern не требует логотипа", () => {
+    expect(validateForm({ ...DEFAULT_FORM, kind: "pattern" }, false).kind).toBeUndefined();
   });
 });

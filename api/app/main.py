@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.account import router as account_router
 from app.admin import router as admin_router
+from app.b2b import router as b2b_router
 from app.catalog import router as catalog_router
 from app.config import settings
 from app.editors import router as editors_router
@@ -30,6 +31,7 @@ app.include_router(emboss_router)
 app.include_router(paint_router)
 app.include_router(account_router)
 app.include_router(leads_router)
+app.include_router(b2b_router)
 
 
 @app.get("/health")

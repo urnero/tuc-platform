@@ -8,13 +8,27 @@
 покупателя, которые лежат в заказе. Когда деньги пришли на счёт, владелец ставит
 заказу «оплачен» кнопкой в Telegram или в админке.
 
-Здесь — только проверка ИНН и КПП. Сумма прописью и сам бланк счёта — на сайте
-(`web/lib/invoice.ts`), чтобы реквизиты студии не дублировать в API.
+Здесь — проверка ИНН и КПП и подсказка по ИНН (`GET /api/v1/company/lookup?inn=…`):
+по ИНН сайт подставляет наименование, КПП и юридический адрес из ЕГРЮЛ/ЕГРИП через DaData
+(бесплатный тариф — 10 000 запросов в сутки). Нет ключа `DADATA_API_KEY` — ручка отвечает
+`{"enabled": false}`, и клиент просто вписывает реквизиты руками, как раньше.
+Сумма прописью и сам бланк счёта — на сайте (`web/lib/invoice.ts`), чтобы реквизиты студии
+не дублировать в API.
 """
 
+import logging
 import re
+import threading
 
+import httpx
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
+
+from app.config import settings
+from app.limits import lookup_guard
+
+log = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/v1", tags=["b2b"])
 
 # Веса контрольных сумм ИНН (ФНС): для 10 цифр — одна сумма по 9 первым,
 # для 12 цифр — две (11-я цифра по первым 10, 12-я по первым 11).
@@ -96,3 +110,89 @@ class Company(BaseModel):
             "company_kpp": self.kpp if inn_kind(self.inn) == "org" else None,
             "company_address": self.address,
         }
+
+
+# --- Подсказка по ИНН (DaData) ---------------------------------------------------------------
+
+DADATA_URL = "https://suggestions.dadata.ru/suggestions/api/4_1/rs/findById/party"
+TRANSPORT: httpx.BaseTransport | None = None  # тесты подставляют поддельную DaData
+TIMEOUT_S = 5  # клиент ждёт подсказку у поля ИНН — дольше не держим
+
+# Ответы DaData по ИНН меняются редко — помним в памяти процесса api, чтобы повторный ввод
+# того же ИНН (вернулся на форму, обновил страницу) не тратил суточный лимит.
+_cache: dict[str, dict] = {}
+_cache_lock = threading.Lock()
+CACHE_MAX = 5000
+
+# Статусы из ЕГРЮЛ, при которых счёт выставлять не стоит — сайт покажет предупреждение.
+INACTIVE = {"LIQUIDATING", "LIQUIDATED", "BANKRUPT", "REORGANIZING"}
+
+
+def clear_cache() -> None:
+    with _cache_lock:
+        _cache.clear()
+
+
+def parse_party(answer: dict) -> dict:
+    """Ответ DaData findById/party → то, что нужно форме заказа.
+
+    Берём первую подсказку (головная организация): короткое наименование с формой
+    («ООО «Ромашка»», «ИП Иванов Иван Иванович»), КПП (у ИП его нет), адрес как в ЕГРЮЛ
+    и статус. Ничего не нашлось — `{"found": False}`."""
+    items = answer.get("suggestions") or []
+    if not items:
+        return {"found": False}
+    first = items[0]
+    data = first.get("data") or {}
+    name = ((data.get("name") or {}).get("short_with_opf") or first.get("value") or "").strip()
+    addr = data.get("address") or {}
+    address = addr.get("unrestricted_value") or addr.get("value") or ""
+    status = (data.get("state") or {}).get("status") or None
+    kpp = data.get("kpp") if data.get("type") != "INDIVIDUAL" else None
+    return {
+        "found": bool(name),
+        "name": name or None,
+        "kpp": kpp if kpp and is_valid_kpp(kpp) else None,
+        "address": address.strip() or None,
+        "status": status,
+        "active": status not in INACTIVE,
+    }
+
+
+def lookup_party(inn: str) -> dict:
+    """Ищет организацию или ИП по ИНН. Без ключа — `{"enabled": False, "found": False}`.
+    Ошибка сети или DaData — `{"found": False}`: подсказка не главное, заказ не ломаем."""
+    if not settings.dadata_api_key:
+        return {"enabled": False, "found": False}
+    with _cache_lock:
+        if inn in _cache:
+            return _cache[inn]
+    try:
+        with httpx.Client(timeout=TIMEOUT_S, transport=TRANSPORT) as client:
+            r = client.post(
+                DADATA_URL,
+                json={"query": inn, "branch_type": "MAIN"},
+                headers={
+                    "Authorization": f"Token {settings.dadata_api_key}",
+                    "Accept": "application/json",
+                },
+            )
+        r.raise_for_status()
+        result = {"enabled": True, **parse_party(r.json())}
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("DaData: не получили реквизиты по ИНН: %s", e)
+        return {"enabled": True, "found": False}
+    with _cache_lock:
+        if len(_cache) >= CACHE_MAX:
+            _cache.clear()
+        _cache[inn] = result
+    return result
+
+
+@router.get("/company/lookup", dependencies=[Depends(lookup_guard)])
+def company_lookup(inn: str) -> dict:
+    """Подсказка для формы заказа: по ИНН — наименование, КПП, юридический адрес, статус."""
+    inn = re.sub(r"\s", "", inn)
+    if inn_kind(inn) is None:
+        raise HTTPException(422, detail="Проверьте ИНН: 10 цифр у организации, 12 — у ИП.")
+    return lookup_party(inn)

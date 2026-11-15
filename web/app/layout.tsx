@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource/unbounded/700.css";
 import "@fontsource-variable/manrope";
+import ExitPopup from "@/components/ExitPopup";
 import SiteFooter from "@/components/SiteFooter";
 import Metrika from "@/components/Metrika";
 import SiteHeader from "@/components/SiteHeader";
@@ -40,6 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SiteHeader />
         {children}
         <SiteFooter />
+        {/* B52: «оставьте телефон — посчитаем вручную» для уходящих со страниц выбора модели */}
+        <ExitPopup />
       </body>
     </html>
   );

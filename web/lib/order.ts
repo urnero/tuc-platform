@@ -308,3 +308,60 @@ export function liveFieldError(
   if (!force && typeof value === "string" && !value.trim()) return undefined;
   return validateForm(form, delivery)[key];
 }
+
+/** Ответ GET /api/v1/company/lookup?inn=… — реквизиты по ИНН из ЕГРЮЛ/ЕГРИП (DaData). */
+export type CompanyLookup = {
+  enabled: boolean; // false — на сервере нет ключа DaData, подсказки нет
+  found: boolean;
+  name?: string | null;
+  kpp?: string | null;
+  address?: string | null;
+  status?: string | null;
+  active?: boolean;
+};
+
+/** Какие поля формы подставили из подсказки (чтобы при смене ИНН заменить именно их). */
+export type CompanyFill = Partial<Pick<OrderForm, "companyName" | "kpp" | "companyAddress">>;
+
+/**
+ * Подставляет реквизиты из подсказки по ИНН. Поле заполняем, только если оно пустое или
+ * в нём лежит то, что мы сами подставили для прошлого ИНН, — то, что клиент вписал руками,
+ * не трогаем. Возвращает новую форму и то, что подставили (для следующего раза).
+ */
+export function applyCompanyLookup(
+  form: OrderForm,
+  found: CompanyLookup,
+  prev: CompanyFill = {},
+): { form: OrderForm; filled: CompanyFill } {
+  const next = { ...form };
+  const filled: CompanyFill = {};
+  const values: CompanyFill = {
+    companyName: found.name ?? "",
+    kpp: innKind(form.inn) === "org" ? (found.kpp ?? "") : "",
+    companyAddress: found.address ?? "",
+  };
+  for (const key of ["companyName", "kpp", "companyAddress"] as const) {
+    const value = values[key] ?? "";
+    const mine = !form[key].trim() || form[key] === prev[key];
+    if (!mine) continue;
+    if (value || prev[key] !== undefined) {
+      next[key] = value;
+      filled[key] = value;
+    }
+  }
+  return { form: next, filled };
+}
+
+/** Строка под полем ИНН после подсказки: что нашли и что подставили. */
+export function companyLookupHint(found: CompanyLookup, filled: CompanyFill): string | null {
+  if (!found.found || !found.name) return null;
+  if (found.active === false)
+    return `${found.name}: по данным ФНС организация ликвидирована или ликвидируется. Проверьте ИНН.`;
+  const what = [
+    filled.companyName ? "наименование" : null,
+    filled.kpp ? "КПП" : null,
+    filled.companyAddress ? "адрес" : null,
+  ].filter(Boolean);
+  if (what.length === 0) return `Нашли: ${found.name}.`;
+  return `Нашли: ${found.name} — подставили ${what.join(", ").replace(/, ([^,]*)$/, " и $1")}. Проверьте.`;
+}

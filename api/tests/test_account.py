@@ -98,7 +98,12 @@ def test_login_sends_code_and_sets_cookie(client, mailbox, db):
     spaced = f" {code[:3]} {code[3:]} "  # пробелы из письма не мешают
     r = client.post("/api/v1/account/login/confirm", json={"email": EMAIL, "code": spaced})
     assert r.status_code == 200, r.text
-    assert r.json() == {"email": "ivan@example.ru", "orders_count": 0, "contacts": None}
+    assert r.json() == {
+        "logged_in": True,
+        "email": "ivan@example.ru",
+        "orders_count": 0,
+        "contacts": None,
+    }
     cookie = r.headers["set-cookie"]
     assert "tuc_session=" in cookie and "HttpOnly" in cookie and "samesite=lax" in cookie.lower()
     assert "Secure" not in cookie  # SITE_URL по умолчанию http
@@ -197,11 +202,18 @@ def test_login_rate_limited_per_ip(client, mailbox, monkeypatch):
 # --- кабинет ------------------------------------------------------------------
 
 
+def _guest(client) -> bool:
+    """GET /account у гостя: 200 и logged_in=false (не 401 — см. account.get_account)."""
+    r = client.get("/api/v1/account")
+    return r.status_code == 200 and r.json() == {"logged_in": False}
+
+
 def test_account_requires_login(client):
-    assert client.get("/api/v1/account").status_code == 401
+    assert _guest(client)
     assert client.get("/api/v1/account/orders").status_code == 401
     client.cookies.set("tuc_session", "0" * 32)  # выдуманный token
-    assert client.get("/api/v1/account").status_code == 401
+    assert _guest(client)
+    assert client.get("/api/v1/account/orders").status_code == 401
 
 
 def test_orders_history_by_email_any_case(client, mailbox, pricing_file, fake_slicer):
@@ -247,7 +259,7 @@ def test_logout(client, mailbox, db):
     _login(client, mailbox)
     r = client.post("/api/v1/account/logout")
     assert r.status_code == 200
-    assert client.get("/api/v1/account").status_code == 401
+    assert _guest(client)
     with db.connect() as conn:
         assert conn.execute(select(ClientSession.id)).all() == []
 
@@ -256,7 +268,8 @@ def test_expired_session_is_rejected(client, mailbox, db):
     _login(client, mailbox)
     with db.begin() as conn:
         conn.execute(update(ClientSession).values(expires_at=datetime.now(UTC) - timedelta(days=1)))
-    assert client.get("/api/v1/account").status_code == 401
+    assert _guest(client)
+    assert client.get("/api/v1/account/orders").status_code == 401
 
 
 # --- письма (app/mailer.py) ---------------------------------------------------

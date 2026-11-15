@@ -54,7 +54,7 @@ export default function InvoicePage() {
       </main>
     );
   }
-  if (!order || !order.company) return <main className="mx-auto max-w-3xl px-4 py-16">Загружаем…</main>;
+  if (!order || !order.company) return <main className="mx-auto min-h-screen w-full max-w-3xl px-4 py-16">Загружаем…</main>;
 
   const seller = sellerRequisites(COMPANY);
   const buyer = order.company;
@@ -63,7 +63,7 @@ export default function InvoicePage() {
   const date = invoiceDate(order.created_at);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-8">
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-8">
       {/* На бумаге — только сам счёт, без шапки и подвала сайта */}
       <style>{`@media print { body > header, body > footer, nav { display: none !important; } }`}</style>
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm print:hidden">

@@ -43,6 +43,7 @@ EVENT_NAMES = (
     "paint_build",
     "account_login",
     "material_request",
+    "quick_lead",
 )
 
 
@@ -272,8 +273,19 @@ class Lead(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )
-    upload_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    material: Mapped[str] = mapped_column(String(32), nullable=False)  # ключ из materials.yaml
+    # Вид заявки: material — «цена по запросу» со страницы модели (B44);
+    # callback — «перезвоните мне» из выходного попапа; brief — «нет файла, фото/описание» (B52).
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="material", server_default="material", index=True
+    )
+    # У callback модель может быть (ушёл со страницы модели), у brief — нет.
+    upload_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    # Ключ из materials.yaml; у callback/brief — пусто.
+    material: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Страница сайта, с которой оставили заявку (путь без ?…), — чтобы понять, где уходят.
+    page: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Имя файла фото в DATA_DIR/leads/<id>/ (brief). Стирается при обезличивании.
+    photo: Mapped[str | None] = mapped_column(String(64), nullable=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     phone: Mapped[str] = mapped_column(String(32), nullable=False)

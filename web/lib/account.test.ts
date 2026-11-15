@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanCode, loginError, ordersCountLabel, parsePreset, repeatHref } from "./account";
+import { cleanCode, loginError, ordersCountLabel, parseAccount, parsePreset, repeatHref } from "./account";
 
 const ORDER = {
   upload_id: "a".repeat(32),
@@ -60,5 +60,19 @@ describe("ordersCountLabel", () => {
     expect(ordersCountLabel(11)).toBe("11 заказов");
     expect(ordersCountLabel(21)).toBe("21 заказ");
     expect(ordersCountLabel(0)).toBe("0 заказов");
+  });
+});
+
+describe("parseAccount", () => {
+  const acc = { email: "ivan@example.ru", orders_count: 2, contacts: null };
+  it("вошёл — Account (и новый ответ с logged_in, и старый без него)", () => {
+    expect(parseAccount(true, { logged_in: true, ...acc })?.email).toBe("ivan@example.ru");
+    expect(parseAccount(true, acc)?.orders_count).toBe(2);
+  });
+  it("гость — null: 200 logged_in=false, старый 401, пустой ответ", () => {
+    expect(parseAccount(true, { logged_in: false })).toBeNull();
+    expect(parseAccount(false, { detail: "Войдите в кабинет." })).toBeNull();
+    expect(parseAccount(true, null)).toBeNull();
+    expect(parseAccount(true, { email: "" })).toBeNull();
   });
 });

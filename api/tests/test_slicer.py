@@ -1,5 +1,6 @@
 """Слайсер (B04): разбор G-code, сборка команды, запуск через подделку, API."""
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -65,6 +66,16 @@ def test_parse_gcode_multi_material_sums():
         "; total filament used [g] = 3.70", "; total filament used [g] = 3.70, 1.30"
     )
     assert parse_gcode(text)["filament_g"] == 5.0
+
+
+def test_parse_gcode_totals_before_long_config_block():
+    # Настоящий G-code: итоги, затем блок настроек на 300+ строк (QA 2026-11-05)
+    config = "; prusaslicer_config = begin\n"
+    config += "".join(f"; option_{i} = {i}\n" for i in range(400))
+    config += "; prusaslicer_config = end\n"
+    parsed = parse_gcode(SAMPLE_GCODE + config)
+    assert parsed["filament_g"] == 3.7
+    assert parsed["print_time_s"] == 3723
 
 
 def test_parse_gcode_without_totals():
@@ -296,3 +307,26 @@ def test_slice_api_stale_record_for_other_units_is_ignored(client, fake_slicer):
     save_record(upload_id, fresh)
     assert load_record(upload_id, "PLA", units="mm") is not None
     assert load_record(upload_id, "PLA", units="inch") is None
+
+
+# --- профиль принтера ---------------------------------------------------------
+
+
+def test_printer_profile_resets_relative_extruder():
+    """Относительные E без `G92 E0` на каждом слое → PrusaSlicer 2.7+ отказывается
+    нарезать («Relative extruder addressing requires resetting…»), расчёт встаёт."""
+    path = REPO_ROOT / "profiles" / "printer.ini"
+    if slicer.read_ini_value(path, "use_relative_e_distances") == "1":
+        assert "G92 E0" in (slicer.read_ini_value(path, "layer_gcode") or "")
+
+
+@pytest.mark.skipif(shutil.which("prusa-slicer") is None, reason="нужен настоящий PrusaSlicer")
+def test_real_slicer_with_repo_profiles(tmp_path, monkeypatch):
+    """Настоящий PrusaSlicer нарезает коробку 40×30×20 с профилями из репо (PLA ≈ 8,6 г)."""
+    monkeypatch.setattr(settings, "prusa_slicer_bin", "prusa-slicer")
+    monkeypatch.setattr(settings, "profiles_dir", REPO_ROOT / "profiles")
+    model = tmp_path / "box.stl"
+    model.write_bytes(box_stl(40.0, 30.0, 20.0))
+    result = slice_model(model, tmp_path / "out", "PLA")
+    assert 5 < result.filament_g < 15
+    assert result.print_time_s > 0
