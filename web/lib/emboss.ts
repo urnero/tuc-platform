@@ -6,7 +6,9 @@
  * опрос GET …/embosses/{job_id}; после done — result_upload_id = новая загрузка с тиснением.
  */
 
-export type EmbossKind = "text" | "logo";
+export type EmbossKind = "text" | "logo" | "pattern";
+/** Узор текстуры (B68): полосы · сетка · точки · соты — как PATTERNS в api/app/emboss.py. */
+export type EmbossPattern = "lines" | "grid" | "dots" | "hex";
 export type EmbossStyle = "raised" | "engraved";
 export type EmbossFace = "top" | "bottom" | "front" | "back" | "left" | "right";
 export type EmbossFont = "sans" | "serif" | "mono";
@@ -25,10 +27,13 @@ export type EmbossParams = {
   dx: number;
   dy: number;
   angle: number;
+  /** Только для kind = "pattern" (B68): узор и шаг узора, мм. */
+  pattern?: EmbossPattern;
+  pitch_mm?: number;
 };
 
 /** То же, но как в полях формы: числа — строками, как их набрал клиент. */
-export type EmbossForm = Omit<EmbossParams, "size_mm" | "depth_mm" | "dx" | "dy" | "angle"> & {
+export type EmbossForm = Omit<EmbossParams, "size_mm" | "depth_mm" | "dx" | "dy" | "angle" | "pattern" | "pitch_mm"> & {
   size_mm: string;
   depth_mm: string;
   dx: string;
@@ -69,11 +74,21 @@ export const STYLES: { value: EmbossStyle; label: string }[] = [
   { value: "engraved", label: "Углублённое (вырез)" },
 ];
 
+/** Узоры текстуры с подписями (B68) — те же, что PATTERN_LABELS на сервере. */
+export const PATTERNS: { value: EmbossPattern; label: string }[] = [
+  { value: "lines", label: "полосы" },
+  { value: "grid", label: "сетка" },
+  { value: "dots", label: "точки" },
+  { value: "hex", label: "соты" },
+];
+
 /** Те же границы, что в api/app/emboss.py. */
 export const LIMITS = {
   textMaxlen: 40,
   size: { min: 3, max: 200 },
   depth: { min: 0.2, max: 10 },
+  /** Шаг узора текстуры (PITCH_MIN/PITCH_MAX) и не больше 50 повторов по стороне участка. */
+  pitch: { min: 1, max: 50, maxRepeats: 50 },
   shift: 500,
   angle: 180,
   logoMaxBytes: 1024 * 1024,
@@ -97,7 +112,7 @@ export const DEFAULT_FORM: EmbossForm = {
  * Ссылка на интерактивный редактор модели. tool — сразу открыть инструмент
  * (B62a: «Логотип в редакторе» на странице модели вместо старой формы).
  */
-export function editorHref(uploadId: string, tool?: "text" | "logo" | "color"): string {
+export function editorHref(uploadId: string, tool?: "text" | "logo" | "pattern" | "color"): string {
   return `/upload/${uploadId}/edit${tool ? `?tool=${tool}` : ""}`;
 }
 
@@ -155,7 +170,7 @@ export function validateForm(form: EmbossForm, hasLogo: boolean): Partial<Record
     const text = form.text.trim();
     if (!text) errors.text = "Введите надпись.";
     else if (text.length > LIMITS.textMaxlen) errors.text = `Не длиннее ${LIMITS.textMaxlen} символов.`;
-  } else if (!hasLogo) {
+  } else if (form.kind === "logo" && !hasLogo) {
     errors.kind = "Сначала загрузите логотип (SVG).";
   }
   const size = checkNumber(form.size_mm, LIMITS.size.min, LIMITS.size.max);
@@ -186,6 +201,45 @@ export function toParams(form: EmbossForm): EmbossParams {
     dy: parseNumber(form.dy),
     angle: parseNumber(form.angle),
   };
+}
+
+/**
+ * Варианты для панелей из GET /api/v1/emboss/options. Пока отвечает только то, что нужно
+ * текстуре (B68): узоры и границы шага. Чего нет в ответе — берём из PATTERNS / LIMITS.
+ */
+export type EmbossOptions = {
+  patterns: { value: EmbossPattern; label: string }[];
+  pitch_mm: { min: number; max: number; max_repeats: number };
+};
+
+export const DEFAULT_OPTIONS: EmbossOptions = {
+  patterns: PATTERNS,
+  pitch_mm: { min: LIMITS.pitch.min, max: LIMITS.pitch.max, max_repeats: LIMITS.pitch.maxRepeats },
+};
+
+const isPattern = (v: unknown): v is EmbossPattern => PATTERNS.some((p) => p.value === v);
+
+/** Ответ /emboss/options → EmbossOptions; незнакомые узоры и кривые числа отбрасываем. */
+export function parseEmbossOptions(raw: unknown): EmbossOptions {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const patterns = Array.isArray(r.patterns)
+    ? r.patterns
+        .map((p) => p as Record<string, unknown>)
+        .filter((p) => isPattern(p.value))
+        .map((p) => ({ value: p.value as EmbossPattern, label: typeof p.label === "string" && p.label ? p.label : String(p.value) }))
+    : [];
+  const pitch = (r.pitch_mm ?? {}) as Record<string, unknown>;
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : fallback);
+  const d = DEFAULT_OPTIONS.pitch_mm;
+  return {
+    patterns: patterns.length ? patterns : DEFAULT_OPTIONS.patterns,
+    pitch_mm: { min: num(pitch.min, d.min), max: num(pitch.max, d.max), max_repeats: num(pitch.max_repeats, d.max_repeats) },
+  };
+}
+
+/** Подпись узора: «соты»; неизвестный — как есть. */
+export function patternLabel(pattern: string): string {
+  return PATTERNS.find((p) => p.value === pattern)?.label ?? pattern;
 }
 
 /** Проверка SVG-файла до отправки. Возвращает текст ошибки или null. */

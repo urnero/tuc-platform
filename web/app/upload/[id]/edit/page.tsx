@@ -77,7 +77,8 @@ export default function EditorPage() {
   // ?tool=logo — со страницы модели «Логотип в редакторе» (B62a): сразу нужный инструмент.
   useEffect(() => {
     const tool = toolFromParam(new URLSearchParams(window.location.search).get("tool"));
-    if (tool) store.dispatch({ type: "tool", tool });
+    // Инструмента ещё нет в панели (текстура B68 — до панели «Текстура») — ссылку не слушаем.
+    if (tool && TOOLS.some((t) => t.value === tool)) store.dispatch({ type: "tool", tool });
   }, [store]);
 
   // Вернулись с результата: кладём прошлую надпись в стор (B60c). Ошибка — не беда:
@@ -132,7 +133,9 @@ export default function EditorPage() {
       router.push(backHref);
       return;
     }
-    if (tool === "color") store.dispatch({ type: "tool", tool: store.getState().overlays[0]?.kind === "logo" ? "logo" : "text" });
+    // Статус сборки показывает панель «Текст»/«Логотип» — переходим туда с «Цвета» (и с текстуры,
+    // пока у неё нет своей панели).
+    if (tool !== "text" && tool !== "logo") store.dispatch({ type: "tool", tool: store.getState().overlays[0]?.kind === "logo" ? "logo" : "text" });
     void applyState.apply();
   }
 

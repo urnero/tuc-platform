@@ -47,7 +47,7 @@ import { gizmoSize, useIsPhone } from "@/lib/editor/phone";
 import { useSceneColors } from "@/lib/scene";
 import { buildLogoGeometry, logoAspect, logoShapes, parseLogoSvg } from "@/lib/editor/logo3d";
 import { buildTextGeometry, pinchSize, typefaceUrl } from "@/lib/editor/text3d";
-import { type EditorStore, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
+import { type EditorStore, isPlacingTool, type Overlay, type OverlayDraft, useEditor } from "@/lib/editor/store";
 
 type Props = {
   url: string;
@@ -489,7 +489,7 @@ function Scene({ url, ext, scale = 1, store }: Props) {
     store.dispatch({ type: "model", longest: Math.round(longest * 10) / 10 });
   }, [longest, store]);
 
-  const placing = tool === "text" || tool === "logo";
+  const placing = isPlacingTool(tool);
 
   const hoverMatrix = useMemo(
     () => (hover ? new THREE.Matrix4().fromArray(placementSceneMatrix(hover, fit)) : null),

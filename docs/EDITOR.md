@@ -200,6 +200,13 @@
   (`CanvasTexture`, без геометрии рельефа — быстро на телефоне), выпуклый/врезанный — по цвету
   `PREVIEW_COLORS`; размер по умолчанию `defaultSizeMm(longest, "pattern")` ≈ 1/3 длинной стороны,
   шаг — 3 мм. Вход — кнопка «Текстура в редакторе» (`?tool=pattern`) на странице модели.
+- Сайт, сделано 15.11 (стор и типы): `web/lib/emboss.ts` — `EmbossPattern`, `PATTERNS`,
+  `LIMITS.pitch`, `EmbossOptions` + `parseEmbossOptions` (ответ `/emboss/options`, мусор
+  отбрасывается); `web/lib/editor/store.ts` — `Tool`/`OverlayKind` += `"pattern"`, `isPlacingTool`,
+  у черновика `pattern` (`lines`) и `pitch_mm` (3, зажат 1–50), глубина текстуры 0,6 мм,
+  `patternProblem` (те же тексты, что у сервера), подпись «Текстура: соты», восстановление с
+  результата. Пока панели нет: инструмента в `TOOLS` нет, `?tool=pattern` редактор не слушает,
+  в окне текстура — квадратная плашка `size_mm` (как логотип без SVG).
 
 ## Что дальше (для будних сессий — см. бэклог, этап 5)
 

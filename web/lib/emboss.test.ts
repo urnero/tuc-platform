@@ -7,6 +7,9 @@ import {
   embossWarningTexts,
   FACES,
   fmt,
+  DEFAULT_OPTIONS,
+  parseEmbossOptions,
+  patternLabel,
   parseNumber,
   toParams,
   validateForm,
@@ -125,5 +128,24 @@ describe("embossWarningTexts (B66)", () => {
       "x_new",
     ]);
     expect(embossWarningTexts(undefined)).toEqual([]);
+  });
+});
+
+describe("варианты текстуры из /emboss/options (B68)", () => {
+  it("читает узоры и границы шага; мусор отбрасывает, пустое — по умолчанию", () => {
+    const o = parseEmbossOptions({
+      patterns: [{ value: "hex", label: "соты" }, { value: "zigzag", label: "?" }, { value: "dots" }],
+      pitch_mm: { min: 1, max: 50, max_repeats: 50 },
+    });
+    expect(o.patterns).toEqual([{ value: "hex", label: "соты" }, { value: "dots", label: "dots" }]);
+    expect(o.pitch_mm).toEqual({ min: 1, max: 50, max_repeats: 50 });
+    expect(parseEmbossOptions(null)).toEqual(DEFAULT_OPTIONS);
+    expect(parseEmbossOptions({ pitch_mm: { min: "x", max: -1 } }).pitch_mm).toEqual(DEFAULT_OPTIONS.pitch_mm);
+    expect(DEFAULT_OPTIONS.patterns.map((p) => p.value)).toEqual(["lines", "grid", "dots", "hex"]);
+    expect(patternLabel("grid")).toBe("сетка");
+  });
+
+  it("старая форма: kind = pattern не требует логотипа", () => {
+    expect(validateForm({ ...DEFAULT_FORM, kind: "pattern" }, false).kind).toBeUndefined();
   });
 });

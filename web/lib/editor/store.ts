@@ -8,22 +8,33 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { LIMITS, type EmbossFont, type EmbossParams, type EmbossStyle } from "../emboss";
+import { LIMITS, type EmbossFont, type EmbossParams, type EmbossPattern, type EmbossStyle, PATTERNS, patternLabel } from "../emboss";
 import { LOGO_DEFAULT_MM } from "./logo3d";
 import { type Placement, roundPlacement } from "./math";
 
-export type Tool = "text" | "logo" | "color" | "done";
+export type Tool = "text" | "logo" | "pattern" | "color" | "done";
+
+/** Вид наложения: надпись, логотип или текстура (B68). Это же — инструменты, которые ставят наложение. */
+export type OverlayKind = "text" | "logo" | "pattern";
+
+/** Инструмент ставит наложение на модель (а не «Цвет» / «Готово»). */
+export function isPlacingTool(tool: Tool): tool is OverlayKind {
+  return tool === "text" || tool === "logo" || tool === "pattern";
+}
 export type Gizmo = "translate" | "rotate" | "scale";
 
 /** Параметры наложения без размещения — то, что правят в панели. */
 export type OverlayDraft = {
-  kind: "text" | "logo";
+  kind: OverlayKind;
   text: string;
   font: EmbossFont;
   bold: boolean;
   size_mm: number;
   depth_mm: number;
   mode: EmbossStyle;
+  /** Текстура (B68): узор и шаг, мм. У надписи и логотипа лежат по умолчанию и на сервер не уходят. */
+  pattern: EmbossPattern;
+  pitch_mm: number;
 };
 
 export type Overlay = OverlayDraft & { id: string; placement: Placement };
@@ -87,7 +98,14 @@ export const DEFAULT_DRAFT: OverlayDraft = {
   size_mm: 10,
   depth_mm: 1,
   mode: "raised",
+  pattern: "lines",
+  pitch_mm: 3,
 };
+
+/** Стартовая сторона участка текстуры, пока модель не загружена, мм. */
+export const PATTERN_DEFAULT_MM = 30;
+/** Разумная глубина текстуры: 0,4–1 мм (docs/EDITOR.md) — по умолчанию 0,6. */
+export const PATTERN_DEPTH_MM = 0.6;
 
 export const INITIAL_STATE: EditorState = {
   tool: "text",
@@ -120,30 +138,36 @@ export function clampDraft(patch: Partial<OverlayDraft>): Partial<OverlayDraft> 
   if (out.size_mm !== undefined) out.size_mm = clamp(out.size_mm, LIMITS.size.min, LIMITS.size.max);
   if (out.depth_mm !== undefined) out.depth_mm = clamp(out.depth_mm, LIMITS.depth.min, LIMITS.depth.max);
   if (out.text !== undefined) out.text = out.text.slice(0, LIMITS.textMaxlen);
+  if (out.pitch_mm !== undefined) out.pitch_mm = clamp(out.pitch_mm, LIMITS.pitch.min, LIMITS.pitch.max);
   return out;
 }
 
 /**
  * Стартовый размер надписи под модель: высота букв ≈ 1/12 самой длинной стороны, шаг 0,5 мм,
  * от 3 до 20 мм (подставка 90 мм → 7,5; брелок 30 → 3; ваза 200 → 16,5). Логотип (ширина) — вдвое
- * больше. Модель ещё не загружена (longest = null) — прежние 10 мм / 20 мм.
+ * больше. Текстура (B68) — участок ≈ 1/3 длинной стороны, шаг 1 мм, 10–200 мм (подставка 90 → 30).
+ * Модель ещё не загружена (longest = null) — прежние 10 мм / 20 мм, текстура — 30 мм.
  */
-export function defaultSizeMm(longest: number | null, kind: "text" | "logo"): number {
+export function defaultSizeMm(longest: number | null, kind: OverlayKind): number {
   if (longest === null || !Number.isFinite(longest) || longest <= 0) {
+    if (kind === "pattern") return PATTERN_DEFAULT_MM;
     return kind === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm;
   }
+  if (kind === "pattern") return clamp(Math.round(longest / 3), 10, LIMITS.size.max);
   const text = clamp(Math.round((longest / 12) * 2) / 2, 3, 20);
   return kind === "logo" ? text * 2 : text;
 }
 
 /**
- * Черновик под инструмент: «Текст» и «Логотип» — свой вид; при смене вида размер
- * возвращается к стартовому под модель (`defaultSizeMm`).
+ * Черновик под инструмент: «Текст», «Логотип», «Текстура» — свой вид; при смене вида размер
+ * возвращается к стартовому под модель (`defaultSizeMm`). Текстуре — своя тонкая глубина
+ * (0,6 мм); уходя с текстуры, глубина возвращается к 1 мм.
  */
 function draftFor(draft: OverlayDraft, tool: Tool, longest: number | null): OverlayDraft {
-  if (tool !== "text" && tool !== "logo") return draft;
+  if (!isPlacingTool(tool)) return draft;
   if (draft.kind === tool) return draft;
-  return { ...draft, kind: tool, size_mm: defaultSizeMm(longest, tool) };
+  const depth_mm = tool === "pattern" ? PATTERN_DEPTH_MM : draft.kind === "pattern" ? DEFAULT_DRAFT.depth_mm : draft.depth_mm;
+  return { ...draft, kind: tool, size_mm: defaultSizeMm(longest, tool), depth_mm };
 }
 
 /**
@@ -190,15 +214,15 @@ export function reduce(state: EditorState, action: Action): EditorState {
       // Пока наложение выбрано, плашка под курсором не нужна — им управляет гизмо.
       return state.selectedId ? state : { ...state, hover: action.placement };
     case "place": {
-      if (state.tool !== "text" && state.tool !== "logo") return state;
+      if (!isPlacingTool(state.tool)) return state;
       const overlay: Overlay = { ...state.draft, kind: state.tool, id: nextId(), placement: action.placement };
       return commit(state, [...state.overlays, overlay], null, { selectedId: overlay.id, hover: null });
     }
     case "select": {
-      // Выбрали логотип, стоя на «Тексте» (из списка или кликом в окне), — панель
+      // Выбрали логотип или текстуру, стоя на «Тексте» (из списка или кликом в окне), — панель
       // переключается на его инструмент, иначе править было бы нечем.
       const o = state.overlays.find((x) => x.id === action.id);
-      const tool = o && (state.tool === "text" || state.tool === "logo") ? o.kind : state.tool;
+      const tool = o && isPlacingTool(state.tool) ? o.kind : state.tool;
       return { ...state, tool, selectedId: action.id, hover: null, lastEdit: null, draft: draftFor(state.draft, tool, state.modelLongest) };
     }
     case "update": {
@@ -293,6 +317,8 @@ export function toEmbossParams(o: Overlay): EmbossParams & { placement: Placemen
     dx: 0,
     dy: 0,
     angle: 0,
+    // Узор и шаг — только у текстуры: надписи и логотипу сервер их не ждёт.
+    ...(o.kind === "pattern" ? { pattern: o.pattern, pitch_mm: o.pitch_mm } : {}),
     placement: { ...p, size_mm: o.size_mm, depth_mm: o.depth_mm, mode: o.mode },
   };
 }
@@ -307,9 +333,10 @@ export function toEmbossBody(overlays: Overlay[]): { params: ReturnType<typeof t
   return { params: toEmbossParams(first), more: rest.map(toEmbossParams) };
 }
 
-/** Подпись наложения в списке: «Надпись «Маше»» / «Логотип». */
+/** Подпись наложения в списке: «Надпись «Маше»» / «Логотип» / «Текстура: соты». */
 export function overlayLabel(o: OverlayDraft): string {
   if (o.kind === "logo") return "Логотип";
+  if (o.kind === "pattern") return `Текстура: ${patternLabel(o.pattern)}`;
   const t = o.text.trim();
   return t ? `Надпись «${t.length > 18 ? `${t.slice(0, 17)}…` : t}»` : "Надпись (пустая)";
 }
@@ -333,8 +360,25 @@ export function overlayProblem(o: Overlay | null, hasLogo = false): string | nul
   if (!o) return "Поставьте наложение на модель: наведите на поверхность и нажмите.";
   if (o.kind === "text" && !o.text.trim()) return "Введите текст надписи.";
   if (o.kind === "logo" && !hasLogo) return "Сначала загрузите логотип (SVG).";
+  if (o.kind === "pattern") return patternProblem(o.size_mm, o.pitch_mm);
   return null;
 }
+
+/**
+ * Шаг узора против размера участка — те же правила и тексты, что у сервера
+ * (api/app/emboss.py, PATTERN_MAX_REPEATS): шаг больше участка — узор не поместится ни разу;
+ * больше 50 повторов по стороне — OpenSCAD строит минутами, а на печати мелочь сливается.
+ */
+export function patternProblem(size_mm: number, pitch_mm: number): string | null {
+  if (pitch_mm > size_mm) return "Шаг узора не больше размера участка.";
+  if (size_mm / pitch_mm > LIMITS.pitch.maxRepeats) {
+    return `Слишком мелкий узор для такого участка: не меньше ${fmtMm(size_mm / LIMITS.pitch.maxRepeats)} мм.`;
+  }
+  return null;
+}
+
+/** 0.8 → «0,8», 2 → «2» — как `_fmt` на сервере. */
+const fmtMm = (n: number) => String(Number(n.toFixed(2))).replace(".", ",");
 
 const isVec3 = (v: unknown): v is [number, number, number] =>
   Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number" && Number.isFinite(x));
@@ -347,8 +391,8 @@ const isVec3 = (v: unknown): v is [number, number, number] =>
  * id наложения — `job-<job_id>`, чтобы повторная загрузка не добавила вторую копию.
  */
 export function overlayFromParams(jobId: string, params: Record<string, unknown> | null | undefined): Overlay | null {
-  if (!params || (params.kind !== "text" && params.kind !== "logo")) return null;
-  const kind = params.kind;
+  if (!params || (params.kind !== "text" && params.kind !== "logo" && params.kind !== "pattern")) return null;
+  const kind: OverlayKind = params.kind;
   const pl = params.placement as Record<string, unknown> | undefined;
   if (!pl || !isVec3(pl.point) || !isVec3(pl.normal) || !isVec3(pl.up)) return null;
   const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
@@ -356,9 +400,11 @@ export function overlayFromParams(jobId: string, params: Record<string, unknown>
   const font = params.font === "serif" || params.font === "mono" ? params.font : "sans";
   const draft = clampDraft({
     text: kind === "text" && typeof params.text === "string" ? params.text : "",
-    size_mm: num(pl.size_mm, num(params.size_mm, kind === "logo" ? LOGO_DEFAULT_MM : DEFAULT_DRAFT.size_mm)),
-    depth_mm: num(pl.depth_mm, num(params.depth_mm, DEFAULT_DRAFT.depth_mm)),
+    size_mm: num(pl.size_mm, num(params.size_mm, defaultSizeMm(null, kind))),
+    depth_mm: num(pl.depth_mm, num(params.depth_mm, kind === "pattern" ? PATTERN_DEPTH_MM : DEFAULT_DRAFT.depth_mm)),
+    pitch_mm: num(params.pitch_mm, DEFAULT_DRAFT.pitch_mm),
   });
+  const pattern = PATTERNS.find((p) => p.value === params.pattern)?.value ?? DEFAULT_DRAFT.pattern;
   return {
     ...DEFAULT_DRAFT,
     ...draft,
@@ -366,6 +412,7 @@ export function overlayFromParams(jobId: string, params: Record<string, unknown>
     font,
     bold: params.bold !== false,
     mode,
+    pattern,
     id: `job-${jobId}`,
     placement: { point: pl.point, normal: pl.normal, up: pl.up },
   };
@@ -390,7 +437,7 @@ export function overlaysFromParams(jobId: string, params: Record<string, unknown
  * открывает сразу инструмент «Логотип». Неизвестное значение — null (инструмент по умолчанию).
  */
 export function toolFromParam(value: string | null | undefined): Tool | null {
-  return value === "text" || value === "logo" || value === "color" ? value : null;
+  return value === "text" || value === "logo" || value === "pattern" || value === "color" ? value : null;
 }
 
 /**

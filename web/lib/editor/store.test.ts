@@ -7,6 +7,8 @@ import {
   INITIAL_STATE,
   editAgainHref,
   overlayFromParams,
+  overlayLabel,
+  patternProblem,
   overlaysFromParams,
   overlaysProblem,
   MAX_OVERLAYS,
@@ -322,5 +324,58 @@ describe("стартовый размер под модель", () => {
     expect(s.draft.size_mm).toBe(12);
     // Текст без размера — не считается правкой размера.
     expect(run([{ type: "draft", patch: { text: "ТУЦ" } }, { type: "model", longest: 30 }]).draft.size_mm).toBe(3);
+  });
+});
+
+describe("текстура (B68)", () => {
+  it("инструмент «Текстура»: участок ≈ 1/3 модели, глубина 0,6, ставится и выбирается", () => {
+    expect(defaultSizeMm(null, "pattern")).toBe(30);
+    expect(defaultSizeMm(90, "pattern")).toBe(30);
+    expect(defaultSizeMm(20, "pattern")).toBe(10);
+    expect(defaultSizeMm(1000, "pattern")).toBe(200);
+    const s = run([{ type: "model", longest: 120 }, { type: "tool", tool: "pattern" }, { type: "place", placement: top }]);
+    expect(s.overlays[0]).toMatchObject({ kind: "pattern", pattern: "lines", pitch_mm: 3, size_mm: 40, depth_mm: 0.6 });
+    expect(s.selectedId).toBe(s.overlays[0].id);
+    // уходя на «Текст», глубина возвращается к 1 мм
+    expect(reduce(s, { type: "tool", tool: "text" }).draft).toMatchObject({ kind: "text", depth_mm: 1, size_mm: 10 });
+  });
+
+  it("выбор текстуры со «Текста» переключает инструмент; шаг зажат в 1–50 мм", () => {
+    const s = run([{ type: "tool", tool: "pattern" }, { type: "place", placement: top }, { type: "tool", tool: "text" }]);
+    const sel = reduce(s, { type: "select", id: s.overlays[0].id });
+    expect(sel.tool).toBe("pattern");
+    const upd = reduce(sel, { type: "update", id: s.overlays[0].id, patch: { pitch_mm: 0.2, pattern: "hex" } });
+    expect(upd.overlays[0]).toMatchObject({ pitch_mm: 1, pattern: "hex" });
+    expect(reduce(sel, { type: "update", id: s.overlays[0].id, patch: { pitch_mm: 99 } }).overlays[0].pitch_mm).toBe(50);
+  });
+
+  it("toEmbossParams шлёт pattern и pitch_mm только для текстуры; туда-обратно", () => {
+    const s = run([{ type: "tool", tool: "pattern" }, { type: "draft", patch: { pattern: "dots", pitch_mm: 4, mode: "engraved" } }, { type: "place", placement: side }]);
+    const params = toEmbossParams(s.overlays[0]);
+    expect(params).toMatchObject({ kind: "pattern", pattern: "dots", pitch_mm: 4, text: "", placement: { size_mm: 30, depth_mm: 0.6, mode: "engraved" } });
+    const text = toEmbossParams(run([{ type: "draft", patch: { text: "А" } }, { type: "place", placement: top }]).overlays[0]);
+    expect(text).not.toHaveProperty("pattern");
+    expect(text).not.toHaveProperty("pitch_mm");
+    const back = overlayFromParams("p1", params as unknown as Record<string, unknown>)!;
+    expect(back).toMatchObject({ kind: "pattern", pattern: "dots", pitch_mm: 4, size_mm: 30, depth_mm: 0.6, mode: "engraved", id: "job-p1" });
+    // незнакомый узор — полосы
+    expect(overlayFromParams("p2", { ...params, pattern: "zigzag" } as unknown as Record<string, unknown>)!.pattern).toBe("lines");
+    expect(editAgainHref({ parent_id: "u1", job_id: "p1", params: params as unknown as Record<string, unknown> })).toBe("/upload/u1/edit?overlay=p1");
+  });
+
+  it("подпись и проблемы — тексты как у сервера", () => {
+    const s = run([{ type: "tool", tool: "pattern" }, { type: "draft", patch: { pattern: "hex" } }, { type: "place", placement: top }]);
+    const o = s.overlays[0];
+    expect(overlayLabel(o)).toBe("Текстура: соты");
+    expect(overlayProblem(o)).toBeNull();
+    expect(overlayProblem({ ...o, size_mm: 10, pitch_mm: 12 })).toBe("Шаг узора не больше размера участка.");
+    expect(overlayProblem({ ...o, size_mm: 200, pitch_mm: 2 })).toBe("Слишком мелкий узор для такого участка: не меньше 4 мм.");
+    expect(patternProblem(40, 0.5)).toBe("Слишком мелкий узор для такого участка: не меньше 0,8 мм.");
+    expect(patternProblem(40, 0.8)).toBeNull(); // ровно 50 повторов — можно
+    expect(overlaysProblem([o])).toBeNull();
+  });
+
+  it("?tool=pattern — инструмент «Текстура»", () => {
+    expect(toolFromParam("pattern")).toBe("pattern");
   });
 });
